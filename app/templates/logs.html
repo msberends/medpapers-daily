@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Logs &mdash; {{ config.get('app_name', 'Papers Daily') }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-11">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0"><i class="bi bi-activity me-2"></i>Logs</h3>
+    {% if user.is_admin and all_users %}
+    <form method="get" action="/logs" class="d-flex gap-2 align-items-center">
+      <label class="form-label mb-0 small">User:</label>
+      <select name="filter_user_id" class="form-select form-select-sm" style="max-width:180px"
+              onchange="this.form.submit()">
+        <option value="0">All users</option>
+        {% for u in all_users %}
+        <option value="{{ u.id }}" {% if filter_user_id == u.id %}selected{% endif %}>{{ u.username }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+
+  <ul class="nav nav-tabs mb-3" id="logTabs">
+    <li class="nav-item">
+      <a class="nav-link active" data-bs-toggle="tab" href="#tab-fetch">
+        <i class="bi bi-cloud-download me-1"></i>Fetch
+        <span class="badge bg-secondary ms-1">{{ total }}</span>
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="tab" href="#tab-mail">
+        <i class="bi bi-envelope me-1"></i>Email
+        <span class="badge bg-secondary ms-1">{{ mail_logs | length }}</span>
+      </a>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+
+    {# ── Fetch tab ── #}
+    <div class="tab-pane fade show active" id="tab-fetch">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width:140px">Timestamp</th>
+              {% if user.is_admin %}<th>User</th>{% endif %}
+              <th class="text-end">Found</th>
+              <th class="text-end">New</th>
+              <th>Status</th>
+              <th>Profiles</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for log in logs %}
+          <tr>
+            <td class="text-muted small font-monospace">{{ log.run_at | to_local }}</td>
+            {% if user.is_admin %}<td class="small">{{ log.username }}</td>{% endif %}
+            <td class="text-end">{{ log.papers_found }}</td>
+            <td class="text-end">{{ log.papers_new }}</td>
+            <td>
+              {% if log.status == 'success' %}
+                <span class="badge bg-success">ok</span>
+              {% else %}
+                <span class="badge bg-danger">error</span>
+              {% endif %}
+            </td>
+            <td>
+              {% set details = (log.details | from_json) if log.details else [] %}
+              {% if details %}
+              <details>
+                <summary class="small text-muted" style="cursor:pointer">
+                  {{ details | length }} profile{{ 's' if details | length != 1 }}
+                </summary>
+                <table class="table table-sm table-bordered mt-1 mb-0" style="font-size:.8rem">
+                  <thead class="table-light">
+                    <tr><th>Profile</th><th class="text-end">Found</th><th class="text-end">Filtered</th><th class="text-end">New</th></tr>
+                  </thead>
+                  <tbody>
+                  {% for p in details %}
+                  <tr {% if p.get('error') %}class="table-danger"{% endif %}>
+                    <td>{{ p.profile }}</td>
+                    <td class="text-end">{{ p.get('found', 0) }}</td>
+                    <td class="text-end text-muted">{{ p.get('filtered', 0) }}</td>
+                    <td class="text-end fw-semibold">{{ p.get('new', 0) }}</td>
+                  </tr>
+                  {% if p.get('error') %}
+                  <tr class="table-danger">
+                    <td colspan="4" class="text-danger small">{{ p.error }}</td>
+                  </tr>
+                  {% endif %}
+                  {% endfor %}
+                  </tbody>
+                </table>
+              </details>
+              {% elif log.error_message %}
+              <details>
+                <summary class="text-danger small" style="cursor:pointer">Error detail</summary>
+                <pre class="mt-1 small text-danger" style="white-space:pre-wrap;max-height:200px;overflow:auto">{{ log.error_message }}</pre>
+              </details>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not logs %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No fetch log entries yet.</td></tr>
+          {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      {# Pagination #}
+      {% if total_pages > 1 %}
+      <nav>
+        <ul class="pagination pagination-sm justify-content-center">
+          {% for p in range(1, total_pages + 1) %}
+          <li class="page-item {% if p == page %}active{% endif %}">
+            <a class="page-link" href="/logs?page={{ p }}&filter_user_id={{ filter_user_id }}">{{ p }}</a>
+          </li>
+          {% endfor %}
+        </ul>
+      </nav>
+      {% endif %}
+    </div>
+
+    {# ── Email tab ── #}
+    <div class="tab-pane fade" id="tab-mail">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width:140px">Timestamp</th>
+              {% if user.is_admin %}<th>User</th>{% endif %}
+              <th>To</th>
+              <th>Subject</th>
+              <th>Status</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for ml in mail_logs %}
+          <tr>
+            <td class="text-muted small font-monospace">{{ ml.sent_at | to_local }}</td>
+            {% if user.is_admin %}<td class="small">{{ ml.username or '—' }}</td>{% endif %}
+            <td class="small">{{ ml.to_addr }}</td>
+            <td class="small">{{ ml.subject }}</td>
+            <td>
+              {% if ml.status == 'sent' %}
+                <span class="badge bg-success">sent</span>
+              {% else %}
+                <span class="badge bg-danger">error</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if ml.error %}
+              <span class="text-danger small" title="{{ ml.error }}">
+                {{ ml.error[:80] }}{% if ml.error | length > 80 %}…{% endif %}
+              </span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not mail_logs %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No email log entries yet.</td></tr>
+          {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>{# end tab-content #}
+
+</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const hash = window.location.hash;
+if (hash) {
+  const tab = document.querySelector(`[href="${hash}"]`);
+  if (tab) tab.click();
+}
+</script>
+{% endblock %}

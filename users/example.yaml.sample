@@ -1,0 +1,29 @@
+email: user@example.com
+email_suppress_empty: false   # true = skip the email when nothing new today
+fetch_enabled: true
+
+# Scopus quartile filtering (requires scopus.csv uploaded via /admin)
+q1_soft: true    # show Q1 papers (always included)
+q2_hard: true    # drop Q3/Q4 papers; keep Q1+Q2
+
+# PubMed search profiles — at least one needed for fetch.py to do anything
+search_profiles:
+  - name: Example Search
+    query: '"antimicrobial resistance"[MeSH] AND (software OR bioinformatics)'
+    enabled: true
+
+# MeSH term → topic label mapping used for in-app classification
+mesh_topic_map:
+  Anti-Bacterial Agents: AMR
+  Machine Learning: AI
+
+# Per-user UI overrides (optional; inherits from config.yaml if omitted)
+folders: []
+bootstrap_theme: yeti
+show_quartile: true
+fetch_schedule: daily   # daily | weekly | monthly
+fetch_schedule_dow: 0   # 0=Mon … 6=Sun (weekly only)
+fetch_schedule_dom: 1   # 1-28 (monthly only)
+page_size: 25
+lookback_days: 7
+journal_metric: if      # if = Impact Factor; sjr = SJR score

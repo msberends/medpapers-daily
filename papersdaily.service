@@ -1,0 +1,16 @@
+[Unit]
+Description=Papers Daily FastAPI application
+After=network.target
+
+[Service]
+Type=simple
+User=uscloud
+WorkingDirectory=/var/www/papersdaily
+ExecStart=/var/www/papersdaily/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 2711 --workers 1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,31 @@
+app_name: Papers Daily
+base_url: http://localhost:2711
+port: 2711
+db_path: data/paperdigest.db
+scopus_file: data/scopus.csv
+log_path: logs/fetch.log
+lookback_days: 7
+
+# Get a free NCBI API key at https://www.ncbi.nlm.nih.gov/account/
+ncbi_api_key: ''
+ncbi_email: ''
+
+# SMTP settings (example uses Gmail App Password)
+smtp_host: smtp.gmail.com
+smtp_port: 587
+smtp_user: ''
+smtp_password: ''
+email_relay: smtp
+email_from: noreply@example.com
+email_from_name: Papers Daily
+email_subject_template: '{new_papers} new paper(s) for you to read ({date})'
+
+# Optional: institutional proxy prefix for paywalled links
+proxy_enabled: false
+proxy_domain: ''
+proxy_url_regex: ''
+
+# UI
+bootstrap_theme: yeti   # any Bootswatch theme name
+theme: light            # light or dark
+timezone: UTC           # IANA timezone, e.g. Europe/Amsterdam

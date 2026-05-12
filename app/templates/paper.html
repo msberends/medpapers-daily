@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}{{ paper.title | striptags | truncate(80, killwords=True, end='') }} &mdash; {{ config.get('app_name', 'Papers Daily') }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-9">
+
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/feed">Feed</a></li>
+      <li class="breadcrumb-item active">Paper</li>
+    </ol>
+  </nav>
+
+  <h1 class="h3 mb-2">{{ paper.title | safe }}</h1>
+
+  {# Authors #}
+  <p class="text-muted mb-1">
+    {% for author in paper.authors_list %}{{ author }}{% if not loop.last %}; {% endif %}{% endfor %}
+  </p>
+
+  {# Journal metadata #}
+  <p class="mb-2">
+    <em>{{ paper.journal }}</em>
+    {% if paper.publisher %}<span class="text-muted small">&bull; {{ paper.publisher }}</span>{% endif %}
+    {% set pub_date_norm = paper.pub_date | norm_pub_date %}
+    {% if paper.epub_date %}
+      {% if pub_date_norm and pub_date_norm != paper.epub_date %}
+        &bull; Epub: {{ paper.epub_date }} <span class="text-muted small">(in press: {{ pub_date_norm }})</span>
+      {% else %}
+        &bull; {{ paper.epub_date }}
+      {% endif %}
+    {% elif paper.pub_date %}
+    &bull; {{ pub_date_norm }}
+    {% endif %}
+    &bull; PMID:&nbsp;<a href="https://pubmed.ncbi.nlm.nih.gov/{{ paper.pmid }}"
+       target="_blank" rel="noopener">{{ paper.pmid }}</a>
+    {% if paper.doi %}
+    &bull; DOI:&nbsp;<a href="https://doi.org/{{ paper.doi }}"
+       target="_blank" rel="noopener">{{ paper.doi }}</a>
+    {% endif %}
+  </p>
+
+  {# Badges #}
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    {% if journal_metric == 'citescore' %}
+      {% set metric_val = paper.scopus_cites_3yr %}
+      {% set metric_lbl = 'CiteScore' %}
+    {% elif journal_metric == 'sjr' %}
+      {% set metric_val = paper.scopus_sjr %}
+      {% set metric_lbl = 'SJR' %}
+    {% else %}
+      {% set metric_val = paper.scopus_cites_per_doc %}
+      {% set metric_lbl = 'IF' %}
+    {% endif %}
+    {% set cites_str = ' (' ~ metric_lbl ~ ' ' ~ '%.2f'|format(metric_val) ~ ')' if metric_val else '' %}
+    {% if show_quartile %}
+      {% if paper.scopus_quartile == 'Q1' %}
+        <span class="badge badge-q1 fs-6">Q1{{ cites_str }}</span>
+      {% elif paper.scopus_quartile == 'Q2' %}
+        <span class="badge badge-q2 fs-6">Q2{{ cites_str }}</span>
+      {% elif paper.scopus_quartile == 'Q3' %}
+        <span class="badge badge-q3 fs-6">Q3{{ cites_str }}</span>
+      {% elif paper.scopus_quartile == 'Q4' %}
+        <span class="badge badge-q4 fs-6">Q4{{ cites_str }}</span>
+      {% else %}
+        <span class="badge badge-unranked fs-6">Unranked</span>
+      {% endif %}
+    {% endif %}
+    {% for topic in topics %}
+      <span class="badge badge-topic-{{ topic_color_map.get(topic, loop.index0 % 8) }} fs-6">{{ topic }}</span>
+    {% endfor %}
+    {% if paper.oa_url %}
+      <span class="badge bg-success fs-6"><i class="bi bi-unlock me-1"></i>Open Access</span>
+    {% elif paper.doi %}
+      <span class="badge bg-danger fs-6"><i class="bi bi-lock me-1"></i>Paywall</span>
+    {% endif %}
+  </div>
+
+  {# Action buttons #}
+  {% set pu = proxy_url(paper.doi, config) if paper.doi else none %}
+  <div class="d-flex flex-wrap gap-2 mb-4">
+    <a href="https://pubmed.ncbi.nlm.nih.gov/{{ paper.pmid }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-box-arrow-up-right me-1"></i>PubMed
+    </a>
+    {% if paper.oa_url %}
+    <a href="{{ paper.oa_url }}" target="_blank" class="btn btn-outline-success btn-sm">
+      <i class="bi bi-file-earmark-pdf me-1"></i>Full Text
+    </a>
+    {% elif pu %}
+    <a href="{{ pu }}" target="_blank" rel="noopener" class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-lock me-1"></i>Full Text via Proxy
+    </a>
+    {% endif %}
+    <a href="/export/ris/{{ paper.pmid }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-download me-1"></i>Export RIS
+    </a>
+
+    {% if up %}
+    <form method="post" action="/paper/{{ paper.pmid }}/mark-read" class="d-inline">
+      {% if up.is_read %}
+        <input type="hidden" name="is_read" value="0">
+        <button type="submit" class="btn btn-outline-secondary btn-sm"><i class="bi bi-envelope me-1"></i>Mark unread</button>
+      {% else %}
+        <input type="hidden" name="is_read" value="1">
+        <button type="submit" class="btn btn-outline-secondary btn-sm"><i class="bi bi-envelope-open me-1"></i>Mark read</button>
+      {% endif %}
+    </form>
+    <form method="post" action="/paper/{{ paper.pmid }}/star" class="d-inline">
+      {% if up.is_starred %}
+        <input type="hidden" name="is_starred" value="0">
+        <button type="submit" class="btn btn-warning btn-sm"><i class="bi bi-star-fill me-1"></i>Unstar</button>
+      {% else %}
+        <input type="hidden" name="is_starred" value="1">
+        <button type="submit" class="btn btn-outline-warning btn-sm"><i class="bi bi-star me-1"></i>Star</button>
+      {% endif %}
+    </form>
+    {% endif %}
+
+    {# Folder assignment #}
+    {% if folders %}
+    <form method="post" action="/paper/{{ paper.pmid }}/assign-folder" class="d-inline d-flex gap-1">
+      <select name="folder_id" class="form-select form-select-sm" style="max-width:160px">
+        <option value="">No folder</option>
+        {% for f in folders %}<option value="{{ f.id }}" {% if up and up.folder_id == f.id %}selected{% endif %}>{{ f.name }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-outline-secondary btn-sm">Move</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {# Abstract #}
+  {% if paper.abstract %}
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Abstract <span class="text-muted fw-normal small">({{ paper.abstract.split() | length }} words)</span></div>
+    <div class="card-body" style="text-align: justify; hyphens: auto;">{{ paper.abstract }}</div>
+  </div>
+  {% endif %}
+
+  {# MeSH terms #}
+  {% if paper.mesh_list %}
+  <details class="mb-3">
+    <summary class="text-muted small">MeSH Terms ({{ paper.mesh_list | length }})</summary>
+    <div class="mt-2 d-flex flex-wrap gap-1">
+      {% for term in paper.mesh_list %}
+      <span class="badge bg-light text-dark border">{{ term }}</span>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+</div>
+</div>
+{% endblock %}

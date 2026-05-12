@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+{% block title %}Settings &mdash; {{ config.get('app_name', 'Papers Daily') }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .nav-tabs .nav-link { color: #555; }
+  .form-label { font-weight: 500; }
+  .profile-row, .mesh-row { background: #f8f9fa; border-radius: 6px; }
+  .handle { cursor: grab; color: #adb5bd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-9">
+
+  <h3 class="mb-1"><i class="bi bi-person-gear me-2"></i>Settings</h3>
+  <p class="text-muted mb-4">Manage your search profiles, topic classifications, and preferences.</p>
+
+  {% if saved %}
+  <div class="alert alert-success alert-dismissible py-2" role="alert">
+    <i class="bi bi-check-circle me-1"></i> Changes saved.
+    <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+  </div>
+  {% endif %}
+  {% if error %}
+  <div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
+  {% endif %}
+
+  <ul class="nav nav-tabs mb-4" id="settingsTabs">
+    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-general">General</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">MeSH Topic Map</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-password">Password</a></li>
+  </ul>
+
+  <div class="tab-content">
+
+    {# ── General ── #}
+    <div class="tab-pane fade show active" id="tab-general">
+      <form method="post" action="/settings/save">
+        <div class="card mb-3">
+          <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email</div>
+          <div class="card-body row g-3">
+            <div class="col-md-7">
+              <label class="form-label">Email address</label>
+              <input type="email" name="email" class="form-control"
+                     value="{{ cfg.get('email', '') }}" required>
+              <div class="form-text">Recipient address for your daily digest.</div>
+            </div>
+            <div class="col-md-5 d-flex flex-column gap-2 pt-md-4 mt-md-2">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="fetch_enabled"
+                       id="fetchEnabled" {% if cfg.get('fetch_enabled', True) %}checked{% endif %}>
+                <label class="form-check-label" for="fetchEnabled">Fetch enabled</label>
+                <div class="form-text">Uncheck to pause all fetching for your account.</div>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="email_suppress_empty"
+                       id="suppressEmpty" {% if cfg.get('email_suppress_empty', True) %}checked{% endif %}>
+                <label class="form-check-label" for="suppressEmpty">Suppress empty digest</label>
+                <div class="form-text">No email on days with nothing new.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-header fw-semibold"><i class="bi bi-calendar3 me-1"></i>Fetch Schedule</div>
+          <div class="card-body">
+            <div class="row g-3 align-items-end">
+              <div class="col-auto">
+                <label class="form-label">Frequency</label>
+                <select name="fetch_schedule" id="fetchSchedule" class="form-select" style="width:auto" onchange="updateScheduleUI()">
+                  <option value="daily" {% if cfg.get('fetch_schedule', 'daily') == 'daily' %}selected{% endif %}>Every day</option>
+                  <option value="weekly" {% if cfg.get('fetch_schedule') == 'weekly' %}selected{% endif %}>Weekly</option>
+                  <option value="monthly" {% if cfg.get('fetch_schedule') == 'monthly' %}selected{% endif %}>Monthly</option>
+                </select>
+              </div>
+              <div class="col-auto" id="dowPicker">
+                <label class="form-label">Day of week</label>
+                <select name="fetch_schedule_dow" class="form-select" style="width:auto">
+                  {% set dow_names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
+                  {% for i in range(7) %}
+                  <option value="{{ i }}" {% if (cfg.get('fetch_schedule_dow', 0) | int) == i %}selected{% endif %}>{{ dow_names[i] }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-auto" id="domPicker">
+                <label class="form-label">Day of month</label>
+                <input type="number" name="fetch_schedule_dom" class="form-control" style="width:90px"
+                       min="1" max="28" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
+                <div class="form-text">1–28</div>
+              </div>
+            </div>
+            <div class="form-text mt-2">How often PubMed is queried for your account. The email digest only sends on fetch days.</div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-header fw-semibold"><i class="bi bi-calendar3 me-1"></i>Lookback Window</div>
+          <div class="card-body row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Days to look back</label>
+              <input type="number" name="lookback_days" class="form-control" style="max-width:100px"
+                     value="{{ cfg.get('lookback_days', 7) }}" min="1" max="90">
+              <div class="form-text">How many days back PubMed is queried on each fetch run (default 7).</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-4">
+          <div class="card-header fw-semibold"><i class="bi bi-funnel me-1"></i>Journal Quality Filter</div>
+          <div class="card-body row g-3">
+            <div class="col-md-6">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="q2_hard"
+                       id="q2Hard" {% if cfg.get('q2_hard', True) %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="q2Hard">Exclude Q3/Q4 &amp; unranked</label>
+              </div>
+              <div class="form-text ms-4 ps-1">Hides Q3, Q4, and unranked papers from your feed, and skips storing them on future fetches.</div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_quartile"
+                       id="showQuartile" {% if cfg.get('show_quartile', True) %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="showQuartile">Show quartile rankings</label>
+              </div>
+              <div class="form-text ms-4 ps-1">Show Q1–Q4 and Unranked badges on papers. No effect on which papers are shown.</div>
+            </div>
+            <div class="col-12 mt-2">
+              <label class="form-label fw-medium">Journal metric shown in badges</label>
+              <div class="d-flex flex-wrap gap-3">
+                {% set jm = cfg.get('journal_metric', 'if') %}
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="journal_metric" id="jmIF" value="if" {% if jm == 'if' %}checked{% endif %}>
+                  <label class="form-check-label" for="jmIF"><strong>IF</strong> &mdash; Citations / Doc. (2 years)</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="journal_metric" id="jmCS" value="citescore" {% if jm == 'citescore' %}checked{% endif %}>
+                  <label class="form-check-label" for="jmCS"><strong>CiteScore</strong> &mdash; Citations / Doc. (3 years)</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="journal_metric" id="jmSJR" value="sjr" {% if jm == 'sjr' %}checked{% endif %}>
+                  <label class="form-check-label" for="jmSJR"><strong>SJR</strong> &mdash; SCImago Journal Rank</label>
+                </div>
+              </div>
+              <div class="form-text">The numeric value shown next to the Q1–Q4 badge.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-header fw-semibold"><i class="bi bi-palette me-1"></i>Appearance</div>
+          <div class="card-body row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Theme</label>
+              <select name="bootstrap_theme" class="form-select" style="max-width:220px">
+                {% for t in valid_themes %}
+                <option value="{{ t }}" {% if cfg.get('bootstrap_theme', config.get('bootstrap_theme', 'flatly')) == t %}selected{% endif %}>
+                  {{ t | capitalize }}
+                </option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Takes effect on next page load.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Papers per page</label>
+              <select name="page_size" class="form-select" style="max-width:120px">
+                {% for n in [10, 25, 50, 100, 150, 200, 500] %}
+                <option value="{{ n }}" {% if cfg.get('page_size', 50) == n %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Number of papers shown per feed page.</div>
+            </div>
+          </div>
+        </div>
+
+        {# Hidden profile/mesh fields so the save endpoint gets current values #}
+        {% for p in cfg.get('search_profiles', []) %}
+        <input type="hidden" name="profile_name" value="{{ p.name }}">
+        <input type="hidden" name="profile_query" value="{{ p.query }}">
+        <input type="hidden" name="profile_enabled" value="{{ '1' if p.get('enabled', True) else '0' }}">
+        {% endfor %}
+        {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
+        <input type="hidden" name="mesh_term" value="{{ term }}">
+        <input type="hidden" name="mesh_topic" value="{{ topic }}">
+        {% endfor %}
+
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-lg me-1"></i>Save general settings
+        </button>
+      </form>
+    </div>
+
+    {# ── Search Profiles ── #}
+    <div class="tab-pane fade" id="tab-profiles">
+      <form method="post" action="/settings/save" id="profilesForm">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <p class="text-muted mb-0">Define named PubMed queries. Each runs on your fetch schedule and papers are labelled with the profile name as a fallback topic.</p>
+          <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
+                  onclick="addProfile()"><i class="bi bi-plus-lg me-1"></i>Add profile</button>
+        </div>
+        <div id="profilesList">
+          {% for p in cfg.get('search_profiles', []) %}
+          <div class="profile-row p-3 mb-3 border">
+            <div class="row g-2 align-items-start">
+              <div class="col-md-3">
+                <label class="form-label small">Profile name</label>
+                <input type="text" name="profile_name" class="form-control form-control-sm"
+                       value="{{ p.name }}" placeholder="e.g. AMR Surveillance" required>
+              </div>
+              <div class="col-md-8">
+                <label class="form-label small">PubMed query</label>
+                <textarea name="profile_query" class="form-control form-control-sm font-monospace"
+                          rows="3" placeholder="e.g. &quot;antimicrobial resistance&quot;[MeSH]">{{ p.query }}</textarea>
+              </div>
+              <div class="col-md-1 d-flex align-items-end justify-content-end pb-1">
+                <button type="button" class="btn btn-sm btn-outline-danger"
+                        onclick="this.closest('.profile-row').remove()">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+              <div class="col-12">
+                <input type="hidden" name="profile_enabled"
+                       value="{{ '1' if p.get('enabled', True) else '0' }}">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="pe_{{ loop.index }}"
+                         onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'"
+                         {% if p.get('enabled', True) %}checked{% endif %}>
+                  <label class="form-check-label small text-muted" for="pe_{{ loop.index }}">Enabled</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        {# Pass general settings fields through #}
+        <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
+        {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
+        {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
+        <input type="hidden" name="fetch_schedule" value="{{ cfg.get('fetch_schedule', 'daily') }}">
+        <input type="hidden" name="fetch_schedule_dow" value="{{ cfg.get('fetch_schedule_dow', 0) }}">
+        <input type="hidden" name="fetch_schedule_dom" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
+        <input type="hidden" name="page_size" value="{{ cfg.get('page_size', 50) }}">
+        <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
+        {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
+        {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
+        {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
+        <input type="hidden" name="mesh_term" value="{{ term }}">
+        <input type="hidden" name="mesh_topic" value="{{ topic }}">
+        {% endfor %}
+
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-lg me-1"></i>Save search profiles
+        </button>
+      </form>
+    </div>
+
+    {# ── Topic Map ── #}
+    <div class="tab-pane fade" id="tab-mesh">
+      <form method="post" action="/settings/save" id="meshForm">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <p class="text-muted mb-0">Map MeSH terms to your own topic labels. Papers matching a term get that label as a tag.</p>
+          <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
+                  onclick="addMesh()"><i class="bi bi-plus-lg me-1"></i>Add mapping</button>
+        </div>
+        <div class="row g-1 mb-2 px-2">
+          <div class="col-6 small fw-semibold text-muted">MeSH term (exact, as in PubMed)</div>
+          <div class="col-5 small fw-semibold text-muted">Your topic label</div>
+        </div>
+        <div id="meshList">
+          {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
+          <div class="mesh-row d-flex gap-2 align-items-center p-2 mb-2 border">
+            <input type="text" name="mesh_term" class="form-control form-control-sm"
+                   value="{{ term }}" placeholder="e.g. Artificial Intelligence">
+            <input type="text" name="mesh_topic" class="form-control form-control-sm"
+                   value="{{ topic }}" placeholder="e.g. AI">
+            <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0"
+                    onclick="this.closest('.mesh-row').remove()">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+          {% endfor %}
+        </div>
+
+        {# Pass through #}
+        <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
+        {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
+        {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
+        <input type="hidden" name="fetch_schedule" value="{{ cfg.get('fetch_schedule', 'daily') }}">
+        <input type="hidden" name="fetch_schedule_dow" value="{{ cfg.get('fetch_schedule_dow', 0) }}">
+        <input type="hidden" name="fetch_schedule_dom" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
+        <input type="hidden" name="page_size" value="{{ cfg.get('page_size', 50) }}">
+        <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
+        {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
+        {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
+        {% for p in cfg.get('search_profiles', []) %}
+        <input type="hidden" name="profile_name" value="{{ p.name }}">
+        <input type="hidden" name="profile_query" value="{{ p.query }}">
+        <input type="hidden" name="profile_enabled" value="{{ '1' if p.get('enabled', True) else '0' }}">
+        {% endfor %}
+
+        <button type="submit" class="btn btn-primary mt-2">
+          <i class="bi bi-check-lg me-1"></i>Save topic map
+        </button>
+      </form>
+    </div>
+
+    {# ── Password ── #}
+    <div class="tab-pane fade" id="tab-password">
+      <div class="card" style="max-width:480px">
+        <div class="card-header fw-semibold"><i class="bi bi-lock me-1"></i>Change Password</div>
+        <div class="card-body">
+          <form method="post" action="/settings/change-password">
+            <div class="mb-3">
+              <label class="form-label">Current password</label>
+              <input type="password" name="current_password" class="form-control" required autocomplete="current-password">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">New password</label>
+              <input type="password" name="new_password" class="form-control" minlength="8" required autocomplete="new-password">
+              <div class="form-text">Minimum 8 characters.</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Confirm new password</label>
+              <input type="password" name="confirm_password" class="form-control" minlength="8" required autocomplete="new-password">
+            </div>
+            <button type="submit" class="btn btn-primary">Change password</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+  </div>{# end tab-content #}
+</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let _peIdx = 1000;
+function addProfile() {
+  const idx = _peIdx++;
+  const html = `<div class="profile-row p-3 mb-3 border">
+    <div class="row g-2 align-items-start">
+      <div class="col-md-3">
+        <label class="form-label small">Profile name</label>
+        <input type="text" name="profile_name" class="form-control form-control-sm" placeholder="e.g. AMR Surveillance" required>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label small">PubMed query</label>
+        <textarea name="profile_query" class="form-control form-control-sm font-monospace" rows="3" placeholder='e.g. "antimicrobial resistance"[MeSH]'></textarea>
+      </div>
+      <div class="col-md-1 d-flex align-items-end justify-content-end pb-1">
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.profile-row').remove()">
+          <i class="bi bi-trash"></i>
+        </button>
+      </div>
+      <div class="col-12">
+        <input type="hidden" name="profile_enabled" value="1">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="pe_${idx}"
+                 onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'" checked>
+          <label class="form-check-label small text-muted" for="pe_${idx}">Enabled</label>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('profilesList').insertAdjacentHTML('beforeend', html);
+}
+
+function addMesh() {
+  const html = `<div class="mesh-row d-flex gap-2 align-items-center p-2 mb-2 border">
+    <input type="text" name="mesh_term" class="form-control form-control-sm" placeholder="e.g. Artificial Intelligence">
+    <input type="text" name="mesh_topic" class="form-control form-control-sm" placeholder="e.g. AI">
+    <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="this.closest('.mesh-row').remove()">
+      <i class="bi bi-trash"></i>
+    </button>
+  </div>`;
+  document.getElementById('meshList').insertAdjacentHTML('beforeend', html);
+}
+
+function updateScheduleUI() {
+  const val = document.getElementById('fetchSchedule').value;
+  document.getElementById('dowPicker').style.display = val === 'weekly' ? '' : 'none';
+  document.getElementById('domPicker').style.display = val === 'monthly' ? '' : 'none';
+}
+updateScheduleUI();
+
+// Restore active tab from URL hash or after save
+const hash = window.location.hash;
+if (hash) {
+  const tab = document.querySelector(`[href="${hash}"]`);
+  if (tab) new bootstrap.Tab(tab).show();
+}
+</script>
+{% endblock %}

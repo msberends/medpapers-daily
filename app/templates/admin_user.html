@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ target_user.username }} &mdash; {{ config.get('app_name', 'Papers Daily') }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .form-label { font-weight: 500; }
+  .profile-row, .mesh-row { background: #f8f9fa; border-radius: 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-9">
+
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/admin">Admin</a></li>
+      <li class="breadcrumb-item"><a href="/admin#tab-users">Users</a></li>
+      <li class="breadcrumb-item active">{{ target_user.username }}</li>
+    </ol>
+  </nav>
+
+  <div class="d-flex align-items-center gap-2 mb-1">
+    <h3 class="mb-0"><i class="bi bi-person-gear me-2"></i>{{ target_user.username }}</h3>
+    {% if target_user.is_admin %}<span class="badge bg-warning text-dark">Admin</span>{% endif %}
+  </div>
+  <p class="text-muted mb-4">Edit search profiles, topic classification, and preferences for this user.</p>
+
+  {% if saved %}
+  <div class="alert alert-success alert-dismissible py-2" role="alert">
+    <i class="bi bi-check-circle me-1"></i> Changes saved.
+    <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+  </div>
+  {% endif %}
+  {% if error %}
+  <div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
+  {% endif %}
+
+  <ul class="nav nav-tabs mb-4">
+    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-general">General</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">MeSH Topic Map</a></li>
+  </ul>
+
+  <div class="tab-content">
+
+    {# ── General ── #}
+    <div class="tab-pane fade show active" id="tab-general">
+      <form method="post" action="/admin/users/{{ target_user.username }}/save">
+        <div class="card mb-3">
+          <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email</div>
+          <div class="card-body row g-3">
+            <div class="col-md-7">
+              <label class="form-label">Email address</label>
+              <input type="email" name="email" class="form-control"
+                     value="{{ cfg.get('email', '') }}" required>
+            </div>
+            <div class="col-md-5 d-flex flex-column gap-2 pt-md-4 mt-md-2">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="fetch_enabled"
+                       id="fetchEnabled" {% if cfg.get('fetch_enabled', True) %}checked{% endif %}>
+                <label class="form-check-label" for="fetchEnabled">Fetch enabled</label>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="email_suppress_empty"
+                       id="suppressEmpty" {% if cfg.get('email_suppress_empty', True) %}checked{% endif %}>
+                <label class="form-check-label" for="suppressEmpty">Suppress empty digest</label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-header fw-semibold"><i class="bi bi-calendar3 me-1"></i>Lookback Window</div>
+          <div class="card-body row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Days to look back</label>
+              <input type="number" name="lookback_days" class="form-control" style="max-width:100px"
+                     value="{{ cfg.get('lookback_days', 7) }}" min="1" max="90">
+              <div class="form-text">How many days back PubMed is queried on each fetch run (default 7).</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-4">
+          <div class="card-header fw-semibold"><i class="bi bi-funnel me-1"></i>Journal Quality Filter</div>
+          <div class="card-body row g-3">
+            <div class="col-md-6">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="q2_hard"
+                       id="q2Hard" {% if cfg.get('q2_hard', True) %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="q2Hard">Exclude Q3/Q4 &amp; unranked</label>
+              </div>
+              <div class="form-text ms-4 ps-1">Hard filter — papers below Q2 are never stored.</div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_quartile"
+                       id="showQuartile" {% if cfg.get('show_quartile', True) %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="showQuartile">Show quartile rankings</label>
+              </div>
+              <div class="form-text ms-4 ps-1">Show Q1–Q4 and Unranked badges on papers. No effect on filtering.</div>
+            </div>
+          </div>
+        </div>
+
+        {% for p in cfg.get('search_profiles', []) %}
+        <input type="hidden" name="profile_name" value="{{ p.name }}">
+        <input type="hidden" name="profile_query" value="{{ p.query }}">
+        {% endfor %}
+        {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
+        <input type="hidden" name="mesh_term" value="{{ term }}">
+        <input type="hidden" name="mesh_topic" value="{{ topic }}">
+        {% endfor %}
+
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save general settings</button>
+        <a href="/admin#tab-users" class="btn btn-outline-secondary ms-2">Back</a>
+      </form>
+    </div>
+
+    {# ── Search Profiles ── #}
+    <div class="tab-pane fade" id="tab-profiles">
+      <form method="post" action="/admin/users/{{ target_user.username }}/save">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <p class="text-muted mb-0">Named PubMed queries that run each fetch cycle.</p>
+          <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
+                  onclick="addProfile()"><i class="bi bi-plus-lg me-1"></i>Add profile</button>
+        </div>
+        <div id="profilesList">
+          {% for p in cfg.get('search_profiles', []) %}
+          <div class="profile-row p-3 mb-3 border">
+            <div class="row g-2 align-items-start">
+              <div class="col-md-3">
+                <label class="form-label small">Profile name</label>
+                <input type="text" name="profile_name" class="form-control form-control-sm"
+                       value="{{ p.name }}" required>
+              </div>
+              <div class="col-md-8">
+                <label class="form-label small">PubMed query</label>
+                <textarea name="profile_query" class="form-control form-control-sm font-monospace"
+                          rows="3">{{ p.query }}</textarea>
+              </div>
+              <div class="col-md-1 d-flex align-items-end justify-content-end pb-1">
+                <button type="button" class="btn btn-sm btn-outline-danger"
+                        onclick="this.closest('.profile-row').remove()">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
+        {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
+        {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
+        {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
+        {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
+        <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
+        {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
+        <input type="hidden" name="mesh_term" value="{{ term }}">
+        <input type="hidden" name="mesh_topic" value="{{ topic }}">
+        {% endfor %}
+
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save search profiles</button>
+      </form>
+    </div>
+
+    {# ── Topic Map ── #}
+    <div class="tab-pane fade" id="tab-mesh">
+      <form method="post" action="/admin/users/{{ target_user.username }}/save">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <p class="text-muted mb-0">Map MeSH terms to topic labels for this user.</p>
+          <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
+                  onclick="addMesh()"><i class="bi bi-plus-lg me-1"></i>Add mapping</button>
+        </div>
+        <div class="row g-1 mb-2 px-2">
+          <div class="col-6 small fw-semibold text-muted">MeSH term</div>
+          <div class="col-5 small fw-semibold text-muted">Topic label</div>
+        </div>
+        <div id="meshList">
+          {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
+          <div class="mesh-row d-flex gap-2 align-items-center p-2 mb-2 border">
+            <input type="text" name="mesh_term" class="form-control form-control-sm" value="{{ term }}">
+            <input type="text" name="mesh_topic" class="form-control form-control-sm" value="{{ topic }}">
+            <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0"
+                    onclick="this.closest('.mesh-row').remove()">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+          {% endfor %}
+        </div>
+
+        <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
+        {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
+        {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
+        {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
+        {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
+        <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
+        {% for p in cfg.get('search_profiles', []) %}
+        <input type="hidden" name="profile_name" value="{{ p.name }}">
+        <input type="hidden" name="profile_query" value="{{ p.query }}">
+        {% endfor %}
+
+        <button type="submit" class="btn btn-primary mt-2"><i class="bi bi-check-lg me-1"></i>Save topic map</button>
+      </form>
+    </div>
+
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let _peIdx = 1000;
+function addProfile() {
+  const idx = _peIdx++;
+  const html = `<div class="profile-row p-3 mb-3 border">
+    <div class="row g-2 align-items-start">
+      <div class="col-md-3">
+        <label class="form-label small">Profile name</label>
+        <input type="text" name="profile_name" class="form-control form-control-sm" placeholder="e.g. AMR Surveillance" required>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label small">PubMed query</label>
+        <textarea name="profile_query" class="form-control form-control-sm font-monospace" rows="3"></textarea>
+      </div>
+      <div class="col-md-1 d-flex align-items-end justify-content-end pb-1">
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.profile-row').remove()">
+          <i class="bi bi-trash"></i>
+        </button>
+      </div>
+      <div class="col-12">
+        <input type="hidden" name="profile_enabled" value="1">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="pe_${idx}"
+                 onchange="this.previousElementSibling.value = this.checked ? '1' : '0'" checked>
+          <label class="form-check-label small text-muted" for="pe_${idx}">Enabled</label>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('profilesList').insertAdjacentHTML('beforeend', html);
+}
+
+function addMesh() {
+  const html = `<div class="mesh-row d-flex gap-2 align-items-center p-2 mb-2 border">
+    <input type="text" name="mesh_term" class="form-control form-control-sm" placeholder="MeSH term">
+    <input type="text" name="mesh_topic" class="form-control form-control-sm" placeholder="Topic label">
+    <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="this.closest('.mesh-row').remove()">
+      <i class="bi bi-trash"></i>
+    </button>
+  </div>`;
+  document.getElementById('meshList').insertAdjacentHTML('beforeend', html);
+}
+</script>
+{% endblock %}

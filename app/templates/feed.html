@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}Feed &mdash; {{ config.get('app_name', 'Papers Daily') }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .paper-card { transition: background .15s; }
+  .paper-card:hover { background: rgba(0,0,0,.03); }
+</style>
+{% endblock %}
+
+{% block content %}
+<button class="d-sm-none btn btn-sm btn-outline-secondary w-100 mb-2"
+        type="button" data-bs-toggle="collapse" data-bs-target="#sidebarCollapse"
+        aria-expanded="false" aria-controls="sidebarCollapse">
+  <i class="bi bi-funnel me-1"></i>Filters
+</button>
+
+<div class="d-sm-flex gap-3 align-items-start">
+
+  {# ── Sidebar ── #}
+  <div class="sidebar collapse d-sm-block flex-shrink-0" id="sidebarCollapse">
+    <form method="get" action="/feed" id="filterForm">
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">View</div>
+        <div class="list-group list-group-flush">
+          <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
+             class="list-group-item list-group-item-action py-2 {% if view == 'all' %}active{% endif %}">
+            <i class="bi bi-grid me-1"></i> All papers
+          </a>
+          <a href="/feed?view=unread&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
+             class="list-group-item list-group-item-action py-2 {% if view == 'unread' %}active{% endif %}">
+            <i class="bi bi-envelope me-1"></i> Unread
+            {% if unread_count %}<span class="badge bg-secondary float-end">{{ unread_count }}</span>{% endif %}
+          </a>
+          <a href="/feed?view=starred&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
+             class="list-group-item list-group-item-action py-2 {% if view == 'starred' %}active{% endif %}">
+            <i class="bi bi-star-fill text-warning me-1"></i> Starred
+            {% if starred_count %}<span class="badge bg-secondary float-end">{{ starred_count }}</span>{% endif %}
+          </a>
+          {% for f in folders %}
+          <a href="/feed?view=folder&folder_id={{ f.id }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
+             class="list-group-item list-group-item-action py-2 {% if view == 'folder' and folder_id == f.id %}active{% endif %}">
+            <i class="bi bi-folder me-1"></i> {{ f.name }}
+            {% set cnt = folder_counts.get(f.id, 0) %}
+            {% if cnt %}<span class="badge bg-secondary float-end">{{ cnt }}</span>{% endif %}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Topics #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Topics</div>
+        <div class="card-body py-2">
+          {% for topic in all_topics %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="topic_cb" value="{{ topic }}"
+                   id="topic_{{ loop.index }}"
+                   {% if topic in selected_topics %}checked{% endif %}
+                   onchange="updateTopics()">
+            <label class="form-check-label small" for="topic_{{ loop.index }}">{{ topic }}</label>
+          </div>
+          {% endfor %}
+          <input type="hidden" name="topics" id="topicsHidden" value="{{ selected_topics | join(',') }}">
+          <input type="hidden" name="view" value="{{ view }}">
+          {% if folder_id %}<input type="hidden" name="folder_id" value="{{ folder_id }}">{% endif %}
+        </div>
+      </div>
+
+      {# Search Profile #}
+      {% if all_profiles %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Search Profile</div>
+        <div class="list-group list-group-flush">
+          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile="
+             class="list-group-item list-group-item-action py-2 small {% if not profile %}active{% endif %}">
+            All profiles
+          </a>
+          {% for p in all_profiles %}
+          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile={{ p | urlenc }}"
+             class="list-group-item list-group-item-action py-2 small {% if profile == p %}active{% endif %}">
+            {{ p }}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# Quartile #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Journal Quartile</div>
+        <div class="card-body py-2">
+          {% for val, label in [('q1', 'Q1 only'), ('q1q2', 'Q1 + Q2'), ('all', 'All')] %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="quartile" value="{{ val }}"
+                   id="q_{{ val }}" {% if quartile == val %}checked{% endif %}
+                   onchange="this.form.submit()">
+            <label class="form-check-label small" for="q_{{ val }}">{{ label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Date #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Date Range</div>
+        <div class="card-body py-2">
+          {% for val, label in [('all', 'All time'), ('today', 'Today'), ('7days', 'Last 7 days'), ('30days', 'Last 30 days'), ('custom', 'Custom')] %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="date_filter" value="{{ val }}"
+                   id="df_{{ val }}" {% if date_filter == val %}checked{% endif %}
+                   onchange="toggleCustomDate(); this.form.submit()">
+            <label class="form-check-label small" for="df_{{ val }}">{{ label }}</label>
+          </div>
+          {% endfor %}
+          <div id="customDateDiv" class="mt-2" style="{% if date_filter != 'custom' %}display:none{% endif %}">
+            <input type="date" name="date_from" class="form-control form-control-sm mb-1" value="{{ date_from }}">
+            <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
+          </div>
+        </div>
+      </div>
+
+      {# Search #}
+      <div class="card mb-3">
+        <div class="card-body py-2">
+          <div class="input-group input-group-sm">
+            <input type="text" name="search" class="form-control" placeholder="Search title &amp; abstract" value="{{ search }}">
+            <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
+          </div>
+        </div>
+      </div>
+
+    </form>
+  </div>
+
+  {# ── Main content ── #}
+  <div class="flex-grow-1">
+
+    {# Bulk action bar #}
+    <div id="bulkBar" class="bulk-bar alert alert-secondary d-none mb-2 py-2">
+      <form method="post" action="/feed/bulk-action" id="bulkForm">
+        <input type="hidden" name="pmids" id="bulkPmids">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span id="bulkCount" class="fw-semibold"></span>
+          <button type="submit" name="action" value="mark_read" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-envelope-open"></i> Mark read
+          </button>
+          <button type="submit" name="action" value="mark_unread" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-envelope"></i> Mark unread
+          </button>
+          <button type="submit" name="action" value="star" class="btn btn-sm btn-outline-warning">
+            <i class="bi bi-star-fill"></i> Star
+          </button>
+          <div class="d-flex gap-1">
+            <select name="folder_id" class="form-select form-select-sm" style="max-width:150px">
+              <option value="">Move to folder…</option>
+              {% for f in folders %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+            </select>
+            <button type="submit" name="action" value="assign_folder" class="btn btn-sm btn-outline-primary">Go</button>
+          </div>
+          <button type="submit" name="action" value="export_ris" class="btn btn-sm btn-outline-success">
+            <i class="bi bi-download"></i> Export RIS
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-dark ms-auto" onclick="selectAll()">
+            Select all ({{ papers | length }})
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearSelection()">Clear</button>
+        </div>
+      </form>
+    </div>
+
+    {% if not papers %}
+    <div class="text-center text-muted mt-5 py-5">
+      <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+      <p>No papers match your current filters.</p>
+    </div>
+    {% endif %}
+
+    {% for paper, topics in papers %}
+    <div class="card paper-card mb-2 {% if paper.is_read %}paper-read{% else %}paper-unread{% endif %}">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex align-items-start gap-2">
+          <input type="checkbox" class="form-check-input mt-1 paper-cb flex-shrink-0"
+                 data-pmid="{{ paper.pmid }}" onchange="updateBulkBar()">
+          <div class="flex-grow-1">
+            <div class="d-flex justify-content-between align-items-start">
+              <a href="/paper/{{ paper.pmid }}" class="paper-title text-decoration-none">
+                {{ paper.title | safe }}
+              </a>
+              <div class="ms-2 flex-shrink-0 d-flex flex-column align-items-center gap-1">
+                <form method="post" action="/feed/toggle-star/{{ paper.pmid }}">
+                  <button type="submit" class="btn btn-sm btn-link p-0 {% if paper.is_starred %}text-warning{% else %}text-muted{% endif %}" title="{% if paper.is_starred %}Unstar{% else %}Star{% endif %}">
+                    <i class="bi {% if paper.is_starred %}bi-star-fill{% else %}bi-star{% endif %}"></i>
+                  </button>
+                </form>
+                <form method="post" action="/feed/toggle-read/{{ paper.pmid }}">
+                  <button type="submit" class="btn btn-sm btn-link p-0 text-muted" title="{% if paper.is_read %}Mark unread{% else %}Mark read{% endif %}" style="font-size:.8em">
+                    <i class="bi {% if paper.is_read %}bi-envelope-open{% else %}bi-envelope{% endif %}"></i>
+                  </button>
+                </form>
+              </div>
+            </div>
+            <div class="small text-muted mt-1">
+              {% set authors = paper.authors | from_json %}
+              {% if authors | length > 2 %}
+                {{ authors[0] }} &hellip; {{ authors[-1] }}
+              {% elif authors %}
+                {{ authors | join('; ') }}
+              {% endif %}
+              &bull;
+              <em>{{ paper.journal }}</em>
+              {% if paper.publisher %}&bull; {{ paper.publisher }}{% endif %}
+              &bull; {{ paper.epub_date or paper.pub_date or '' }}
+            </div>
+            <div class="mt-1 d-flex flex-wrap gap-1">
+              {% if journal_metric == 'citescore' %}
+                {% set metric_val = paper.scopus_cites_3yr %}
+                {% set metric_lbl = 'CiteScore' %}
+              {% elif journal_metric == 'sjr' %}
+                {% set metric_val = paper.scopus_sjr %}
+                {% set metric_lbl = 'SJR' %}
+              {% else %}
+                {% set metric_val = paper.scopus_cites_per_doc %}
+                {% set metric_lbl = 'IF' %}
+              {% endif %}
+              {% set cites_str = ' (' ~ metric_lbl ~ ' ' ~ '%.2f'|format(metric_val) ~ ')' if metric_val else '' %}
+              {% if show_quartile %}
+                {% if paper.scopus_quartile == 'Q1' %}
+                  <span class="badge badge-q1">Q1{{ cites_str }}</span>
+                {% elif paper.scopus_quartile == 'Q2' %}
+                  <span class="badge badge-q2">Q2{{ cites_str }}</span>
+                {% elif paper.scopus_quartile == 'Q3' %}
+                  <span class="badge badge-q3">Q3{{ cites_str }}</span>
+                {% elif paper.scopus_quartile == 'Q4' %}
+                  <span class="badge badge-q4">Q4{{ cites_str }}</span>
+                {% else %}
+                  <span class="badge badge-unranked">Unranked</span>
+                {% endif %}
+              {% endif %}
+              {% for topic in topics %}
+              <span class="badge badge-topic-{{ topic_color_map.get(topic, loop.index0 % 8) }}">{{ topic }}</span>
+              {% endfor %}
+              {% if paper.oa_url %}
+              <span class="badge bg-success"><i class="bi bi-unlock me-1"></i>OA</span>
+              {% elif paper.doi and proxy_url(paper.doi, config) %}
+              <span class="badge bg-danger"><i class="bi bi-lock me-1"></i>PW</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    {% if total_pages > 1 %}
+    <nav class="mt-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <span class="small text-muted">
+        {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total] | min }} of {{ total }} papers
+      </span>
+      <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+          <a class="page-link" href="{{ page_url_base }}{{ page - 1 }}">&lsaquo; Prev</a>
+        </li>
+        {% set win_start = [1, page - 2] | max %}
+        {% set win_end   = [total_pages, page + 2] | min %}
+        {% if win_start > 1 %}
+          <li class="page-item"><a class="page-link" href="{{ page_url_base }}1">1</a></li>
+          {% if win_start > 2 %}<li class="page-item disabled"><span class="page-link">&hellip;</span></li>{% endif %}
+        {% endif %}
+        {% for p in range(win_start, win_end + 1) %}
+          <li class="page-item {% if p == page %}active{% endif %}">
+            <a class="page-link" href="{{ page_url_base }}{{ p }}">{{ p }}</a>
+          </li>
+        {% endfor %}
+        {% if win_end < total_pages %}
+          {% if win_end < total_pages - 1 %}<li class="page-item disabled"><span class="page-link">&hellip;</span></li>{% endif %}
+          <li class="page-item"><a class="page-link" href="{{ page_url_base }}{{ total_pages }}">{{ total_pages }}</a></li>
+        {% endif %}
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+          <a class="page-link" href="{{ page_url_base }}{{ page + 1 }}">Next &rsaquo;</a>
+        </li>
+      </ul>
+    </nav>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function updateTopics() {
+  const checks = document.querySelectorAll('input[name=topic_cb]:checked');
+  const vals = Array.from(checks).map(c => c.value).join(',');
+  document.getElementById('topicsHidden').value = vals;
+  document.getElementById('filterForm').submit();
+}
+
+function toggleCustomDate() {
+  const sel = document.querySelector('input[name=date_filter]:checked');
+  document.getElementById('customDateDiv').style.display =
+    sel && sel.value === 'custom' ? '' : 'none';
+}
+
+function updateBulkBar() {
+  const checks = document.querySelectorAll('.paper-cb:checked');
+  const pmids = Array.from(checks).map(c => c.dataset.pmid);
+  const bar = document.getElementById('bulkBar');
+  if (pmids.length > 0) {
+    bar.classList.remove('d-none');
+    document.getElementById('bulkCount').textContent = pmids.length + ' selected';
+    document.getElementById('bulkPmids').value = pmids.join(',');
+  } else {
+    bar.classList.add('d-none');
+  }
+}
+
+function selectAll() {
+  document.querySelectorAll('.paper-cb').forEach(c => c.checked = true);
+  updateBulkBar();
+}
+
+function clearSelection() {
+  document.querySelectorAll('.paper-cb').forEach(c => c.checked = false);
+  updateBulkBar();
+}
+</script>
+{% endblock %}

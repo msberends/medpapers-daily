@@ -1,0 +1,31 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Secrets and personal config
+config.yaml
+users/*.yaml
+
+# Database
+data/paperdigest.db
+
+# Scopus CSV (large; upload via /admin after setup)
+data/scopus.csv
+
+# Logs
+logs/*.log
+logs/*.log[0-9]*
+
+# Claude Code local settings
+.claude/
+
+# Planning / personal documents
+*.docx
+
+# OS
+.DS_Store
+Thumbs.db
