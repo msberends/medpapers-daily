@@ -97,9 +97,9 @@ def _parse_float(raw: str) -> float | None:
         return None
 
 
-def load_scopus(scopus_path: str) -> dict[str, tuple[str, float | None, float | None, float | None, str | None]]:
-    """Returns ISSN (hyphen-free) -> (quartile, cites_2yr, cites_3yr, sjr, publisher)."""
-    mapping: dict[str, tuple[str, float | None, float | None, float | None, str | None]] = {}
+def load_scopus(scopus_path: str) -> dict[str, tuple[str, float | None, float | None, float | None, str | None, int | None]]:
+    """Returns ISSN (hyphen-free) -> (quartile, cites_2yr, cites_3yr, sjr, publisher, h_index)."""
+    mapping: dict[str, tuple[str, float | None, float | None, float | None, str | None, int | None]] = {}
     p = Path(scopus_path)
     if not p.exists():
         print(f"[fetch] WARNING: Scopus file not found at {scopus_path}. Quartile filtering disabled.")
@@ -112,16 +112,27 @@ def load_scopus(scopus_path: str) -> dict[str, tuple[str, float | None, float | 
             if quartile not in ("Q1", "Q2", "Q3", "Q4"):
                 continue
             cites_2yr = _parse_float(row.get("Citations / Doc. (2years)") or "")
+            # col27 ("Citations / Doc. (3years)") is unreliable when Categories (col25)
+            # contains unquoted semicolons — fall back to col15/col13 when not parseable.
             cites_3yr = _parse_float(row.get("Citations / Doc. (3years)") or "")
+            if cites_3yr is None:
+                tc = _parse_float(row.get("Total Citations (3years)") or "")
+                td = _parse_float(row.get("Total Docs. (3years)") or "")
+                if tc is not None and td:
+                    cites_3yr = tc / td
             sjr = _parse_float(row.get("SJR") or "")
             publisher = (row.get("Publisher") or "").strip() or None
+            try:
+                h_index: int | None = int(row.get("H index") or "")
+            except (ValueError, TypeError):
+                h_index = None
             issn_field = row.get("Issn") or row.get("ISSN") or ""
             for raw_issn in issn_field.split(","):
                 raw_issn = raw_issn.strip()
                 if raw_issn:
                     norm = _norm_issn(raw_issn)
                     if norm not in mapping:
-                        mapping[norm] = (quartile, cites_2yr, cites_3yr, sjr, publisher)
+                        mapping[norm] = (quartile, cites_2yr, cites_3yr, sjr, publisher, h_index)
     return mapping
 
 
@@ -354,25 +365,28 @@ def main():
     from app import db as appdb
     appdb.init_db(db_path)
 
-    # Backfill scopus_cites_per_doc / publisher for papers stored before these fields were tracked
+    # Backfill scopus fields for papers stored before these fields were tracked
     if scopus:
         with conn_ctx(db_path) as conn:
             to_fix = conn.execute(
                 """SELECT pmid, issn FROM papers
-                   WHERE (scopus_cites_per_doc IS NULL OR publisher IS NULL)
+                   WHERE (scopus_cites_per_doc IS NULL OR publisher IS NULL
+                          OR scopus_cites_3yr IS NULL OR scopus_h_index IS NULL)
                      AND issn IS NOT NULL"""
             ).fetchall()
             updated = 0
             for row in to_fix:
                 data = scopus.get(_norm_issn(row["issn"]))
                 if data:
-                    _, cites, pub = data
+                    _, cites_2yr, cites_3yr, _, pub, h_index = data
                     conn.execute(
                         """UPDATE papers
                            SET scopus_cites_per_doc = COALESCE(scopus_cites_per_doc, ?),
+                               scopus_cites_3yr = COALESCE(scopus_cites_3yr, ?),
+                               scopus_h_index = COALESCE(scopus_h_index, ?),
                                publisher = COALESCE(publisher, ?)
                            WHERE pmid = ?""",
-                        (cites, pub, row["pmid"]),
+                        (cites_2yr, cites_3yr, h_index, pub, row["pmid"]),
                     )
                     updated += 1
         if updated:
@@ -480,12 +494,13 @@ def main():
 
                         norm_issn = _norm_issn(record["issn"])
                         scopus_data = scopus.get(norm_issn)
-                        quartile, cites_2yr, cites_3yr, sjr, publisher = scopus_data if scopus_data else (None, None, None, None, None)
+                        quartile, cites_2yr, cites_3yr, sjr, publisher, h_index = scopus_data if scopus_data else (None, None, None, None, None, None)
                         record["scopus_quartile"] = quartile
                         record["scopus_cites_per_doc"] = cites_2yr
                         record["scopus_cites_3yr"] = cites_3yr
                         record["scopus_sjr"] = sjr
                         record["publisher"] = publisher
+                        record["scopus_h_index"] = h_index
 
                         if q2_hard and quartile in ("Q3", "Q4"):
                             pf_filtered += 1
@@ -507,13 +522,13 @@ def main():
                                         pub_date, epub_date, abstract, doi,
                                         oa_url, mesh_terms, scopus_quartile,
                                         scopus_cites_per_doc, scopus_cites_3yr,
-                                        scopus_sjr, publisher, first_seen_at)
+                                        scopus_sjr, scopus_h_index, publisher, first_seen_at)
                                        VALUES
                                        (:pmid,:title,:authors,:journal,:issn,
                                         :pub_date,:epub_date,:abstract,:doi,
                                         :oa_url,:mesh_terms,:scopus_quartile,
                                         :scopus_cites_per_doc,:scopus_cites_3yr,
-                                        :scopus_sjr,:publisher,:first_seen_at)""",
+                                        :scopus_sjr,:scopus_h_index,:publisher,:first_seen_at)""",
                                     record,
                                 )
                                 pf_new += 1

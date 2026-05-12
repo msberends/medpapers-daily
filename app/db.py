@@ -69,6 +69,7 @@ def _create_tables(conn: sqlite3.Connection):
             scopus_cites_per_doc REAL,
             scopus_cites_3yr     REAL,
             scopus_sjr           REAL,
+            scopus_h_index       INTEGER,
             first_seen_at        TEXT NOT NULL
         );
 
@@ -128,6 +129,8 @@ def _migrate(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE papers ADD COLUMN scopus_sjr REAL")
     if "publisher" not in papers_cols:
         conn.execute("ALTER TABLE papers ADD COLUMN publisher TEXT")
+    if "scopus_h_index" not in papers_cols:
+        conn.execute("ALTER TABLE papers ADD COLUMN scopus_h_index INTEGER")
 
     fetchlog_cols = {r[1] for r in conn.execute("PRAGMA table_info(fetch_log)").fetchall()}
     if "details" not in fetchlog_cols:

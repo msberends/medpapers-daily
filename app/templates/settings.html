@@ -137,19 +137,27 @@
               </div>
               <div class="col-12 mt-2">
                 <label class="form-label fw-medium">Metric shown inside the quartile badge</label>
-                <div class="d-flex flex-wrap gap-3 mt-1">
+                <div class="d-flex flex-column gap-3 mt-1">
                   {% set jm = cfg.get('journal_metric', 'if') %}
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="journal_metric" id="jmIF" value="if" {% if jm == 'if' %}checked{% endif %}>
-                    <label class="form-check-label" for="jmIF"><strong>Impact Factor</strong> <span class="text-muted small">(citations per document, 2-year window)</span></label>
+                    <label class="form-check-label fw-medium" for="jmIF">Impact Factor</label>
+                    <div class="form-text mt-0">Citations received in a calendar year to papers published in the two preceding years, divided by the number of citable items in those years (Clarivate / Journal Citation Reports). The most widely recognised journal metric in medicine and life sciences, but highly field-dependent — a "good" IF in surgery differs from a "good" IF in cell biology. Susceptible to manipulation via self-citations and editorial practices. The quartile shown in {{ config.get('app_name', 'this app') }} is determined by the SCImago CSV you uploaded, which uses SJR-based ranking, so the numeric value displayed here may not align exactly with the quartile tier.</div>
                   </div>
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="journal_metric" id="jmCS" value="citescore" {% if jm == 'citescore' %}checked{% endif %}>
-                    <label class="form-check-label" for="jmCS"><strong>CiteScore</strong> <span class="text-muted small">(citations per document, 3-year window)</span></label>
+                    <label class="form-check-label fw-medium" for="jmCS">CiteScore</label>
+                    <div class="form-text mt-0">Citations received in a 4-year window (current year + 3 prior years) divided by all documents published in those same years (Elsevier / Scopus). Covers a broader set of journals and document types than Impact Factor, including conference proceedings and book chapters. Because it uses a longer window and counts all document types in the denominator, CiteScore values are typically lower than the corresponding Impact Factor. Freely accessible via Scopus without a JCR subscription.</div>
                   </div>
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="journal_metric" id="jmSJR" value="sjr" {% if jm == 'sjr' %}checked{% endif %}>
-                    <label class="form-check-label" for="jmSJR"><strong>SJR</strong> <span class="text-muted small">(SCImago Journal Rank, weighted citation prestige)</span></label>
+                    <label class="form-check-label fw-medium" for="jmSJR">SJR (SCImago Journal Rank)</label>
+                    <div class="form-text mt-0">A prestige-weighted citation score developed by the SCImago Research Group, based on Scopus data. Inspired by Google PageRank: a citation from a high-SJR journal contributes more to the score than one from a low-SJR journal. Normalised for field and document type, making cross-disciplinary comparisons more meaningful than Impact Factor. <strong>This is the metric that determines the Q1–Q4 quartile</strong> in the Scopus/SCImago CSV, so it is the most internally consistent choice to display alongside the quartile badge.</div>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="journal_metric" id="jmHI" value="hindex" {% if jm == 'hindex' %}checked{% endif %}>
+                    <label class="form-check-label fw-medium" for="jmHI">H-index</label>
+                    <div class="form-text mt-0">A journal has h-index <em>N</em> if exactly <em>N</em> of its ever-published papers have each been cited at least <em>N</em> times. Unlike Impact Factor or SJR, it reflects the journal's entire citation history rather than a short recent window, making it resistant to fluctuations caused by a single highly-cited paper. Older and larger journals naturally accumulate higher h-indices regardless of recent quality, so it is best used as a measure of sustained long-term impact rather than current relevance.</div>
                   </div>
                 </div>
               </div>

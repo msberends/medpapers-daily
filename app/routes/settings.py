@@ -99,7 +99,7 @@ async def save_settings(request: Request):
         "lookback_days": lookback_days,
         "show_quartile": "show_quartile" in form,
         "q2_hard": "q2_hard" in form,
-        "journal_metric": form.get("journal_metric", "if") if form.get("journal_metric") in ("if", "citescore", "sjr") else "if",
+        "journal_metric": form.get("journal_metric", "if") if form.get("journal_metric") in ("if", "citescore", "sjr", "hindex") else "if",
         "bootstrap_theme": theme if theme in VALID_THEMES else existing.get("bootstrap_theme", ""),
         "search_profiles": profiles,
         "mesh_topic_map": mesh_map,

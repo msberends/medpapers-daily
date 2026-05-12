@@ -77,6 +77,7 @@ async def paper_detail(pmid: str, request: Request):
         "folders": [dict(f) for f in folders],
         "topics": topics,
         "topic_color_map": topic_color_map,
+        "mesh_topic_map": mesh_topic_map,
         "show_quartile": user_yaml.get("show_quartile", True),
         "journal_metric": user_yaml.get("journal_metric", "if"),
         "config": request.app.state.config,

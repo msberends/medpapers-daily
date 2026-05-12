@@ -1,4 +1,5 @@
 import csv
+import io
 import os
 import subprocess
 from datetime import datetime, timezone
@@ -226,8 +227,30 @@ async def upload_scopus(request: Request, scopus_file: UploadFile = File(...)):
     dest = BASE_DIR / config.get("scopus_file", "data/scopus.csv")
     dest.parent.mkdir(exist_ok=True)
     content = await scopus_file.read()
-    with open(dest, "wb") as f:
-        f.write(content)
+
+    # Inject computed 3-year citations/doc column (Total Citations 3yr / Total Docs 3yr)
+    text = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text), delimiter=";")
+    rows = list(reader)
+    fieldnames = list(reader.fieldnames or [])
+    if "Citations / Doc. (3years)" not in fieldnames:
+        fieldnames.append("Citations / Doc. (3years)")
+    # Always recompute from col15/col13 — the existing col27 is unreliable because
+    # the "Categories" field contains unquoted semicolons that shift subsequent columns.
+    for row in rows:
+        try:
+            cites = float((row.get("Total Citations (3years)") or "").replace(",", "."))
+            docs = float((row.get("Total Docs. (3years)") or "").replace(",", "."))
+            row["Citations / Doc. (3years)"] = f"{cites / docs:.2f}".replace(".", ",") if docs > 0 else ""
+        except (ValueError, ZeroDivisionError):
+            row["Citations / Doc. (3years)"] = ""
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=fieldnames, delimiter=";")
+    writer.writeheader()
+    writer.writerows(rows)
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write(out.getvalue())
+
     return RedirectResponse("/admin?saved=1", status_code=303)
 
 
