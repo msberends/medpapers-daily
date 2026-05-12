@@ -100,3 +100,4 @@ These explain why the code looks the way it does — don't change these patterns
 - **No self-registration.** Admin creates all accounts via `/admin`. This is intentional for a closed personal tool.
 - **No paywall bypass scripting.** institutional access uses Shibboleth/SAML SSO (browser-only). Unpaywall covers open-access PDFs. Paywall scripting would violate publisher terms.
 - **Silent Scopus CSV overwrite.** No confirmation dialog on upload — intentional simpler UX for an admin action.
+- **No hard-coded colours.** Always use Bootstrap utility classes (`text-danger`, `text-muted`, `text-body-tertiary`, `opacity-75`, etc.) or CSS variables (`var(--bs-danger)`) in templates and Python filter functions. The one exception is `email_digest.py`: HTML email clients strip stylesheets and do not support CSS variables, so inline hex/rgba values are unavoidable there — keep them close to the corresponding Bootstrap token and comment why.

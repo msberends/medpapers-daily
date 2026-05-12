@@ -171,6 +171,8 @@ async def save_config(request: Request):
 
     if existing.get("publisher_map"):
         new_config["publisher_map"] = existing["publisher_map"]
+    if existing.get("predatory_publishers"):
+        new_config["predatory_publishers"] = existing["predatory_publishers"]
 
     with open(BASE_DIR / "config.yaml", "w") as f:
         yaml.dump(new_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
@@ -409,8 +411,10 @@ async def save_publisher_map(request: Request):
     keys = form.getlist("pub_key")
     vals = form.getlist("pub_val")
     mapping = {k: v.strip() for k, v in zip(keys, vals) if k and v.strip()}
+    predatory = form.getlist("pub_predatory")
     config = request.app.state.config
     config["publisher_map"] = mapping
+    config["predatory_publishers"] = predatory
     with open(BASE_DIR / "config.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     return RedirectResponse("/admin?saved=1#tab-publishers", status_code=303)

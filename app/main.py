@@ -111,13 +111,13 @@ async def startup():
             last, _, first = author.partition(",")
             first = first.strip()
             if first:
-                return f'<span class="text-body">{last.strip()}</span><span class="text-muted">, {first}</span>'
+                return f'<span class="text-body">{last.strip()}</span><span class="text-body-tertiary">, {first}</span>'
             return f'<span class="text-body">{last.strip()}</span>'
         # fallback for "Last AB" initials format
         m = re.match(r'^(.*?)(\s+[A-Z]+)$', author)
         if m:
             return (f'<span class="text-body">{m.group(1)}</span>'
-                    f'<span class="text-muted"> {m.group(2).strip()}</span>')
+                    f'<span class="text-body-tertiary"> {m.group(2).strip()}</span>')
         return author
 
     app.state.templates.env.filters["dim_initials"] = dim_initials
@@ -127,8 +127,7 @@ async def startup():
             return ""
         short = (publisher_map or {}).get(publisher, publisher)
         if publisher in (predatory or []):
-            return (f'<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>'
-                    f'<span class="text-danger">{short}</span>')
+            return f'<span class="text-danger opacity-75">{short}</span>'
         return short
 
     app.state.templates.env.filters["publisher_display"] = publisher_display

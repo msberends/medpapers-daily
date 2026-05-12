@@ -147,10 +147,19 @@ async def feed(
                 (user["user_id"],),
             ).fetchall()
         }
-        unread_count = conn.execute(
-            "SELECT COUNT(*) FROM user_papers WHERE user_id = ? AND is_read = 0",
-            (user["user_id"],),
-        ).fetchone()[0]
+        if q2_hard:
+            unread_count = conn.execute(
+                """SELECT COUNT(*) FROM user_papers up
+                   JOIN papers p ON p.pmid = up.pmid
+                   WHERE up.user_id = ? AND up.is_read = 0
+                   AND p.scopus_quartile IN ('Q1', 'Q2')""",
+                (user["user_id"],),
+            ).fetchone()[0]
+        else:
+            unread_count = conn.execute(
+                "SELECT COUNT(*) FROM user_papers WHERE user_id = ? AND is_read = 0",
+                (user["user_id"],),
+            ).fetchone()[0]
         starred_count = conn.execute(
             "SELECT COUNT(*) FROM user_papers WHERE user_id = ? AND is_starred = 1",
             (user["user_id"],),

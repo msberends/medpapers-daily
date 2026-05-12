@@ -27,10 +27,16 @@ def _clean_journal(journal: str) -> str:
     return re.sub(r"\s*\([^)]*\)", "", journal or "").strip()
 
 
-def _publisher_short(publisher: str, config: dict) -> str:
+_EMAIL_DANGER = "rgba(220,53,69,0.75)"   # BS --bs-danger at 75% opacity; hex required for email clients
+
+
+def _publisher_display(publisher: str, config: dict) -> str:
     if not publisher:
         return ""
-    return (config.get("publisher_map") or {}).get(publisher, publisher)
+    short = (config.get("publisher_map") or {}).get(publisher, publisher)
+    if publisher in (config.get("predatory_publishers") or []):
+        return f'<span style="color:{_EMAIL_DANGER}">{short}</span>'
+    return short
 
 
 def load_config() -> dict:
@@ -134,17 +140,20 @@ def _badge(text: str, bg: str, border: str = "") -> str:
             f'background:{bg};{border_css}color:#333;font-size:.8em;font-weight:600">{text}</span>')
 
 
+_EMAIL_TERTIARY = "#adb5bd"   # BS --bs-tertiary-color; hex required for email clients
+
+
 def _dim_initials(author: str) -> str:
     author = (author or "").strip()
     if "," in author:
         last, _, first = author.partition(",")
         first = first.strip()
         if first:
-            return f'{last.strip()}<span style="color:#adb5bd">, {first}</span>'
+            return f'{last.strip()}<span style="color:{_EMAIL_TERTIARY}">, {first}</span>'
         return last.strip()
     m = re.match(r'^(.*?)(\s+[A-Z]+)$', author)
     if m:
-        return f'{m.group(1)}<span style="color:#adb5bd"> {m.group(2).strip()}</span>'
+        return f'{m.group(1)}<span style="color:{_EMAIL_TERTIARY}"> {m.group(2).strip()}</span>'
     return author
 
 
@@ -188,7 +197,7 @@ def build_html_digest(papers: list, mesh_topic_map: dict, base_url: str,
         title = p["title"]
         authors_str = _author_summary(p["authors"])
         journal = _clean_journal(p["journal"])
-        publisher = _publisher_short(p.get("publisher") or "", config or {})
+        publisher = _publisher_display(p.get("publisher") or "", config or {})
         pub_date = p["pub_date"] or ""
         quartile = p["scopus_quartile"] or ""
         abstract = p["abstract"] or ""

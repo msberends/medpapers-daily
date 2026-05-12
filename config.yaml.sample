@@ -25,6 +25,19 @@ proxy_enabled: false
 proxy_domain: ''
 proxy_url_regex: ''
 
+# Publisher display (managed via Admin > Publishers tab)
+# Maps full PubMed publisher names to shorter display names shown everywhere in the UI and emails
+publisher_map: {}
+#   Example:
+#   Springer Nature: Springer
+#   Frontiers Media SA: Frontiers
+
+# Publishers flagged as predatory or suspicious; their names render in muted red
+predatory_publishers: []
+#   Example:
+#   - MDPI
+#   - Hindawi
+
 # UI
 bootstrap_theme: yeti   # any Bootswatch theme name
 theme: light            # light or dark

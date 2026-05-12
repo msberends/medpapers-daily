@@ -309,7 +309,7 @@
 
     <div class="tip-box p-3 mb-3" style="max-width:640px">
       <p class="fw-semibold small mb-1"><i class="bi bi-info-circle me-1"></i>About journal ranking data</p>
-      <p class="small mb-2">Journal quartile rankings come from the <a href="https://www.scimagojr.com/journalrank.php" target="_blank" rel="noopener">SCImago Journal Rank</a> database, which is updated annually. Q1 journals fall in the top 25% by citation impact for their subject area; Q4 are in the bottom 25%.</p>
+      <p class="small mb-2">Journal quartile rankings come from the <a href="https://www.scimagojr.com/journalrank.php" target="_blank" rel="noopener">SCImago Journal Rank</a> database, updated annually. Q1 journals fall in the top 25% by citation impact for their subject area; Q4 are in the bottom 25%.</p>
       <p class="small mb-0">Without this data, all journals appear as Unranked and no papers are filtered out regardless of a user's quartile filter settings. Download the full CSV from SCImago (use the default export with all fields) and upload it here. Refreshing the file once a year is recommended to reflect newly ranked journals.</p>
     </div>
 
@@ -402,7 +402,8 @@
     <div class="tip-box p-3 mb-3" style="max-width:640px">
       <p class="fw-semibold small mb-1"><i class="bi bi-info-circle me-1"></i>Publisher name shortcuts</p>
       <p class="small mb-2">Publisher names from PubMed are often long. You can define shorter display names here and they will appear everywhere in the interface and in email digests instead of the full name.</p>
-      <p class="small mb-0">The list below is pre-populated with every publisher found in your database. Leave the short name blank to keep the original. Changes take effect immediately on save.</p>
+      <p class="small mb-2">The list is pre-populated with every publisher found in your database. Leave the short name blank to keep the original. Changes take effect immediately on save.</p>
+      <p class="small mb-0">Checking <strong>Predatory?</strong> marks a publisher as predatory or otherwise suspicious. Its name will then appear in muted red throughout the feed, on paper pages, and in email digests, so potentially unreliable sources are immediately visible.</p>
     </div>
     {% if all_publishers %}
     <form method="post" action="/admin/save-publisher-map" style="max-width:640px">
@@ -414,12 +415,14 @@
               <tr>
                 <th>Full publisher name</th>
                 <th style="width:220px">Short name</th>
+                <th style="width:110px" class="text-center">Predatory?</th>
               </tr>
             </thead>
             <tbody>
             {% for pub in all_publishers %}
+            {% set is_pred = pub in config.get('predatory_publishers', []) %}
             <tr>
-              <td class="small text-muted">
+              <td class="small {% if is_pred %}text-danger opacity-75{% else %}text-muted{% endif %}">
                 {{ pub }}
                 <input type="hidden" name="pub_key" value="{{ pub }}">
               </td>
@@ -427,6 +430,10 @@
                 <input type="text" name="pub_val" class="form-control form-control-sm"
                        value="{{ config.get('publisher_map', {}).get(pub, '') }}"
                        placeholder="Short name (optional)">
+              </td>
+              <td class="text-center">
+                <input type="checkbox" class="form-check-input" name="pub_predatory" value="{{ pub }}"
+                       {% if is_pred %}checked{% endif %}>
               </td>
             </tr>
             {% endfor %}
@@ -483,7 +490,7 @@
                 </a>
               </td>
               <td class="small text-muted" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                {{ p.journal | clean_journal }}{% if p.publisher %} <span class="text-muted opacity-75">({{ p.publisher | publisher_short(config.get('publisher_map', {})) }})</span>{% endif %}
+                {{ p.journal | clean_journal }}{% if p.publisher %} <span class="text-muted opacity-75">({{ p.publisher | publisher_display(config.get('publisher_map', {}), config.get('predatory_publishers', [])) | safe }})</span>{% endif %}
               </td>
               <td class="small text-muted text-nowrap">{{ p.epub_date or p.pub_date or '' }}</td>
               <td>

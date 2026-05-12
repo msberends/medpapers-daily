@@ -181,6 +181,14 @@
           <p class="mb-0"><strong>Quartile filtering:</strong> if journal quartile filtering is enabled in your <a href="/settings">Settings</a>, papers from lower-ranked journals are dropped automatically. This also requires journal ranking data to be loaded by your administrator — until then, all papers appear as Unranked and none are filtered out.</p>
         </div>
       </div>
+      {% elif view == 'unread' and unread_count == 0 %}
+      {# ── All papers have been read ── #}
+      <div class="card border-0 bg-light mb-3">
+        <div class="card-body py-4 px-4">
+          <h6 class="mb-3"><i class="bi bi-check2-all me-2"></i>You are all caught up</h6>
+          <p class="mb-0">All <strong>{{ total_user_papers }}</strong> paper(s) in your library have been read. Switch to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}"><strong>All papers</strong></a> to browse your full library, or come back after the next fetch.</p>
+        </div>
+      </div>
       {% else %}
       {# ── This user has papers, but current filters exclude all of them ── #}
       <div class="card border-0 bg-light mb-3">
@@ -237,7 +245,7 @@
               {% endif %}
               &bull;
               <em>{{ paper.journal | clean_journal }}</em>
-              {% if paper.publisher %}&bull; {{ paper.publisher | publisher_short(config.get('publisher_map', {})) }}{% endif %}
+              {% if paper.publisher %}&bull; {{ paper.publisher | publisher_display(config.get('publisher_map', {}), config.get('predatory_publishers', [])) | safe }}{% endif %}
               &bull; {{ paper.epub_date or paper.pub_date or '' }}
             </div>
             <div class="mt-1 d-flex flex-wrap gap-1">
