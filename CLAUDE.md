@@ -67,26 +67,14 @@ Classification into user-defined topic labels happens at query time in the web a
 
 ## Infrastructure
 
-The app runs on a Minisforum UM690S (Ubuntu Server 24.04 LTS) at **papers.uscloud.nl**, behind Apache as a TLS-terminating reverse proxy. The FastAPI process is never exposed directly.
+The app runs at whatever is set in `base_url` of `config.yaml`.
+The FastAPI process is never exposed directly.
 
-**Crontab entries** (user crontab for the `uscloud` service account):
+**Crontab entries** (user crontab for the `{user}` service account):
 ```
 0  6 * * * /var/www/papersdaily/venv/bin/python /var/www/papersdaily/fetch.py >> /var/www/papersdaily/logs/fetch.log 2>&1
 15 6 * * * /var/www/papersdaily/venv/bin/python /var/www/papersdaily/email_digest.py >> /var/www/papersdaily/logs/email.log 2>&1
 ```
-
-**Apache VirtualHost** (minimal, for reference):
-```apache
-<VirtualHost *:443>
-    ServerName papers.uscloud.nl
-    SSLEngine on
-    ProxyPreserveHost On
-    ProxyPass / http://127.0.0.1:2711/
-    ProxyPassReverse / http://127.0.0.1:2711/
-    RequestHeader set X-Forwarded-Proto https
-</VirtualHost>
-```
-Required modules: `mod_proxy mod_proxy_http mod_ssl mod_headers` (enable with `a2enmod`).
 
 ## Sample files (public repo hygiene)
 
@@ -110,5 +98,5 @@ These explain why the code looks the way it does — don't change these patterns
 - **SQLite over Postgres.** Volume is ~10 papers/day for a handful of users. WAL mode is sufficient. Simplicity is the priority.
 - **`<details>/<summary>` for email abstracts.** Works in Apple Mail, Thunderbird, Gmail web, Outlook web. Does not work in Outlook desktop — known and accepted trade-off.
 - **No self-registration.** Admin creates all accounts via `/admin`. This is intentional for a closed personal tool.
-- **No paywall bypass scripting.** UMCG institutional access uses Shibboleth/SAML SSO (browser-only). Unpaywall covers open-access PDFs. Paywall scripting would violate publisher terms.
+- **No paywall bypass scripting.** institutional access uses Shibboleth/SAML SSO (browser-only). Unpaywall covers open-access PDFs. Paywall scripting would violate publisher terms.
 - **Silent Scopus CSV overwrite.** No confirmation dialog on upload — intentional simpler UX for an admin action.
