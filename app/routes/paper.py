@@ -47,6 +47,11 @@ async def paper_detail(pmid: str, request: Request):
             "SELECT * FROM user_papers WHERE user_id = ? AND pmid = ?",
             (user["user_id"], pmid),
         ).fetchone()
+        if up:
+            conn.execute(
+                "UPDATE user_papers SET is_read = 1 WHERE user_id = ? AND pmid = ?",
+                (user["user_id"], pmid),
+            )
         folders = conn.execute(
             "SELECT * FROM folders WHERE user_id = ? ORDER BY name",
             (user["user_id"],),
@@ -61,10 +66,14 @@ async def paper_detail(pmid: str, request: Request):
     all_topics = sorted(set(mesh_topic_map.values())) + ["Unclassified"]
     topic_color_map = {t: i % 8 for i, t in enumerate(all_topics)}
 
+    up_dict = dict(up) if up else None
+    if up_dict:
+        up_dict["is_read"] = 1
+
     return request.app.state.templates.TemplateResponse(request, "paper.html", {
         "user": user,
         "paper": paper,
-        "up": dict(up) if up else None,
+        "up": up_dict,
         "folders": [dict(f) for f in folders],
         "topics": topics,
         "topic_color_map": topic_color_map,

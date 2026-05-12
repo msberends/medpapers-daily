@@ -91,8 +91,14 @@ async def admin_page(
             u["username"]: _load_user_cfg(u["username"]).get("email", "")
             for u in users
         }
+        paper_counts = {
+            row["user_id"]: row["cnt"]
+            for row in conn.execute(
+                "SELECT user_id, COUNT(*) AS cnt FROM user_papers GROUP BY user_id"
+            ).fetchall()
+        }
         papers = conn.execute(
-            """SELECT p.pmid, p.title, p.journal, p.pub_date, p.epub_date,
+            """SELECT p.pmid, p.title, p.journal, p.publisher, p.pub_date, p.epub_date,
                       p.scopus_quartile, p.first_seen_at,
                       GROUP_CONCAT(u.username, ', ') AS usernames
                FROM papers p
@@ -101,12 +107,19 @@ async def admin_page(
                GROUP BY p.pmid
                ORDER BY p.first_seen_at DESC"""
         ).fetchall()
+        all_publishers = [
+            row[0] for row in conn.execute(
+                "SELECT DISTINCT publisher FROM papers WHERE publisher IS NOT NULL AND publisher != '' ORDER BY publisher"
+            ).fetchall()
+        ]
 
     return request.app.state.templates.TemplateResponse(request, "admin.html", {
         "user": user,
         "users": [dict(u) for u in users],
         "user_emails": user_emails,
+        "paper_counts": paper_counts,
         "papers": [dict(p) for p in papers],
+        "all_publishers": all_publishers,
         "saved": saved,
         "error": error,
         "test_sent": test_sent,
@@ -156,6 +169,9 @@ async def save_config(request: Request):
         new_pw = form.get("smtp_password", "").strip()
         new_config["smtp_password"] = new_pw if new_pw else existing.get("smtp_password", "")
 
+    if existing.get("publisher_map"):
+        new_config["publisher_map"] = existing["publisher_map"]
+
     with open(BASE_DIR / "config.yaml", "w") as f:
         yaml.dump(new_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
@@ -179,10 +195,10 @@ async def test_email(request: Request):
     try:
         from mail_helper import send_email as _send
         html = (
-            "<p>This is a test email from <strong>Papers Daily</strong>.</p>"
+            f"<p>This is a test email from <strong>{app_name}</strong>.</p>"
             "<p>If you received this, your email settings are configured correctly.</p>"
         )
-        plain = "This is a test email from Papers Daily.\nIf you received this, your email settings are configured correctly."
+        plain = f"This is a test email from {app_name}.\nIf you received this, your email settings are configured correctly."
         _send(config, to, subject, html, plain)
         with conn_ctx() as conn:
             conn.execute(
@@ -384,6 +400,20 @@ async def delete_papers(request: Request):
         conn.execute(f"DELETE FROM user_papers WHERE pmid IN ({placeholders})", pmid_list)
         conn.execute(f"DELETE FROM papers WHERE pmid IN ({placeholders})", pmid_list)
     return RedirectResponse(f"/admin?deleted={len(pmid_list)}", status_code=303)
+
+
+@router.post("/admin/save-publisher-map")
+async def save_publisher_map(request: Request):
+    require_admin(request)
+    form = await request.form()
+    keys = form.getlist("pub_key")
+    vals = form.getlist("pub_val")
+    mapping = {k: v.strip() for k, v in zip(keys, vals) if k and v.strip()}
+    config = request.app.state.config
+    config["publisher_map"] = mapping
+    with open(BASE_DIR / "config.yaml", "w") as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    return RedirectResponse("/admin?saved=1#tab-publishers", status_code=303)
 
 
 def _int(val, default: int) -> int:

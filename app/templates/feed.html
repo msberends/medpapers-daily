@@ -24,14 +24,14 @@
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">View</div>
         <div class="list-group list-group-flush">
-          <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
-             class="list-group-item list-group-item-action py-2 {% if view == 'all' %}active{% endif %}">
-            <i class="bi bi-grid me-1"></i> All papers
-          </a>
           <a href="/feed?view=unread&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'unread' %}active{% endif %}">
             <i class="bi bi-envelope me-1"></i> Unread
             {% if unread_count %}<span class="badge bg-secondary float-end">{{ unread_count }}</span>{% endif %}
+          </a>
+          <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
+             class="list-group-item list-group-item-action py-2 {% if view == 'all' %}active{% endif %}">
+            <i class="bi bi-grid me-1"></i> All papers
           </a>
           <a href="/feed?view=starred&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'starred' %}active{% endif %}">
@@ -171,10 +171,33 @@
     </div>
 
     {% if not papers %}
-    <div class="text-center text-muted mt-5 py-5">
-      <i class="bi bi-inbox fs-1 d-block mb-3"></i>
-      <p>No papers match your current filters.</p>
-    </div>
+      {% if total_user_papers == 0 %}
+      {# ── First-run: nothing fetched yet for this user ── #}
+      <div class="card border-0 bg-light mb-3">
+        <div class="card-body py-4 px-4">
+          <h6 class="mb-3"><i class="bi bi-inbox me-2"></i>No papers yet — here's how this works</h6>
+          <p class="mb-2">{{ config.get('app_name') or 'This application' }} fetches new PubMed results on a schedule and stores them here for you to browse, star, and organise. Nothing has been fetched for your account yet.</p>
+          <p class="mb-2"><strong>To get papers:</strong> make sure your account has at least one search profile configured in <a href="/settings">Settings</a>, then wait for the next scheduled fetch or ask your administrator to run one manually.</p>
+          <p class="mb-0"><strong>Quartile filtering:</strong> if journal quartile filtering is enabled in your <a href="/settings">Settings</a>, papers from lower-ranked journals are dropped automatically. This also requires journal ranking data to be loaded by your administrator — until then, all papers appear as Unranked and none are filtered out.</p>
+        </div>
+      </div>
+      {% else %}
+      {# ── This user has papers, but current filters exclude all of them ── #}
+      <div class="card border-0 bg-light mb-3">
+        <div class="card-body py-4 px-4">
+          <h6 class="mb-3"><i class="bi bi-funnel me-2"></i>No papers match the current filters</h6>
+          <p class="mb-2">Your library contains <strong>{{ total_user_papers }}</strong> paper(s), but none pass all the active filters at once. A few things to try:</p>
+          <ul class="mb-0 ps-3">
+            <li>Switch the view to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}"><strong>All papers</strong></a> — the Unread view only shows papers not yet marked as read.</li>
+            <li>Clear any topic checkboxes selected in the sidebar.</li>
+            <li>Widen the <strong>Date Range</strong> filter, or set it to <em>All time</em>.</li>
+            <li>Relax the <strong>Journal Quartile</strong> filter to include Q3/Q4 journals.</li>
+            {% if search %}<li>Remove the search term <em>"{{ search }}"</em> — it matches against title and abstract only.</li>{% endif %}
+            {% if profile %}<li>Switch the <strong>Search Profile</strong> back to <em>All profiles</em>.</li>{% endif %}
+          </ul>
+        </div>
+      </div>
+      {% endif %}
     {% endif %}
 
     {% for paper, topics in papers %}
@@ -199,18 +222,22 @@
                     <i class="bi {% if paper.is_read %}bi-envelope-open{% else %}bi-envelope{% endif %}"></i>
                   </button>
                 </form>
+                <a href="https://pubmed.ncbi.nlm.nih.gov/{{ paper.pmid }}" target="_blank" rel="noopener"
+                   class="btn btn-sm btn-link p-0 text-muted" title="Open in PubMed" style="font-size:.8em">
+                  <i class="bi bi-box-arrow-up-right"></i>
+                </a>
               </div>
             </div>
             <div class="small text-muted mt-1">
               {% set authors = paper.authors | from_json %}
               {% if authors | length > 2 %}
-                {{ authors[0] }} &hellip; {{ authors[-1] }}
+                {{ authors[0] | dim_initials | safe }} &hellip; {{ authors[-1] | dim_initials | safe }}
               {% elif authors %}
-                {{ authors | join('; ') }}
+                {{ authors | map('dim_initials') | join('; ') | safe }}
               {% endif %}
               &bull;
-              <em>{{ paper.journal }}</em>
-              {% if paper.publisher %}&bull; {{ paper.publisher }}{% endif %}
+              <em>{{ paper.journal | clean_journal }}</em>
+              {% if paper.publisher %}&bull; {{ paper.publisher | publisher_short(config.get('publisher_map', {})) }}{% endif %}
               &bull; {{ paper.epub_date or paper.pub_date or '' }}
             </div>
             <div class="mt-1 d-flex flex-wrap gap-1">

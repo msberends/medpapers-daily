@@ -20,7 +20,14 @@
   </div>
 
   {% if not folders %}
-  <p class="text-muted text-center py-4">No folders yet. Create one above.</p>
+  <div class="card border-0 bg-light text-muted mb-3">
+    <div class="card-body py-4 px-4">
+      <h6 class="mb-3"><i class="bi bi-folder2-open me-2"></i>What are folders for?</h6>
+      <p class="mb-2">Folders let you organise papers you want to keep — for instance by project, grant, or topic you're actively working on.</p>
+      <p class="mb-2">Once a paper is in a folder it stays there regardless of read or star status, so folders work well as a personal reference library alongside the inbox-style unread view.</p>
+      <p class="mb-0">To add a paper to a folder, open it and use the <strong>Move</strong> control, or select multiple papers in the feed and use the bulk action bar. Folders appear in the sidebar of the feed so you can filter to just those papers at any time.</p>
+    </div>
+  </div>
   {% endif %}
 
   {% for f in folders %}

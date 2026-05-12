@@ -5,12 +5,16 @@
 <style>
   .form-label { font-weight: 500; }
   #smtpFields { transition: opacity .2s; }
+  .tip-box { background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle);
+             color: var(--bs-primary-text-emphasis); border-radius: 6px; }
+  .warn-box { background: var(--bs-danger-bg-subtle); border: 1px solid var(--bs-danger-border-subtle);
+              color: var(--bs-danger-text-emphasis); border-radius: 6px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <h3 class="mb-1"><i class="bi bi-gear-fill me-2"></i>Administration</h3>
-<p class="text-muted mb-4">Configure the application, manage users, and upload journal rankings.</p>
+<p class="text-muted mb-4">Configure the application, manage users, and upload journal rankings. Settings on this page apply globally to all users unless noted otherwise.</p>
 
 {% if saved %}
 <div class="alert alert-success alert-dismissible py-2" role="alert">
@@ -30,13 +34,13 @@
 
 {% if fetch_started %}
 <div class="alert alert-info alert-dismissible py-2" role="alert">
-  <i class="bi bi-play-circle me-1"></i> Fetch started in the background &mdash; check <a href="/logs">Logs</a> for progress.
+  <i class="bi bi-play-circle me-1"></i> Fetch started in the background. Check <a href="/logs">Logs</a> for progress.
   <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
 {% if digest_started %}
 <div class="alert alert-info alert-dismissible py-2" role="alert">
-  <i class="bi bi-envelope-arrow-up me-1"></i> Email digest started in the background &mdash; check <a href="/logs">Logs</a> for results.
+  <i class="bi bi-envelope-arrow-up me-1"></i> Email digest started in the background. Check <a href="/logs">Logs</a> for results.
   <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
@@ -51,7 +55,8 @@
   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-app">Application</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-fetch">Fetch</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-email">Email</a></li>
-  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-scopus">Scopus</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-scopus">Journal Rankings</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-publishers">Publishers</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-users">Users</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-papers">
     Papers <span class="badge bg-secondary ms-1">{{ papers | length }}</span>
@@ -63,23 +68,27 @@
 
   {# ── Application ── #}
   <div class="tab-pane fade show active" id="tab-app">
-    <div class="card">
+    <div class="card mb-3">
       <div class="card-header fw-semibold"><i class="bi bi-window me-1"></i>Application Settings</div>
       <div class="card-body row g-3">
         <div class="col-md-6">
           <label class="form-label">Application name</label>
           <input type="text" name="app_name" class="form-control"
-                 value="{{ config.get('app_name', 'Papers Daily') }}" required>
+                 value="{{ config.get('app_name', '') }}"
+                 placeholder="e.g. Papers Daily" required>
+          <div class="form-text">Displayed in the page title, navbar, and all outgoing email notifications.</div>
         </div>
         <div class="col-md-6">
           <label class="form-label">Base URL</label>
           <input type="url" name="base_url" class="form-control"
                  value="{{ config.get('base_url', '') }}" placeholder="https://papers.example.com">
+          <div class="form-text">The public address where the application is accessible. Used to generate paper links inside digest emails. Must be reachable by email recipients.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label">Internal port</label>
           <input type="number" name="port" class="form-control"
                  value="{{ config.get('port', 2711) }}" min="1024" max="65535">
+          <div class="form-text">The port the application process listens on. Only relevant if you are not using a reverse proxy such as Apache or nginx.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label">Default theme</label>
@@ -90,44 +99,46 @@
             </option>
             {% endfor %}
           </select>
-          <div class="form-text">Applies to the login page and users who haven't set a personal theme.</div>
+          <div class="form-text">Applies to the login page and any users who have not chosen a personal theme in their own settings.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label">Timezone</label>
           <input type="text" name="timezone" class="form-control font-monospace"
                  value="{{ config.get('timezone', 'UTC') }}"
                  placeholder="Europe/Amsterdam">
-          <div class="form-text">Used to display log timestamps. IANA tz name (e.g. <code>Europe/Amsterdam</code>).</div>
+          <div class="form-text">Used to display log timestamps in local time. Enter a valid IANA timezone name, for example <code>Europe/Amsterdam</code> or <code>America/New_York</code>.</div>
         </div>
       </div>
     </div>
-    <div class="card mt-3">
+
+    <div class="card mb-3">
       <div class="card-header fw-semibold"><i class="bi bi-building me-1"></i>Institutional Proxy</div>
       <div class="card-body row g-3">
         <div class="col-12">
+          <p class="text-muted small mb-2">When enabled, paywalled papers display a <span class="badge bg-danger">PW</span> badge in the feed and on the paper page. Clicking it opens the paper through your institution's EZproxy or similar reverse-proxy service. Open-access papers are unaffected.</p>
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" name="proxy_enabled"
                    id="proxyEnabled" {% if config.get('proxy_enabled') %}checked{% endif %}>
             <label class="form-check-label fw-medium" for="proxyEnabled">Enable proxy links for paywalled papers</label>
           </div>
-          <div class="form-text ms-4 ps-1">Adds a <span class="badge bg-danger">PW</span> badge on non-open-access papers; clicking it opens the paper through your institutional proxy.</div>
         </div>
         <div class="col-md-6">
           <label class="form-label">Proxy domain</label>
           <input type="text" name="proxy_domain" class="form-control font-monospace"
                  value="{{ config.get('proxy_domain', '') }}"
                  placeholder="proxy-ub.rug.nl">
-          <div class="form-text">The suffix appended after the dashed hostname. Example: <code>doi.org</code> → <code>doi-org.<em>proxy-ub.rug.nl</em></code>.</div>
+          <div class="form-text">The EZproxy hostname. A DOI link is rewritten so the original host is dashed and this domain is appended. For example, <code>doi.org/10.1000/xyz</code> becomes <code>doi-org.proxy-ub.rug.nl/10.1000/xyz</code>.</div>
         </div>
         <div class="col-md-6">
           <label class="form-label">URL filter regex <span class="text-muted fw-normal">(optional)</span></label>
           <input type="text" name="proxy_url_regex" class="form-control font-monospace"
                  value="{{ config.get('proxy_url_regex', '') }}"
                  placeholder="e.g. doi\.org">
-          <div class="form-text">Only proxy URLs matching this pattern. Leave blank to proxy all paywalled papers via their DOI.</div>
+          <div class="form-text">Only proxy links whose URL matches this regular expression. Leave blank to proxy all paywalled papers via their DOI link.</div>
         </div>
       </div>
     </div>
+
     <div class="mt-3">
       <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save configuration</button>
     </div>
@@ -135,25 +146,34 @@
 
   {# ── Fetch ── #}
   <div class="tab-pane fade" id="tab-fetch">
-    <div class="card">
+    <div class="card mb-3">
       <div class="card-header fw-semibold"><i class="bi bi-cloud-download me-1"></i>PubMed Fetch Settings</div>
       <div class="card-body row g-3">
+        <div class="col-12">
+          <p class="text-muted small mb-0">These credentials are shared across all users. The fetch process queries PubMed using each user's search profiles and calls the Unpaywall API to look up open-access PDF links for any papers found.</p>
+        </div>
         <div class="col-md-8">
           <label class="form-label">NCBI API key</label>
           <input type="text" name="ncbi_api_key" class="form-control font-monospace"
                  value="{{ config.get('ncbi_api_key', '') }}"
-                 placeholder="Leave blank to use rate-limited access (3 req/s)">
-          <div class="form-text">Raises the rate limit to 10 req/s. Free at <a href="https://www.ncbi.nlm.nih.gov/account/" target="_blank">ncbi.nlm.nih.gov</a>.</div>
+                 placeholder="Leave blank to use rate-limited anonymous access (3 requests/second)">
+          <div class="form-text">An API key raises the rate limit to 10 requests per second, which speeds up fetching significantly when multiple users have many search profiles. Keys are free and available at <a href="https://www.ncbi.nlm.nih.gov/account/" target="_blank" rel="noopener">ncbi.nlm.nih.gov</a>.</div>
         </div>
         <div class="col-md-4">
-          <label class="form-label">Unpaywall contact email</label>
+          <label class="form-label">Contact email</label>
           <input type="email" name="ncbi_email" class="form-control"
                  value="{{ config.get('ncbi_email', '') }}"
                  placeholder="you@example.com">
-          <div class="form-text">Required by the Unpaywall API to look up open-access PDF URLs.</div>
+          <div class="form-text">Required by both the NCBI E-utilities and the Unpaywall API. Use an address monitored by someone at your organisation in case either service needs to contact you about usage.</div>
         </div>
       </div>
     </div>
+
+    <div class="tip-box p-3 mb-3">
+      <p class="fw-semibold small mb-1"><i class="bi bi-info-circle me-1"></i>Running a manual fetch</p>
+      <p class="small mb-0">Clicking "Run fetch now" starts the fetch process immediately in the background for all users whose fetching is enabled. It runs exactly as the scheduled fetch would, respecting each user's search profiles, lookback window, and quartile filter. Check the Logs tab to see progress and results. This is useful after adding new search profiles or when setting up a new user.</p>
+    </div>
+
     <div class="mt-3 d-flex gap-2 align-items-center">
       <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save configuration</button>
       <button type="submit" form="runFetchForm" class="btn btn-outline-secondary">
@@ -164,7 +184,7 @@
 
   {# ── Email ── #}
   <div class="tab-pane fade" id="tab-email">
-    <div class="card">
+    <div class="card mb-3">
       <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email Settings</div>
       <div class="card-body row g-3">
 
@@ -173,35 +193,36 @@
           <input type="text" name="email_from_name" class="form-control"
                  value="{{ config.get('email_from_name', '') }}"
                  placeholder="Papers Daily">
-          <div class="form-text">Display name shown in the recipient's inbox.</div>
+          <div class="form-text">The display name shown in the recipient's inbox next to the sender address.</div>
         </div>
         <div class="col-md-4">
-          <label class="form-label">Sender address (From)</label>
+          <label class="form-label">Sender address</label>
           <input type="email" name="email_from" class="form-control"
                  value="{{ config.get('email_from', '') }}"
                  placeholder="noreply@papers.example.com">
+          <div class="form-text">The From address on all outgoing emails. If you use a custom domain, make sure SPF and DKIM records are configured to avoid messages being marked as spam.</div>
         </div>
         <div class="col-12">
-          <label class="form-label">Digest subject template</label>
+          <label class="form-label">Digest subject line template</label>
           <input type="text" name="email_subject_template" class="form-control"
                  value="{{ config.get('email_subject_template', 'Your daily digest, {new_papers} new paper(s), {date}') }}">
           <div class="form-text">
-            Available placeholders: <code>{new_papers}</code> — number of new papers,
-            <code>{date}</code> — today's date,
-            <code>{username}</code> — recipient username,
-            <code>{app_name}</code> — application name.
+            Available placeholders: <code>{new_papers}</code> number of new papers,
+            <code>{date}</code> today's date,
+            <code>{username}</code> the recipient's username,
+            <code>{app_name}</code> the application name.
           </div>
         </div>
 
         <div class="col-12">
           <label class="form-label d-block mb-2">Sending method</label>
-          <div class="d-flex gap-4">
+          <div class="d-flex gap-4 mb-1">
             <div class="form-check">
               <input class="form-check-input" type="radio" name="email_relay" value="smtp"
                      id="relaySmtp" onchange="toggleSmtp()"
                      {% if config.get('email_relay', 'smtp') == 'smtp' %}checked{% endif %}>
               <label class="form-check-label" for="relaySmtp">
-                <strong>SMTP</strong> <span class="text-muted small">(Gmail, etc.)</span>
+                <strong>SMTP</strong> <span class="text-muted small">(recommended for most setups)</span>
               </label>
             </div>
             <div class="form-check">
@@ -209,10 +230,11 @@
                      id="relaySendmail" onchange="toggleSmtp()"
                      {% if config.get('email_relay') == 'sendmail' %}checked{% endif %}>
               <label class="form-check-label" for="relaySendmail">
-                <strong>sendmail</strong> <span class="text-muted small">(local relay)</span>
+                <strong>sendmail</strong> <span class="text-muted small">(server has a local mail transfer agent)</span>
               </label>
             </div>
           </div>
+          <div class="form-text">Use SMTP to send through an external mail provider such as Gmail. Use sendmail only if the server running this application has a local MTA (Postfix, Exim, etc.) already configured.</div>
         </div>
 
         <div class="col-12" id="smtpFields">
@@ -228,6 +250,7 @@
                 <label class="form-label">Port</label>
                 <input type="number" name="smtp_port" class="form-control"
                        value="{{ config.get('smtp_port', 587) }}" min="1" max="65535">
+                <div class="form-text">587 for STARTTLS (recommended), 465 for TLS.</div>
               </div>
               <div class="col-md-4"></div>
               <div class="col-md-6">
@@ -242,10 +265,9 @@
                        placeholder="Leave blank to keep existing password"
                        autocomplete="new-password">
                 <div class="form-text">
-                  Use a Gmail <a href="https://myaccount.google.com/apppasswords" target="_blank">App Password</a>,
-                  not your account password. 2-Step Verification must be enabled.
+                  For Gmail, generate an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">App Password</a> rather than using your account password. This requires 2-Step Verification to be enabled on the Google account.
                   {% if config.get('smtp_password') %}
-                  <span class="text-success"><i class="bi bi-lock-fill"></i> Password is set.</span>
+                  <span class="text-success"><i class="bi bi-lock-fill"></i> A password is currently stored.</span>
                   {% endif %}
                 </div>
               </div>
@@ -255,6 +277,12 @@
 
       </div>
     </div>
+
+    <div class="tip-box p-3 mb-3">
+      <p class="fw-semibold small mb-1"><i class="bi bi-info-circle me-1"></i>Testing and sending manually</p>
+      <p class="small mb-0">"Send test email" delivers a single message to your own account address to verify the connection and credentials are working. "Send digest now" runs the full digest process immediately for all users, exactly as the scheduled run would, and respects each user's suppress-empty-digest preference. Both run in the background; check the Logs tab for results.</p>
+    </div>
+
     <div class="mt-3 d-flex gap-2 align-items-center">
       <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save configuration</button>
       <button type="submit" form="testEmailForm" class="btn btn-outline-secondary">
@@ -271,21 +299,23 @@
 
 <form id="testEmailForm" method="post" action="/admin/test-email"></form>
 <form id="runFetchForm" method="post" action="/admin/run-fetch"
-      onsubmit="return confirm('Start a manual fetch now? It will run in the background and append to fetch.log.')"></form>
+      onsubmit="return confirm('Start a manual fetch now? It will run in the background.')"></form>
 <form id="runDigestForm" method="post" action="/admin/run-digest"
-      onsubmit="return confirm('Send the email digest now for all users? It will run in the background and append to email.log.')"></form>
+      onsubmit="return confirm('Send the email digest now for all users? It will run in the background.')"></form>
 
-{# ── Scopus ── (outside config form) #}
+{# ── Journal Rankings ── (outside config form) #}
 <div class="tab-content">
   <div class="tab-pane fade" id="tab-scopus">
+
+    <div class="tip-box p-3 mb-3" style="max-width:640px">
+      <p class="fw-semibold small mb-1"><i class="bi bi-info-circle me-1"></i>About journal ranking data</p>
+      <p class="small mb-2">Journal quartile rankings come from the <a href="https://www.scimagojr.com/journalrank.php" target="_blank" rel="noopener">SCImago Journal Rank</a> database, which is updated annually. Q1 journals fall in the top 25% by citation impact for their subject area; Q4 are in the bottom 25%.</p>
+      <p class="small mb-0">Without this data, all journals appear as Unranked and no papers are filtered out regardless of a user's quartile filter settings. Download the full CSV from SCImago (use the default export with all fields) and upload it here. Refreshing the file once a year is recommended to reflect newly ranked journals.</p>
+    </div>
+
     <div class="card mb-3" style="max-width:640px">
-      <div class="card-header fw-semibold"><i class="bi bi-journal-text me-1"></i>SCImago / Scopus Journal Rankings</div>
+      <div class="card-header fw-semibold"><i class="bi bi-upload me-1"></i>Upload Ranking Data</div>
       <div class="card-body">
-        <p class="text-muted small mb-3">
-          Upload the semicolon-delimited CSV from
-          <a href="https://www.scimagojr.com/journalrank.php" target="_blank">scimagojr.com</a>.
-          The file will overwrite <code>data/scopus.csv</code> immediately.
-        </p>
         <form method="post" action="/admin/upload-scopus" enctype="multipart/form-data">
           <div class="d-flex gap-2 align-items-center">
             <input type="file" name="scopus_file" class="form-control" accept=".csv" required>
@@ -295,12 +325,12 @@
           </div>
           {% if scopus_stats.mtime %}
           <div class="form-text mt-2">
-            <i class="bi bi-clock me-1"></i>Current file last modified:
-            <strong>{{ scopus_stats.mtime | to_local }}</strong>
-            &mdash; {{ scopus_stats.total | default(0) }} journals indexed
+            <i class="bi bi-clock me-1"></i>Current data last updated:
+            <strong>{{ scopus_stats.mtime | to_local }}</strong>,
+            {{ scopus_stats.total | default(0) }} journals indexed.
           </div>
           {% else %}
-          <div class="form-text mt-2 text-warning">No file uploaded yet.</div>
+          <div class="form-text mt-2 text-warning"><i class="bi bi-exclamation-triangle me-1"></i>No ranking data uploaded yet. Quartile filtering is inactive.</div>
           {% endif %}
         </form>
       </div>
@@ -353,7 +383,7 @@
                 {% elif q == 'Q2' %}<span class="badge badge-q2 text-white">Q2</span>
                 {% elif q == 'Q3' %}<span class="badge badge-q3">Q3</span>
                 {% elif q == 'Q4' %}<span class="badge badge-q4 text-white">Q4</span>
-                {% else %}<span class="text-muted small">—</span>{% endif %}
+                {% else %}<span class="text-muted small">N/A</span>{% endif %}
               </td>
               <td class="text-end small text-muted">{{ row.if_score }}</td>
               <td class="text-end small text-muted">{{ row.citescore }}</td>
@@ -367,12 +397,60 @@
     {% endif %}
   </div>
 
+  {# ── Publishers ── #}
+  <div class="tab-pane fade" id="tab-publishers">
+    <div class="tip-box p-3 mb-3" style="max-width:640px">
+      <p class="fw-semibold small mb-1"><i class="bi bi-info-circle me-1"></i>Publisher name shortcuts</p>
+      <p class="small mb-2">Publisher names from PubMed are often long. You can define shorter display names here and they will appear everywhere in the interface and in email digests instead of the full name.</p>
+      <p class="small mb-0">The list below is pre-populated with every publisher found in your database. Leave the short name blank to keep the original. Changes take effect immediately on save.</p>
+    </div>
+    {% if all_publishers %}
+    <form method="post" action="/admin/save-publisher-map" style="max-width:640px">
+      <div class="card mb-3">
+        <div class="card-header fw-semibold"><i class="bi bi-building me-1"></i>Publisher names</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Full publisher name</th>
+                <th style="width:220px">Short name</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for pub in all_publishers %}
+            <tr>
+              <td class="small text-muted">
+                {{ pub }}
+                <input type="hidden" name="pub_key" value="{{ pub }}">
+              </td>
+              <td>
+                <input type="text" name="pub_val" class="form-control form-control-sm"
+                       value="{{ config.get('publisher_map', {}).get(pub, '') }}"
+                       placeholder="Short name (optional)">
+              </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save publisher names</button>
+    </form>
+    {% else %}
+    <div class="text-muted small">No publishers found yet. Run a fetch first to populate papers.</div>
+    {% endif %}
+  </div>
+
   {# ── Papers ── #}
   <div class="tab-pane fade" id="tab-papers">
+    <div class="warn-box p-3 mb-3">
+      <p class="fw-semibold small mb-1"><i class="bi bi-exclamation-triangle me-1"></i>Destructive action</p>
+      <p class="small mb-0">Deleting papers removes them permanently from the database for all users. Stars, folder assignments, and read status associated with those papers are also deleted. This cannot be undone. Use this only to remove papers that were fetched in error or to clean up after changing search profiles.</p>
+    </div>
     <form method="post" action="/admin/delete-papers" id="papersForm"
           onsubmit="return confirmPaperDelete()">
       <div class="d-flex justify-content-between align-items-center mb-2">
-        <span class="text-muted small">{{ papers | length }} paper(s) in database</span>
+        <span class="text-muted small">{{ papers | length }} paper(s) in database across all users</span>
         <div class="d-flex gap-2">
           <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllPapers()">
             Select all
@@ -401,11 +479,11 @@
               <td><input type="checkbox" name="pmid" value="{{ p.pmid }}" class="form-check-input paper-del-cb"></td>
               <td>
                 <a href="/paper/{{ p.pmid }}" target="_blank" class="text-decoration-none small">
-                  {{ p.title | striptags | truncate(90, killwords=True, end='…') }}
+                  {{ p.title | striptags | truncate(90, killwords=True, end='...') }}
                 </a>
               </td>
-              <td class="small text-muted" style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                {{ p.journal }}
+              <td class="small text-muted" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                {{ p.journal | clean_journal }}{% if p.publisher %} <span class="text-muted opacity-75">({{ p.publisher | publisher_short(config.get('publisher_map', {})) }})</span>{% endif %}
               </td>
               <td class="small text-muted text-nowrap">{{ p.epub_date or p.pub_date or '' }}</td>
               <td>
@@ -413,9 +491,9 @@
                 {% elif p.scopus_quartile == 'Q2' %}<span class="badge badge-q2 text-white">Q2</span>
                 {% elif p.scopus_quartile == 'Q3' %}<span class="badge badge-q3">Q3</span>
                 {% elif p.scopus_quartile == 'Q4' %}<span class="badge badge-q4 text-white">Q4</span>
-                {% else %}<span class="badge badge-unranked text-white">—</span>{% endif %}
+                {% else %}<span class="badge badge-unranked">Unranked</span>{% endif %}
               </td>
-              <td class="small text-muted text-nowrap">{{ p.usernames or '—' }}</td>
+              <td class="small text-muted text-nowrap">{{ p.usernames or 'none' }}</td>
             </tr>
             {% endfor %}
             </tbody>
@@ -433,6 +511,7 @@
         <div class="card">
           <div class="card-header fw-semibold"><i class="bi bi-person-plus me-1"></i>Create User</div>
           <div class="card-body">
+            <p class="text-muted small mb-3">New accounts are created with no search profiles. After creating the account, open the user's settings to configure what they monitor. The user can also update their own profiles and preferences from their Settings page once logged in.</p>
             <form method="post" action="/admin/create-user" class="row g-2">
               <div class="col-12">
                 <label class="form-label small">Username</label>
@@ -442,18 +521,21 @@
               <div class="col-12">
                 <label class="form-label small">Email address</label>
                 <input type="email" name="email" class="form-control form-control-sm" required>
+                <div class="form-text">Digest emails will be sent here.</div>
               </div>
               <div class="col-12">
                 <label class="form-label small">Initial password</label>
                 <input type="password" name="password" class="form-control form-control-sm"
                        minlength="8" required autocomplete="new-password">
+                <div class="form-text">Minimum 8 characters. Share this with the user and ask them to change it on first login.</div>
               </div>
               <div class="col-12">
                 <div class="form-check form-switch">
                   <input class="form-check-input" type="checkbox" name="is_admin"
                          value="1" id="newIsAdmin">
-                  <label class="form-check-label small" for="newIsAdmin">Admin privileges</label>
+                  <label class="form-check-label small" for="newIsAdmin">Administrator privileges</label>
                 </div>
+                <div class="form-text">Admins have access to this panel, can manage all users, upload journal data, and run fetches manually. Grant sparingly.</div>
               </div>
               <div class="col-12 mt-1">
                 <button type="submit" class="btn btn-sm btn-primary">Create user</button>
@@ -469,7 +551,7 @@
           <div class="table-responsive">
             <table class="table table-sm table-hover mb-0 align-middle">
               <thead class="table-light">
-                <tr><th>Username</th><th>Email</th><th>Role</th><th>Created</th><th></th></tr>
+                <tr><th>Username</th><th>Email</th><th>Role</th><th class="text-end">Papers</th><th>Created</th><th></th></tr>
               </thead>
               <tbody>
               {% for u in users %}
@@ -477,6 +559,7 @@
                 <td class="fw-medium">{{ u.username }}</td>
                 <td class="small text-muted">{{ user_emails.get(u.username, '') }}</td>
                 <td>{% if u.is_admin %}<span class="badge bg-warning text-dark">Admin</span>{% else %}<span class="badge bg-secondary">User</span>{% endif %}</td>
+                <td class="small text-end text-muted">{{ paper_counts.get(u.id, 0) }}</td>
                 <td class="small text-muted">{{ u.created_at[:10] }}</td>
                 <td>
                   <div class="d-flex gap-1">
@@ -535,11 +618,13 @@ const testSent      = {{ 'true' if test_sent      else 'false' }};
 const fetchStarted  = {{ 'true' if fetch_started  else 'false' }};
 const digestStarted = {{ 'true' if digest_started else 'false' }};
 const deleted       = {{ 'true' if deleted        else 'false' }};
+const savedPublishers = window.location.hash === '#tab-publishers';
 const activeTab = hash
-  || (testSent      ? '#tab-email'  : null)
-  || (fetchStarted  ? '#tab-fetch'  : null)
-  || (digestStarted ? '#tab-email'  : null)
-  || (deleted       ? '#tab-papers' : null);
+  || (savedPublishers ? '#tab-publishers' : null)
+  || (testSent        ? '#tab-email'      : null)
+  || (fetchStarted    ? '#tab-fetch'      : null)
+  || (digestStarted   ? '#tab-email'      : null)
+  || (deleted         ? '#tab-papers'     : null);
 if (activeTab) {
   const tab = document.querySelector(`[href="${activeTab}"]`);
   if (tab) tab.click();

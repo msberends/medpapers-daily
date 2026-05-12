@@ -103,6 +103,42 @@ async def startup():
     app.state.templates.env.filters["from_json"] = __import__("json").loads
     app.state.templates.env.filters["norm_pub_date"] = _norm_pub_date
     app.state.templates.env.filters["urlenc"] = quote_plus
+    app.state.templates.env.filters["clean_journal"] = lambda s: re.sub(r"\s*\([^)]*\)", "", s or "").strip()
+
+    def dim_initials(author: str) -> str:
+        author = (author or "").strip()
+        if "," in author:
+            last, _, first = author.partition(",")
+            first = first.strip()
+            if first:
+                return f'<span class="text-body">{last.strip()}</span><span class="text-muted">, {first}</span>'
+            return f'<span class="text-body">{last.strip()}</span>'
+        # fallback for "Last AB" initials format
+        m = re.match(r'^(.*?)(\s+[A-Z]+)$', author)
+        if m:
+            return (f'<span class="text-body">{m.group(1)}</span>'
+                    f'<span class="text-muted"> {m.group(2).strip()}</span>')
+        return author
+
+    app.state.templates.env.filters["dim_initials"] = dim_initials
+
+    def publisher_display(publisher: str, publisher_map: dict, predatory: list) -> str:
+        if not publisher:
+            return ""
+        short = (publisher_map or {}).get(publisher, publisher)
+        if publisher in (predatory or []):
+            return (f'<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>'
+                    f'<span class="text-danger">{short}</span>')
+        return short
+
+    app.state.templates.env.filters["publisher_display"] = publisher_display
+
+    def publisher_short_filter(publisher: str, mapping: dict | None = None) -> str:
+        if not publisher:
+            return ""
+        return (mapping or {}).get(publisher, publisher)
+
+    app.state.templates.env.filters["publisher_short"] = publisher_short_filter
 
     def to_local(dt_str: str) -> str:
         if not dt_str:

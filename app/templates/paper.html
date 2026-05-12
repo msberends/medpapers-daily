@@ -16,13 +16,13 @@
 
   {# Authors #}
   <p class="text-muted mb-1">
-    {% for author in paper.authors_list %}{{ author }}{% if not loop.last %}; {% endif %}{% endfor %}
+    {% for author in paper.authors_list %}{{ author | dim_initials | safe }}{% if not loop.last %}; {% endif %}{% endfor %}
   </p>
 
   {# Journal metadata #}
   <p class="mb-2">
-    <em>{{ paper.journal }}</em>
-    {% if paper.publisher %}<span class="text-muted small">&bull; {{ paper.publisher }}</span>{% endif %}
+    <em>{{ paper.journal | clean_journal }}</em>
+    {% if paper.publisher %}<span class="text-muted small">&bull; {{ paper.publisher | publisher_short(config.get('publisher_map', {})) }}</span>{% endif %}
     {% set pub_date_norm = paper.pub_date | norm_pub_date %}
     {% if paper.epub_date %}
       {% if pub_date_norm and pub_date_norm != paper.epub_date %}

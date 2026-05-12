@@ -5,6 +5,8 @@
 <style>
   .form-label { font-weight: 500; }
   .profile-row, .mesh-row { background: #f8f9fa; border-radius: 6px; }
+  .tip-box { background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle);
+             color: var(--bs-primary-text-emphasis); border-radius: 6px; }
 </style>
 {% endblock %}
 
@@ -24,7 +26,7 @@
     <h3 class="mb-0"><i class="bi bi-person-gear me-2"></i>{{ target_user.username }}</h3>
     {% if target_user.is_admin %}<span class="badge bg-warning text-dark">Admin</span>{% endif %}
   </div>
-  <p class="text-muted mb-4">Edit search profiles, topic classification, and preferences for this user.</p>
+  <p class="text-muted mb-4">Configure what this user monitors, how often, and how results are presented. Users can also adjust most of these settings themselves from their own Settings page.</p>
 
   {% if saved %}
   <div class="alert alert-success alert-dismissible py-2" role="alert">
@@ -39,7 +41,7 @@
   <ul class="nav nav-tabs mb-4">
     <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-general">General</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">MeSH Topic Map</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">Topic Map</a></li>
   </ul>
 
   <div class="tab-content">
@@ -47,6 +49,7 @@
     {# ── General ── #}
     <div class="tab-pane fade show active" id="tab-general">
       <form method="post" action="/admin/users/{{ target_user.username }}/save">
+
         <div class="card mb-3">
           <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email</div>
           <div class="card-body row g-3">
@@ -54,52 +57,60 @@
               <label class="form-label">Email address</label>
               <input type="email" name="email" class="form-control"
                      value="{{ cfg.get('email', '') }}" required>
+              <div class="form-text">Digest emails are delivered to this address. Must be a mailbox the user actively monitors.</div>
             </div>
-            <div class="col-md-5 d-flex flex-column gap-2 pt-md-4 mt-md-2">
+            <div class="col-md-5 d-flex flex-column gap-3 pt-md-4 mt-md-2">
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="fetch_enabled"
                        id="fetchEnabled" {% if cfg.get('fetch_enabled', True) %}checked{% endif %}>
-                <label class="form-check-label" for="fetchEnabled">Fetch enabled</label>
+                <label class="form-check-label" for="fetchEnabled">Fetching enabled</label>
+                <div class="form-text">Turn this off to pause all scheduled fetching for this account without deleting any data. Useful while setting up a new user or during a planned break.</div>
               </div>
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="email_suppress_empty"
                        id="suppressEmpty" {% if cfg.get('email_suppress_empty', True) %}checked{% endif %}>
                 <label class="form-check-label" for="suppressEmpty">Suppress empty digest</label>
+                <div class="form-text">When on, no email is sent on days when nothing new was found. When off, the user receives a brief confirmation that the fetch ran successfully.</div>
               </div>
             </div>
           </div>
         </div>
 
         <div class="card mb-3">
-          <div class="card-header fw-semibold"><i class="bi bi-calendar3 me-1"></i>Lookback Window</div>
+          <div class="card-header fw-semibold"><i class="bi bi-clock-history me-1"></i>Lookback Window</div>
           <div class="card-body row g-3">
             <div class="col-md-4">
               <label class="form-label">Days to look back</label>
               <input type="number" name="lookback_days" class="form-control" style="max-width:100px"
                      value="{{ cfg.get('lookback_days', 7) }}" min="1" max="90">
-              <div class="form-text">How many days back PubMed is queried on each fetch run (default 7).</div>
+            </div>
+            <div class="col-12">
+              <div class="form-text">Each fetch queries PubMed for papers published within this many days. This should match the user's fetch frequency: 7 for daily or weekly schedules, 31 or more for monthly. Setting it too short risks missing papers that were indexed by PubMed shortly after publication.</div>
             </div>
           </div>
         </div>
 
         <div class="card mb-4">
           <div class="card-header fw-semibold"><i class="bi bi-funnel me-1"></i>Journal Quality Filter</div>
-          <div class="card-body row g-3">
-            <div class="col-md-6">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="q2_hard"
-                       id="q2Hard" {% if cfg.get('q2_hard', True) %}checked{% endif %}>
-                <label class="form-check-label fw-medium" for="q2Hard">Exclude Q3/Q4 &amp; unranked</label>
+          <div class="card-body">
+            <p class="text-muted small mb-3">Journals indexed in the SCImago database are ranked Q1 (top 25% by citation impact) through Q4 (bottom 25%). Filtering relies on the Scopus ranking data uploaded in the Admin panel. If that data has not been loaded yet, all journals appear as Unranked and no papers are filtered out.</p>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="q2_hard"
+                         id="q2Hard" {% if cfg.get('q2_hard', True) %}checked{% endif %}>
+                  <label class="form-check-label fw-medium" for="q2Hard">Exclude Q3, Q4 and unranked journals</label>
+                </div>
+                <div class="form-text ms-4 ps-1">Papers from lower-ranked or unlisted journals are hidden from this user's feed and not stored during future fetches. Papers already in the library are unaffected.</div>
               </div>
-              <div class="form-text ms-4 ps-1">Hard filter — papers below Q2 are never stored.</div>
-            </div>
-            <div class="col-md-6">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="show_quartile"
-                       id="showQuartile" {% if cfg.get('show_quartile', True) %}checked{% endif %}>
-                <label class="form-check-label fw-medium" for="showQuartile">Show quartile rankings</label>
+              <div class="col-md-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="show_quartile"
+                         id="showQuartile" {% if cfg.get('show_quartile', True) %}checked{% endif %}>
+                  <label class="form-check-label fw-medium" for="showQuartile">Show quartile badge on papers</label>
+                </div>
+                <div class="form-text ms-4 ps-1">Displays a Q1, Q2, Q3 or Q4 badge alongside each paper in this user's feed. A display-only setting with no effect on which papers are stored or shown.</div>
               </div>
-              <div class="form-text ms-4 ps-1">Show Q1–Q4 and Unranked badges on papers. No effect on filtering.</div>
             </div>
           </div>
         </div>
@@ -121,11 +132,26 @@
     {# ── Search Profiles ── #}
     <div class="tab-pane fade" id="tab-profiles">
       <form method="post" action="/admin/users/{{ target_user.username }}/save">
+
+        <div class="tip-box p-3 mb-4">
+          <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How search profiles work</p>
+          <p class="small mb-2">Each profile is a named PubMed query that runs on this user's fetch schedule. Papers returned by any active profile are added to the user's library, deduplicated by PubMed ID. You can configure as many profiles as needed and enable or disable them individually.</p>
+          <p class="fw-semibold small mb-1">Writing a good query</p>
+          <ul class="small mb-2">
+            <li>Use <strong>[MeSH]</strong> to match controlled vocabulary terms: <code>"Artificial Intelligence"[MeSH]</code></li>
+            <li>Combine terms with <strong>AND</strong>, <strong>OR</strong>, and <strong>NOT</strong>: <code>("machine learning"[MeSH] OR "deep learning") AND "clinical microbiology"</code></li>
+            <li>Search specific fields with tags: <code>[tiab]</code> for title and abstract, <code>[au]</code> for author, <code>[jour]</code> for journal</li>
+            <li>Phrase search with quotes: <code>"antimicrobial resistance"</code></li>
+          </ul>
+          <p class="small mb-0">Use <a href="https://pubmed.ncbi.nlm.nih.gov/advanced/" target="_blank" rel="noopener">PubMed Advanced Search</a> to build and test queries interactively before pasting them here.</p>
+        </div>
+
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <p class="text-muted mb-0">Named PubMed queries that run each fetch cycle.</p>
+          <p class="text-muted small mb-0">Changes take effect on this user's next fetch run.</p>
           <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
                   onclick="addProfile()"><i class="bi bi-plus-lg me-1"></i>Add profile</button>
         </div>
+
         <div id="profilesList">
           {% for p in cfg.get('search_profiles', []) %}
           <div class="profile-row p-3 mb-3 border">
@@ -133,12 +159,12 @@
               <div class="col-md-3">
                 <label class="form-label small">Profile name</label>
                 <input type="text" name="profile_name" class="form-control form-control-sm"
-                       value="{{ p.name }}" required>
+                       value="{{ p.name }}" placeholder="e.g. AMR Surveillance" required>
               </div>
               <div class="col-md-8">
                 <label class="form-label small">PubMed query</label>
                 <textarea name="profile_query" class="form-control form-control-sm font-monospace"
-                          rows="3">{{ p.query }}</textarea>
+                          rows="3" placeholder='e.g. "antimicrobial resistance"[MeSH]'>{{ p.query }}</textarea>
               </div>
               <div class="col-md-1 d-flex align-items-end justify-content-end pb-1">
                 <button type="button" class="btn btn-sm btn-outline-danger"
@@ -169,20 +195,31 @@
     {# ── Topic Map ── #}
     <div class="tab-pane fade" id="tab-mesh">
       <form method="post" action="/admin/users/{{ target_user.username }}/save">
+
+        <div class="tip-box p-3 mb-4">
+          <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How topic classification works</p>
+          <p class="small mb-2">PubMed assigns controlled vocabulary terms called <strong>MeSH headings</strong> (Medical Subject Headings) to every indexed paper. The topic map below translates those terms into the user's own category labels, which appear as coloured badges in their feed.</p>
+          <p class="small mb-2">When a paper carries one or more MeSH terms that appear in the map, it receives the corresponding topic label. Multiple MeSH terms can map to the same label, and a paper can belong to more than one topic. Papers with no matching terms are shown as <em>Unclassified</em>.</p>
+          <p class="small mb-0">To find the exact MeSH heading for a concept, use the <a href="https://www.ncbi.nlm.nih.gov/mesh/" target="_blank" rel="noopener">NLM MeSH Browser</a>. The term must match character-for-character, including capitalisation.</p>
+        </div>
+
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <p class="text-muted mb-0">Map MeSH terms to topic labels for this user.</p>
+          <p class="text-muted small mb-0">Topic labels are applied at display time and take effect immediately without re-fetching.</p>
           <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
                   onclick="addMesh()"><i class="bi bi-plus-lg me-1"></i>Add mapping</button>
         </div>
+
         <div class="row g-1 mb-2 px-2">
-          <div class="col-6 small fw-semibold text-muted">MeSH term</div>
+          <div class="col-6 small fw-semibold text-muted">MeSH heading (exact match)</div>
           <div class="col-5 small fw-semibold text-muted">Topic label</div>
         </div>
         <div id="meshList">
           {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
           <div class="mesh-row d-flex gap-2 align-items-center p-2 mb-2 border">
-            <input type="text" name="mesh_term" class="form-control form-control-sm" value="{{ term }}">
-            <input type="text" name="mesh_topic" class="form-control form-control-sm" value="{{ topic }}">
+            <input type="text" name="mesh_term" class="form-control form-control-sm"
+                   value="{{ term }}" placeholder="e.g. Artificial Intelligence">
+            <input type="text" name="mesh_topic" class="form-control form-control-sm"
+                   value="{{ topic }}" placeholder="e.g. AI">
             <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0"
                     onclick="this.closest('.mesh-row').remove()">
               <i class="bi bi-trash"></i>
@@ -224,7 +261,7 @@ function addProfile() {
       </div>
       <div class="col-md-8">
         <label class="form-label small">PubMed query</label>
-        <textarea name="profile_query" class="form-control form-control-sm font-monospace" rows="3"></textarea>
+        <textarea name="profile_query" class="form-control form-control-sm font-monospace" rows="3" placeholder='e.g. "antimicrobial resistance"[MeSH]'></textarea>
       </div>
       <div class="col-md-1 d-flex align-items-end justify-content-end pb-1">
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.profile-row').remove()">
@@ -236,7 +273,7 @@ function addProfile() {
         <div class="form-check form-switch">
           <input class="form-check-input" type="checkbox" id="pe_${idx}"
                  onchange="this.previousElementSibling.value = this.checked ? '1' : '0'" checked>
-          <label class="form-check-label small text-muted" for="pe_${idx}">Enabled</label>
+          <label class="form-check-label small text-muted" for="pe_${idx}">Active</label>
         </div>
       </div>
     </div>
@@ -246,8 +283,8 @@ function addProfile() {
 
 function addMesh() {
   const html = `<div class="mesh-row d-flex gap-2 align-items-center p-2 mb-2 border">
-    <input type="text" name="mesh_term" class="form-control form-control-sm" placeholder="MeSH term">
-    <input type="text" name="mesh_topic" class="form-control form-control-sm" placeholder="Topic label">
+    <input type="text" name="mesh_term" class="form-control form-control-sm" placeholder="e.g. Artificial Intelligence">
+    <input type="text" name="mesh_topic" class="form-control form-control-sm" placeholder="e.g. AI">
     <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="this.closest('.mesh-row').remove()">
       <i class="bi bi-trash"></i>
     </button>

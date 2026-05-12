@@ -7,6 +7,8 @@
   .form-label { font-weight: 500; }
   .profile-row, .mesh-row { background: #f8f9fa; border-radius: 6px; }
   .handle { cursor: grab; color: #adb5bd; }
+  .tip-box { background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle);
+             color: var(--bs-primary-text-emphasis); border-radius: 6px; }
 </style>
 {% endblock %}
 
@@ -15,7 +17,7 @@
 <div class="col-lg-9">
 
   <h3 class="mb-1"><i class="bi bi-person-gear me-2"></i>Settings</h3>
-  <p class="text-muted mb-4">Manage your search profiles, topic classifications, and preferences.</p>
+  <p class="text-muted mb-4">Configure what you monitor, how often, and how results are presented to you.</p>
 
   {% if saved %}
   <div class="alert alert-success alert-dismissible py-2" role="alert">
@@ -30,7 +32,7 @@
   <ul class="nav nav-tabs mb-4" id="settingsTabs">
     <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-general">General</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">MeSH Topic Map</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">Topic Map</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-password">Password</a></li>
   </ul>
 
@@ -39,6 +41,7 @@
     {# ── General ── #}
     <div class="tab-pane fade show active" id="tab-general">
       <form method="post" action="/settings/save">
+
         <div class="card mb-3">
           <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email</div>
           <div class="card-body row g-3">
@@ -46,20 +49,20 @@
               <label class="form-label">Email address</label>
               <input type="email" name="email" class="form-control"
                      value="{{ cfg.get('email', '') }}" required>
-              <div class="form-text">Recipient address for your daily digest.</div>
+              <div class="form-text">Your digest emails are delivered here. Use an address you check regularly.</div>
             </div>
-            <div class="col-md-5 d-flex flex-column gap-2 pt-md-4 mt-md-2">
+            <div class="col-md-5 d-flex flex-column gap-3 pt-md-4 mt-md-2">
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="fetch_enabled"
                        id="fetchEnabled" {% if cfg.get('fetch_enabled', True) %}checked{% endif %}>
-                <label class="form-check-label" for="fetchEnabled">Fetch enabled</label>
-                <div class="form-text">Uncheck to pause all fetching for your account.</div>
+                <label class="form-check-label" for="fetchEnabled">Fetching enabled</label>
+                <div class="form-text">Turn this off to pause all scheduled fetching for your account. Your existing library is not affected.</div>
               </div>
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="email_suppress_empty"
                        id="suppressEmpty" {% if cfg.get('email_suppress_empty', True) %}checked{% endif %}>
                 <label class="form-check-label" for="suppressEmpty">Suppress empty digest</label>
-                <div class="form-text">No email on days with nothing new.</div>
+                <div class="form-text">When on, no email is sent on days when nothing new was found. When off, you receive a brief confirmation that the fetch ran.</div>
               </div>
             </div>
           </div>
@@ -68,6 +71,7 @@
         <div class="card mb-3">
           <div class="card-header fw-semibold"><i class="bi bi-calendar3 me-1"></i>Fetch Schedule</div>
           <div class="card-body">
+            <p class="text-muted small mb-3">Controls how often PubMed is queried for new papers matching your search profiles. The digest email is only sent on fetch days. If you choose weekly or monthly, set the lookback window below to cover the full interval so no papers are missed.</p>
             <div class="row g-3 align-items-end">
               <div class="col-auto">
                 <label class="form-label">Frequency</label>
@@ -90,62 +94,65 @@
                 <label class="form-label">Day of month</label>
                 <input type="number" name="fetch_schedule_dom" class="form-control" style="width:90px"
                        min="1" max="28" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
-                <div class="form-text">1–28</div>
+                <div class="form-text">Day 1 to 28</div>
               </div>
             </div>
-            <div class="form-text mt-2">How often PubMed is queried for your account. The email digest only sends on fetch days.</div>
           </div>
         </div>
 
         <div class="card mb-3">
-          <div class="card-header fw-semibold"><i class="bi bi-calendar3 me-1"></i>Lookback Window</div>
+          <div class="card-header fw-semibold"><i class="bi bi-clock-history me-1"></i>Lookback Window</div>
           <div class="card-body row g-3">
             <div class="col-md-4">
               <label class="form-label">Days to look back</label>
               <input type="number" name="lookback_days" class="form-control" style="max-width:100px"
                      value="{{ cfg.get('lookback_days', 7) }}" min="1" max="90">
-              <div class="form-text">How many days back PubMed is queried on each fetch run (default 7).</div>
+            </div>
+            <div class="col-12">
+              <div class="form-text">Each fetch queries PubMed for papers published within this many days. Match this to your fetch frequency: 7 for daily or weekly, 31 or more for monthly. Setting it too short risks missing papers that were indexed by PubMed slightly after they were published.</div>
             </div>
           </div>
         </div>
 
         <div class="card mb-4">
           <div class="card-header fw-semibold"><i class="bi bi-funnel me-1"></i>Journal Quality Filter</div>
-          <div class="card-body row g-3">
-            <div class="col-md-6">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="q2_hard"
-                       id="q2Hard" {% if cfg.get('q2_hard', True) %}checked{% endif %}>
-                <label class="form-check-label fw-medium" for="q2Hard">Exclude Q3/Q4 &amp; unranked</label>
-              </div>
-              <div class="form-text ms-4 ps-1">Hides Q3, Q4, and unranked papers from your feed, and skips storing them on future fetches.</div>
-            </div>
-            <div class="col-md-6">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="show_quartile"
-                       id="showQuartile" {% if cfg.get('show_quartile', True) %}checked{% endif %}>
-                <label class="form-check-label fw-medium" for="showQuartile">Show quartile rankings</label>
-              </div>
-              <div class="form-text ms-4 ps-1">Show Q1–Q4 and Unranked badges on papers. No effect on which papers are shown.</div>
-            </div>
-            <div class="col-12 mt-2">
-              <label class="form-label fw-medium">Journal metric shown in badges</label>
-              <div class="d-flex flex-wrap gap-3">
-                {% set jm = cfg.get('journal_metric', 'if') %}
-                <div class="form-check">
-                  <input class="form-check-input" type="radio" name="journal_metric" id="jmIF" value="if" {% if jm == 'if' %}checked{% endif %}>
-                  <label class="form-check-label" for="jmIF"><strong>IF</strong> &mdash; Citations / Doc. (2 years)</label>
+          <div class="card-body">
+            <p class="text-muted small mb-3">Journals indexed in the SCImago database are ranked from Q1 (top 25% by citation impact) to Q4 (bottom 25%). Q1 and Q2 journals are generally considered high-impact peer-reviewed venues. This ranking data must be loaded by your administrator before filtering takes effect.</p>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="q2_hard"
+                         id="q2Hard" {% if cfg.get('q2_hard', True) %}checked{% endif %}>
+                  <label class="form-check-label fw-medium" for="q2Hard">Exclude Q3, Q4 and unranked journals</label>
                 </div>
-                <div class="form-check">
-                  <input class="form-check-input" type="radio" name="journal_metric" id="jmCS" value="citescore" {% if jm == 'citescore' %}checked{% endif %}>
-                  <label class="form-check-label" for="jmCS"><strong>CiteScore</strong> &mdash; Citations / Doc. (3 years)</label>
+                <div class="form-text ms-4 ps-1">Papers from lower-ranked or unlisted journals are hidden from your feed and not stored during future fetches. Papers already in your library are unaffected.</div>
+              </div>
+              <div class="col-md-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="show_quartile"
+                         id="showQuartile" {% if cfg.get('show_quartile', True) %}checked{% endif %}>
+                  <label class="form-check-label fw-medium" for="showQuartile">Show quartile badge on papers</label>
                 </div>
-                <div class="form-check">
-                  <input class="form-check-input" type="radio" name="journal_metric" id="jmSJR" value="sjr" {% if jm == 'sjr' %}checked{% endif %}>
-                  <label class="form-check-label" for="jmSJR"><strong>SJR</strong> &mdash; SCImago Journal Rank</label>
+                <div class="form-text ms-4 ps-1">Displays a Q1, Q2, Q3 or Q4 badge alongside each paper. Turning this off is a display-only change and does not affect which papers are shown.</div>
+              </div>
+              <div class="col-12 mt-2">
+                <label class="form-label fw-medium">Metric shown inside the quartile badge</label>
+                <div class="d-flex flex-wrap gap-3 mt-1">
+                  {% set jm = cfg.get('journal_metric', 'if') %}
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="journal_metric" id="jmIF" value="if" {% if jm == 'if' %}checked{% endif %}>
+                    <label class="form-check-label" for="jmIF"><strong>Impact Factor</strong> <span class="text-muted small">(citations per document, 2-year window)</span></label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="journal_metric" id="jmCS" value="citescore" {% if jm == 'citescore' %}checked{% endif %}>
+                    <label class="form-check-label" for="jmCS"><strong>CiteScore</strong> <span class="text-muted small">(citations per document, 3-year window)</span></label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="journal_metric" id="jmSJR" value="sjr" {% if jm == 'sjr' %}checked{% endif %}>
+                    <label class="form-check-label" for="jmSJR"><strong>SJR</strong> <span class="text-muted small">(SCImago Journal Rank, weighted citation prestige)</span></label>
+                  </div>
                 </div>
               </div>
-              <div class="form-text">The numeric value shown next to the Q1–Q4 badge.</div>
             </div>
           </div>
         </div>
@@ -154,7 +161,7 @@
           <div class="card-header fw-semibold"><i class="bi bi-palette me-1"></i>Appearance</div>
           <div class="card-body row g-3">
             <div class="col-md-6">
-              <label class="form-label">Theme</label>
+              <label class="form-label">Colour theme</label>
               <select name="bootstrap_theme" class="form-select" style="max-width:220px">
                 {% for t in valid_themes %}
                 <option value="{{ t }}" {% if cfg.get('bootstrap_theme', config.get('bootstrap_theme', 'flatly')) == t %}selected{% endif %}>
@@ -162,7 +169,7 @@
                 </option>
                 {% endfor %}
               </select>
-              <div class="form-text">Takes effect on next page load.</div>
+              <div class="form-text">Applies across the whole application after the next page load. Your choice overrides the administrator's default.</div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Papers per page</label>
@@ -171,7 +178,7 @@
                 <option value="{{ n }}" {% if cfg.get('page_size', 50) == n %}selected{% endif %}>{{ n }}</option>
                 {% endfor %}
               </select>
-              <div class="form-text">Number of papers shown per feed page.</div>
+              <div class="form-text">How many papers are shown per page in your feed. Larger values load more at once but may feel slower on long lists.</div>
             </div>
           </div>
         </div>
@@ -196,11 +203,26 @@
     {# ── Search Profiles ── #}
     <div class="tab-pane fade" id="tab-profiles">
       <form method="post" action="/settings/save" id="profilesForm">
+
+        <div class="tip-box p-3 mb-4">
+          <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How search profiles work</p>
+          <p class="small mb-2">Each profile is a named PubMed query that runs on your fetch schedule. Papers returned by any of your profiles are added to your library, deduplicated by PubMed ID. You can have as many profiles as you like, and enable or disable them individually without deleting them.</p>
+          <p class="fw-semibold small mb-1">Writing a good query</p>
+          <ul class="small mb-2">
+            <li>Use <strong>[MeSH]</strong> to match controlled vocabulary terms: <code>"Artificial Intelligence"[MeSH]</code></li>
+            <li>Combine terms with <strong>AND</strong>, <strong>OR</strong>, and <strong>NOT</strong>: <code>("machine learning"[MeSH] OR "deep learning") AND "clinical microbiology"</code></li>
+            <li>Search specific fields with tags: <code>[tiab]</code> for title and abstract, <code>[au]</code> for author, <code>[jour]</code> for journal</li>
+            <li>Phrase search with quotes: <code>"antimicrobial resistance"</code></li>
+          </ul>
+          <p class="small mb-0">Use <a href="https://pubmed.ncbi.nlm.nih.gov/advanced/" target="_blank" rel="noopener">PubMed Advanced Search</a> to build and test queries interactively before pasting them here.</p>
+        </div>
+
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <p class="text-muted mb-0">Define named PubMed queries. Each runs on your fetch schedule and papers are labelled with the profile name as a fallback topic.</p>
+          <p class="text-muted small mb-0">Changes take effect on the next fetch run.</p>
           <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
                   onclick="addProfile()"><i class="bi bi-plus-lg me-1"></i>Add profile</button>
         </div>
+
         <div id="profilesList">
           {% for p in cfg.get('search_profiles', []) %}
           <div class="profile-row p-3 mb-3 border">
@@ -228,7 +250,7 @@
                   <input class="form-check-input" type="checkbox" id="pe_{{ loop.index }}"
                          onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'"
                          {% if p.get('enabled', True) %}checked{% endif %}>
-                  <label class="form-check-label small text-muted" for="pe_{{ loop.index }}">Enabled</label>
+                  <label class="form-check-label small text-muted" for="pe_{{ loop.index }}">Active</label>
                 </div>
               </div>
             </div>
@@ -261,13 +283,22 @@
     {# ── Topic Map ── #}
     <div class="tab-pane fade" id="tab-mesh">
       <form method="post" action="/settings/save" id="meshForm">
+
+        <div class="tip-box p-3 mb-4">
+          <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How topic classification works</p>
+          <p class="small mb-2">PubMed assigns controlled vocabulary terms called <strong>MeSH headings</strong> (Medical Subject Headings) to every indexed paper. The topic map below lets you translate those into your own meaningful category labels, which appear as coloured badges in your feed.</p>
+          <p class="small mb-2">When a paper carries one or more MeSH terms that appear in your map, it receives the corresponding topic label. Multiple MeSH terms can map to the same label, and a paper can belong to more than one topic. Papers with no matching terms are shown as <em>Unclassified</em>.</p>
+          <p class="small mb-0">To find the exact MeSH heading for a concept, use the <a href="https://www.ncbi.nlm.nih.gov/mesh/" target="_blank" rel="noopener">NLM MeSH Browser</a>. The term must match character-for-character, including capitalisation.</p>
+        </div>
+
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <p class="text-muted mb-0">Map MeSH terms to your own topic labels. Papers matching a term get that label as a tag.</p>
+          <p class="text-muted small mb-0">Topic labels are applied at display time, so changes take effect immediately without re-fetching.</p>
           <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
                   onclick="addMesh()"><i class="bi bi-plus-lg me-1"></i>Add mapping</button>
         </div>
+
         <div class="row g-1 mb-2 px-2">
-          <div class="col-6 small fw-semibold text-muted">MeSH term (exact, as in PubMed)</div>
+          <div class="col-6 small fw-semibold text-muted">MeSH heading (exact match)</div>
           <div class="col-5 small fw-semibold text-muted">Your topic label</div>
         </div>
         <div id="meshList">
@@ -313,6 +344,7 @@
       <div class="card" style="max-width:480px">
         <div class="card-header fw-semibold"><i class="bi bi-lock me-1"></i>Change Password</div>
         <div class="card-body">
+          <p class="text-muted small mb-3">You will remain logged in on all devices after changing your password. Choose something you do not use elsewhere.</p>
           <form method="post" action="/settings/change-password">
             <div class="mb-3">
               <label class="form-label">Current password</label>
@@ -363,7 +395,7 @@ function addProfile() {
         <div class="form-check form-switch">
           <input class="form-check-input" type="checkbox" id="pe_${idx}"
                  onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'" checked>
-          <label class="form-check-label small text-muted" for="pe_${idx}">Enabled</label>
+          <label class="form-check-label small text-muted" for="pe_${idx}">Active</label>
         </div>
       </div>
     </div>

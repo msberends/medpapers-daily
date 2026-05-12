@@ -38,8 +38,8 @@ There is no test suite.
 - Starlette 1.0.0 `TemplateResponse` signature: `TemplateResponse(request, name, context)`
 
 ### Data flow
-1. `fetch.py` (cron 06:00): reads `users/*.yaml`, queries PubMed via NCBI E-utilities, filters Q3/Q4 papers using `data/scopus.csv` (SCImago CSV), calls Unpaywall for OA URLs, writes to SQLite.
-2. `email_digest.py` (cron 06:15): queries SQLite for each user's unread papers, sends HTML digest via SMTP.
+1. `fetch.py` (cron): reads `users/*.yaml`, queries PubMed via NCBI E-utilities, filters Q3/Q4 papers using `data/scopus.csv` (SCImago CSV), calls Unpaywall for OA URLs, writes to SQLite.
+2. `email_digest.py` (cron, runs after fetch): queries SQLite for each user's unread papers, sends HTML digest via SMTP.
 3. FastAPI app: serves the web UI for browsing, starring, foldering, and exporting papers.
 
 ### Configuration
@@ -92,7 +92,7 @@ Similarly, if the `.gitignore` needs updating (e.g. a new secret file is introdu
 These explain why the code looks the way it does — don't change these patterns without good reason.
 
 - **No LLM classification.** Topic classification is deterministic via `mesh_topic_map` only. LLMs introduce hallucination risk in a tool that must be reliable for scientific monitoring.
-- **No auto-mark-as-read.** Visiting `/paper/<pmid>` does NOT mark a paper read. Only an explicit button press does. Prevents silent accidental marking when skimming.
+- **Auto-mark-as-read on paper open.** Visiting `/paper/<pmid>` marks the paper as read immediately (inside the same DB transaction as the page load). The paper page therefore always shows "Mark unread". The feed's toggle-read button still works for toggling without opening the full page.
 - **RIS over BibTeX.** EndNote opens `.ris` files natively on double-click. BibTeX requires an import wizard. RIS is the correct choice for this user's workflow.
 - **Cron over APScheduler.** Cron is transparent and decoupled from the FastAPI process lifecycle. APScheduler would couple fetch logic to the web process.
 - **SQLite over Postgres.** Volume is ~10 papers/day for a handful of users. WAL mode is sufficient. Simplicity is the priority.

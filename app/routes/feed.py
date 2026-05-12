@@ -105,7 +105,7 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
 @router.get("/feed", response_class=HTMLResponse)
 async def feed(
     request: Request,
-    view: str = "all",
+    view: str = "unread",
     folder_id: Optional[int] = None,
     topics: Optional[str] = None,
     quartile: str = "q1q2",
@@ -153,6 +153,10 @@ async def feed(
         ).fetchone()[0]
         starred_count = conn.execute(
             "SELECT COUNT(*) FROM user_papers WHERE user_id = ? AND is_starred = 1",
+            (user["user_id"],),
+        ).fetchone()[0]
+        total_user_papers = conn.execute(
+            "SELECT COUNT(*) FROM user_papers WHERE user_id = ?",
             (user["user_id"],),
         ).fetchone()[0]
 
@@ -222,6 +226,7 @@ async def feed(
         "total": total,
         "total_pages": total_pages,
         "page_url_base": page_url_base,
+        "total_user_papers": total_user_papers,
         "config": request.app.state.config,
     })
 

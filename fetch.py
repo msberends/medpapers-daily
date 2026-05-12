@@ -544,7 +544,7 @@ def main():
             if user_email and user_id is not None:
                 send_error_email(
                     config, db_path, user_id, user_email, "Fetch error",
-                    f"Papers Daily fetch failed for {username}:\n\n{error_message}",
+                    f"{app_name} fetch failed for {username}:\n\n{error_message}",
                 )
 
         total_found = sum(p.get("found", 0) for p in profile_details)

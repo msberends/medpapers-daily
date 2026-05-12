@@ -23,6 +23,16 @@ BASE_DIR = Path(__file__).parent
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
+def _clean_journal(journal: str) -> str:
+    return re.sub(r"\s*\([^)]*\)", "", journal or "").strip()
+
+
+def _publisher_short(publisher: str, config: dict) -> str:
+    if not publisher:
+        return ""
+    return (config.get("publisher_map") or {}).get(publisher, publisher)
+
+
 def load_config() -> dict:
     with open(BASE_DIR / "config.yaml") as f:
         return yaml.safe_load(f) or {}
@@ -124,15 +134,29 @@ def _badge(text: str, bg: str, border: str = "") -> str:
             f'background:{bg};{border_css}color:#333;font-size:.8em;font-weight:600">{text}</span>')
 
 
+def _dim_initials(author: str) -> str:
+    author = (author or "").strip()
+    if "," in author:
+        last, _, first = author.partition(",")
+        first = first.strip()
+        if first:
+            return f'{last.strip()}<span style="color:#adb5bd">, {first}</span>'
+        return last.strip()
+    m = re.match(r'^(.*?)(\s+[A-Z]+)$', author)
+    if m:
+        return f'{m.group(1)}<span style="color:#adb5bd"> {m.group(2).strip()}</span>'
+    return author
+
+
 def _author_summary(authors_json: str) -> str:
     authors = json.loads(authors_json or "[]")
     if not authors:
         return ""
     if len(authors) == 1:
-        return authors[0]
+        return _dim_initials(authors[0])
     if len(authors) == 2:
-        return f"{authors[0]}; {authors[1]}"
-    return f"{authors[0]} et al. (last: {authors[-1]})"
+        return f"{_dim_initials(authors[0])}; {_dim_initials(authors[1])}"
+    return f"{_dim_initials(authors[0])} et al. (last: {_dim_initials(authors[-1])})"
 
 
 def _proxy_url(doi: str, config: dict) -> str | None:
@@ -157,12 +181,14 @@ def _proxy_url(doi: str, config: dict) -> str | None:
 def build_html_digest(papers: list, mesh_topic_map: dict, base_url: str,
                       username: str, today_str: str, config: dict | None = None,
                       journal_metric: str = "if") -> str:
+    app_name = (config or {}).get("app_name") or "Papers Daily"
     rows_html = ""
     for p in papers:
         pmid = p["pmid"]
         title = p["title"]
         authors_str = _author_summary(p["authors"])
-        journal = p["journal"]
+        journal = _clean_journal(p["journal"])
+        publisher = _publisher_short(p.get("publisher") or "", config or {})
         pub_date = p["pub_date"] or ""
         quartile = p["scopus_quartile"] or ""
         abstract = p["abstract"] or ""
@@ -213,6 +239,7 @@ def build_html_digest(papers: list, mesh_topic_map: dict, base_url: str,
   <p style="margin:0 0 4px;color:#555;font-size:.9em">{authors_str}</p>
   <p style="margin:0 0 8px;color:#555;font-size:.9em">
     <em>{journal}</em>
+    {f'<span style="color:#888">&bull; {publisher}</span>' if publisher else ''}
     {f'&bull; {pub_date}' if pub_date else ''}
     {f'&bull; {doi_link}' if doi_link else ''}
   </p>
@@ -220,7 +247,7 @@ def build_html_digest(papers: list, mesh_topic_map: dict, base_url: str,
    f'<p style="margin:8px 0 0;font-size:.9em;color:#333">{abstract}</p></details>' if abstract else ''}
   <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
     <a href="{pubmed_url}" style="padding:4px 10px;background:#6c757d;color:#fff;border-radius:4px;text-decoration:none;font-size:.85em">View on PubMed</a>
-    <a href="{paper_url}" style="padding:4px 10px;background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;font-size:.85em">View on Papers Daily</a>
+    <a href="{paper_url}" style="padding:4px 10px;background:#0d6efd;color:#fff;border-radius:4px;text-decoration:none;font-size:.85em">View on {app_name}</a>
     {f'<a href="{oa_url}" style="padding:4px 10px;background:#198754;color:#fff;border-radius:4px;text-decoration:none;font-size:.85em">Full Text</a>' if oa_url else ''}
     {f'<a href="{proxy_link}" style="padding:4px 10px;background:#dc3545;color:#fff;border-radius:4px;text-decoration:none;font-size:.85em">&#128274; Full Text via Proxy</a>' if proxy_link else ''}
   </div>
@@ -231,29 +258,29 @@ def build_html_digest(papers: list, mesh_topic_map: dict, base_url: str,
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="font-family:Arial,Helvetica,sans-serif;max-width:700px;margin:0 auto;padding:20px;color:#212529;background:#f8f9fa">
   <div style="background:#0d6efd;color:#fff;padding:20px;border-radius:8px;margin-bottom:24px">
-    <h1 style="margin:0;font-size:1.4em">Papers Daily Digest</h1>
+    <h1 style="margin:0;font-size:1.4em">{app_name} Digest</h1>
     <p style="margin:6px 0 0;opacity:.85">{today_str} &bull; {len(papers)} new paper(s) for {username}</p>
   </div>
   {rows_html}
   <hr style="margin:24px 0;border-color:#dee2e6">
   <p style="color:#adb5bd;font-size:.8em;text-align:center">
-    Sent by <a href="{base_url}" style="color:#adb5bd">Papers Daily</a> &bull;
+    Sent by <a href="{base_url}" style="color:#adb5bd">{app_name}</a> &bull;
     <a href="{base_url}/settings" style="color:#adb5bd">Manage preferences</a>
   </p>
 </body>
 </html>"""
 
 
-def build_plain_digest(papers: list, base_url: str) -> str:
-    lines = [f"Papers Daily Digest — {len(papers)} new paper(s)\n", "=" * 60]
+def build_plain_digest(papers: list, base_url: str, app_name: str = "Papers Daily") -> str:
+    lines = [f"{app_name} Digest — {len(papers)} new paper(s)\n", "=" * 60]
     for p in papers:
         lines.append(f"\n{p['title']}")
         authors = json.loads(p["authors"] or "[]")
         if authors:
             lines.append(f"  {authors[0]}" + (f" et al." if len(authors) > 1 else ""))
-        lines.append(f"  {p['journal']} | {p['pub_date'] or ''}")
+        lines.append(f"  {_clean_journal(p['journal'])} | {p['pub_date'] or ''}")
         lines.append(f"  PubMed: https://pubmed.ncbi.nlm.nih.gov/{p['pmid']}")
-        lines.append(f"  Papers Daily: {base_url}/paper/{p['pmid']}")
+        lines.append(f"  {app_name}: {base_url}/paper/{p['pmid']}")
         lines.append("-" * 40)
     return "\n".join(lines)
 
@@ -348,7 +375,7 @@ def main():
                 # Send nothing-new confirmation
                 nothing_subject = f"[{app_name}] No new papers today, {today_str}"
                 nothing_body = (
-                    f"Papers Daily ran successfully on {today_str} "
+                    f"{app_name} ran successfully on {today_str} "
                     f"but found no new unactioned papers for {username}.\n\n"
                     f"Visit {base_url}/feed to review your paper feed.\n"
                 )
@@ -360,7 +387,7 @@ def main():
                 continue
 
             html = build_html_digest(papers, mesh_topic_map, base_url, username, today_str, config, journal_metric)
-            plain = build_plain_digest(papers, base_url)
+            plain = build_plain_digest(papers, base_url, app_name)
             try:
                 subject = subject_template.format(
                     new_papers=len(papers),
@@ -381,7 +408,7 @@ def main():
             if user_email:
                 send_error_email(
                     config, user_email, "Email digest error",
-                    f"Papers Daily email digest failed for {username}:\n\n{err}",
+                    f"{app_name} email digest failed for {username}:\n\n{err}",
                 )
 
 
