@@ -64,6 +64,12 @@
                 <label class="form-check-label" for="suppressEmpty">Suppress empty digest</label>
                 <div class="form-text">When on, no email is sent on days when nothing new was found. When off, you receive a brief confirmation that the fetch ran.</div>
               </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="email_group_by_profile"
+                       id="emailGroupByProfile" {% if cfg.get('email_group_by_profile', False) %}checked{% endif %}>
+                <label class="form-check-label" for="emailGroupByProfile">Group digest by search profile</label>
+                <div class="form-text">When on, the daily email digest is divided into sections, one per search profile, with a labelled header between them.</div>
+              </div>
             </div>
           </div>
         </div>
@@ -188,6 +194,14 @@
               </select>
               <div class="form-text">How many papers are shown per page in your feed. Larger values load more at once but may feel slower on long lists.</div>
             </div>
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="feed_group_by_profile"
+                       id="feedGroupByProfile" {% if cfg.get('feed_group_by_profile', False) %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="feedGroupByProfile">Group feed by search profile</label>
+              </div>
+              <div class="form-text ms-4 ps-1">Papers are sorted and grouped by search profile with a section header between them. Has no effect when a specific profile is already selected in the sidebar.</div>
+            </div>
           </div>
         </div>
 
@@ -269,6 +283,7 @@
         {# Pass general settings fields through #}
         <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
         {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
+        {% if cfg.get('email_group_by_profile', False) %}<input type="hidden" name="email_group_by_profile" value="1">{% endif %}
         {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
         <input type="hidden" name="fetch_schedule" value="{{ cfg.get('fetch_schedule', 'daily') }}">
         <input type="hidden" name="fetch_schedule_dow" value="{{ cfg.get('fetch_schedule_dow', 0) }}">
@@ -276,6 +291,7 @@
         <input type="hidden" name="page_size" value="{{ cfg.get('page_size', 50) }}">
         <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
         {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
+        {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
         {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
         {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
         <input type="hidden" name="mesh_term" value="{{ term }}">
@@ -327,6 +343,7 @@
         {# Pass through #}
         <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
         {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
+        {% if cfg.get('email_group_by_profile', False) %}<input type="hidden" name="email_group_by_profile" value="1">{% endif %}
         {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
         <input type="hidden" name="fetch_schedule" value="{{ cfg.get('fetch_schedule', 'daily') }}">
         <input type="hidden" name="fetch_schedule_dow" value="{{ cfg.get('fetch_schedule_dow', 0) }}">
@@ -334,6 +351,7 @@
         <input type="hidden" name="page_size" value="{{ cfg.get('page_size', 50) }}">
         <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
         {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
+        {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
         {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
         {% for p in cfg.get('search_profiles', []) %}
         <input type="hidden" name="profile_name" value="{{ p.name }}">

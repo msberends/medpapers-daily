@@ -208,7 +208,17 @@
       {% endif %}
     {% endif %}
 
+    {% set _ns = namespace(cur_profile=none) %}
     {% for paper, topics in papers %}
+    {% if group_by_profile and not profile %}
+      {% set _paper_profile = paper.search_profile or '' %}
+      {% if _paper_profile != _ns.cur_profile %}
+        {% set _ns.cur_profile = _paper_profile %}
+        <div class="d-flex align-items-center gap-2 border-bottom pb-2 mb-2 {% if not loop.first %}mt-5{% endif %}">
+          <span class="small fw-semibold text-muted text-uppercase" style="letter-spacing:.05em">{{ _paper_profile or 'Other' }}</span>
+        </div>
+      {% endif %}
+    {% endif %}
     <div class="card paper-card mb-2 {% if paper.is_read %}paper-read{% else %}paper-unread{% endif %}">
       <div class="card-body py-2 px-3">
         <div class="d-flex align-items-start gap-2">

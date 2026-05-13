@@ -37,7 +37,8 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
                       quartile: str, date_filter: str,
                       date_from: str, date_to: str, search: str,
                       folder_id: Optional[int], mesh_topic_map: dict,
-                      profile: str, q2_hard: bool = False) -> tuple[str, list]:
+                      profile: str, q2_hard: bool = False,
+                      group_by_profile: bool = False) -> tuple[str, list]:
     conditions = ["up.user_id = ?"]
     params: list = [user_id]
 
@@ -91,13 +92,18 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
         params.extend([like, like])
 
     where = " AND ".join(conditions)
+    order_by = (
+        "up.search_profile NULLS LAST, up.added_at DESC"
+        if group_by_profile and not profile
+        else "up.added_at DESC"
+    )
     sql = f"""
         SELECT p.*, up.is_read, up.is_starred, up.folder_id, up.ris_exported_at,
                up.added_at as user_added_at, up.search_profile
         FROM user_papers up
         JOIN papers p ON p.pmid = up.pmid
         WHERE {where}
-        ORDER BY up.added_at DESC
+        ORDER BY {order_by}
     """
     return sql, params
 
@@ -123,6 +129,7 @@ async def feed(
     q2_hard = user_yaml.get("q2_hard", True)
     show_quartile = user_yaml.get("show_quartile", True)
     journal_metric = user_yaml.get("journal_metric", "if")
+    feed_group_by_profile = user_yaml.get("feed_group_by_profile", False)
     page_size = user_yaml.get("page_size", 50)
     if page_size not in (10, 25, 50, 100, 150, 200, 500):
         page_size = 50
@@ -132,7 +139,7 @@ async def feed(
     sql, params = _build_feed_query(
         user["user_id"], view, selected_topics, quartile,
         date_filter, date_from, date_to, search, folder_id, mesh_topic_map,
-        profile, q2_hard,
+        profile, q2_hard, feed_group_by_profile,
     )
 
     with conn_ctx() as conn:
@@ -221,6 +228,7 @@ async def feed(
         "selected_topics": selected_topics,
         "all_profiles": all_profiles,
         "profile": profile,
+        "group_by_profile": feed_group_by_profile,
         "view": view,
         "folder_id": folder_id,
         "quartile": quartile,
