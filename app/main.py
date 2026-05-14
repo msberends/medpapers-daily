@@ -90,6 +90,7 @@ async def startup():
     config, config_yaml_str = load_config()
     app.state.config = config
     app.state.config_yaml_str = config_yaml_str
+    app.title = config.get("app_name", "Papers Daily")
 
     db_path = os.path.join(BASE_DIR, config.get("db_path", "data/paperdigest.db"))
     db.init_db(db_path)

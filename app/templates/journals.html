@@ -62,11 +62,12 @@
           <th>Q</th>
           <th class="text-end">CiteScore</th>
           <th class="text-end">Percentile</th>
+          <th class="text-end">Since</th>
           <th>Publisher</th>
         </tr>
       </thead>
       <tbody id="journalTableBody">
-        <tr><td colspan="7" class="text-center text-muted py-3">Loading…</td></tr>
+        <tr><td colspan="8" class="text-center text-muted py-3">Loading…</td></tr>
       </tbody>
     </table>
   </div>
@@ -99,12 +100,12 @@ function loadJournals(page) {
   journalPage = page;
   const q    = (document.getElementById('journalSearch')?.value || '').trim();
   const body = document.getElementById('journalTableBody');
-  body.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Loading…</td></tr>';
+  body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Loading…</td></tr>';
   fetch(`/journals/data?q=${encodeURIComponent(q)}&page=${page}&per_page=100`)
     .then(r => r.json())
     .then(renderJournals)
     .catch(() => {
-      body.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-3">Failed to load journal data.</td></tr>';
+      body.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-3">Failed to load journal data.</td></tr>';
     });
 }
 
@@ -116,22 +117,28 @@ function renderJournals(data) {
   if (!body) return;
 
   if (!data.rows || !data.rows.length) {
-    body.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No journals found.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No journals found.</td></tr>';
     if (info)  info.textContent  = '';
     if (nav)   nav.innerHTML     = '';
     if (count) count.textContent = '';
     return;
   }
 
-  body.innerHTML = data.rows.map(r => `<tr>
-    <td class="small">${escHtml(r.title)}</td>
+  body.innerHTML = data.rows.map(r => {
+    const titleHtml = r.source_id
+      ? `<a href="https://www.scopus.com/sourceid/${encodeURIComponent(r.source_id)}" target="_blank" rel="noopener" class="text-decoration-none">${escHtml(r.title)}</a>`
+      : escHtml(r.title);
+    return `<tr>
+    <td class="small">${titleHtml}</td>
     <td class="small text-muted font-monospace text-nowrap">${escHtml(r.issn)}</td>
     <td class="small text-muted font-monospace text-nowrap">${escHtml(r.eissn)}</td>
     <td>${qBadge(r.quartile)}</td>
     <td class="text-end small text-muted">${r.citescore != null ? r.citescore.toFixed(1) : '—'}</td>
     <td class="text-end small text-muted">${r.percentile != null ? Math.round(r.percentile) + 'th' : '—'}</td>
+    <td class="text-end small text-muted">${r.coverage_start != null ? r.coverage_start : '—'}</td>
     <td class="small text-muted" style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(r.publisher)}">${escHtml(r.publisher)}</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 
   const from = (data.page - 1) * data.per_page + 1;
   const to   = Math.min(data.page * data.per_page, data.total);

@@ -56,14 +56,20 @@ async def journals_data(
                 percentile: float | None = float(row.get("percentile") or "")
             except (ValueError, TypeError):
                 percentile = None
+            try:
+                coverage_start: int | None = int(row.get("coverageStartYear") or "")
+            except (ValueError, TypeError):
+                coverage_start = None
             rows.append({
-                "title":      row.get("title")     or "",
-                "issn":       row.get("issn")       or "",
-                "eissn":      row.get("eIssn")      or "",
-                "quartile":   quartile,
-                "citescore":  citescore,
-                "percentile": percentile,
-                "publisher":  row.get("publisher")  or "",
+                "title":          row.get("title")             or "",
+                "issn":           row.get("issn")              or "",
+                "eissn":          row.get("eIssn")             or "",
+                "quartile":       quartile,
+                "citescore":      citescore,
+                "percentile":     percentile,
+                "publisher":      row.get("publisher")         or "",
+                "source_id":      row.get("source-id")         or "",
+                "coverage_start": coverage_start,
             })
 
     if q:

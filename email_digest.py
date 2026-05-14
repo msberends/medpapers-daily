@@ -107,6 +107,12 @@ def classify(mesh_terms_json: str, mesh_topic_map: dict) -> list[str]:
     return sorted(topics)
 
 
+def _ordinal(n: int) -> str:
+    if 11 <= (n % 100) <= 13:
+        return f"{n}th"
+    return f"{n}{['th','st','nd','rd','th'][min(n % 10, 4)]}"
+
+
 # ── Email composition ──────────────────────────────────────────────────────────
 
 # bg, border — using Bootstrap subtle colours (hardcoded for email-client compatibility)
@@ -210,8 +216,8 @@ def _render_paper_card(p: dict, mesh_topic_map: dict, base_url: str,
     paper_url = f"{base_url}/paper/{pmid}"
     pubmed_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"
 
-    metric_val = p.get("scopus_citescore")
-    metric_str = f" ({metric_val:.1f})" if metric_val else ""
+    percentile = p.get("scopus_percentile")
+    metric_str = f" ({_ordinal(int(percentile))})" if percentile else ""
     q_label = f"{quartile}{metric_str}" if quartile else ""
 
     q_colors = QUARTILE_COLORS.get(quartile)
