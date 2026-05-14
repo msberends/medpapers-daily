@@ -17,9 +17,8 @@ smtp_user: ''
 smtp_password: ''
 email_relay: smtp
 email_from: noreply@example.com
-email_from_name: Papers Daily
 # Available placeholders: {new_papers}, {s} ("s" if >1 paper, "" otherwise),
-#   {date}, {username}, {display_name}, {app_name}
+#   {date}, {name} (display name), {display_name} (same as {name}), {username}, {app_name}
 email_subject_template: '{new_papers} new paper{s} in your digest ({date})'
 
 # Optional: institutional proxy prefix for paywalled links

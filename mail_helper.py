@@ -11,7 +11,7 @@ from email.utils import formataddr
 
 def _from_header(config: dict) -> str:
     addr = config.get("email_from", "")
-    name = config.get("email_from_name", "").strip()
+    name = (config.get("app_name") or "").strip()
     return formataddr((name, addr)) if name else addr
 
 

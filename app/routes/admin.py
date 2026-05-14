@@ -154,7 +154,6 @@ async def save_config(request: Request):
         "ncbi_email": form.get("ncbi_email", "").strip(),
         "email_relay": relay,
         "email_from": form.get("email_from", "").strip(),
-        "email_from_name": form.get("email_from_name", "").strip(),
         "email_subject_template": form.get("email_subject_template", "Your daily digest, {new_papers} new paper(s), {date}").strip(),
         "bootstrap_theme": form.get("bootstrap_theme", "flatly"),
         "theme": "light",

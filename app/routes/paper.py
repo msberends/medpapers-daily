@@ -33,7 +33,7 @@ def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict) -> list[str]:
 
 
 @router.get("/paper/{pmid}", response_class=HTMLResponse)
-async def paper_detail(pmid: str, request: Request):
+async def paper_detail(pmid: str, request: Request, nomark: str = ""):
     user = require_auth(request)
     user_yaml = _get_user_yaml(user["username"])
     mesh_topic_map = user_yaml.get("mesh_topic_map", {})
@@ -47,7 +47,7 @@ async def paper_detail(pmid: str, request: Request):
             "SELECT * FROM user_papers WHERE user_id = ? AND pmid = ?",
             (user["user_id"], pmid),
         ).fetchone()
-        if up:
+        if up and not nomark:
             conn.execute(
                 "UPDATE user_papers SET is_read = 1 WHERE user_id = ? AND pmid = ?",
                 (user["user_id"], pmid),
@@ -67,7 +67,7 @@ async def paper_detail(pmid: str, request: Request):
     topic_color_map = {t: i % 8 for i, t in enumerate(all_topics)}
 
     up_dict = dict(up) if up else None
-    if up_dict:
+    if up_dict and not nomark:
         up_dict["is_read"] = 1
 
     return request.app.state.templates.TemplateResponse(request, "paper.html", {
@@ -92,6 +92,8 @@ async def mark_read(pmid: str, request: Request, is_read: int = Form(1)):
             "UPDATE user_papers SET is_read = ? WHERE user_id = ? AND pmid = ?",
             (is_read, user["user_id"], pmid),
         )
+    if is_read == 0:
+        return RedirectResponse(f"/paper/{pmid}?nomark=1", status_code=303)
     return RedirectResponse(f"/paper/{pmid}", status_code=303)
 
 

@@ -458,6 +458,7 @@ def main():
                 subject = subject_template.format(
                     new_papers=len(papers),
                     date=today_str,
+                    name=display_name,
                     username=username,
                     display_name=display_name,
                     app_name=app_name,

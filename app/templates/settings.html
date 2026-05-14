@@ -224,7 +224,6 @@
         </div>
 
         {# Hidden profile/mesh fields so the save endpoint gets current values #}
-        <input type="hidden" name="display_name" value="{{ user.display_name or '' }}">
         {% for p in cfg.get('search_profiles', []) %}
         <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
         <input type="hidden" name="profile_name" value="{{ p.name }}">

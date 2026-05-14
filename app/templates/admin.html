@@ -189,18 +189,11 @@
       <div class="card-body row g-3">
 
         <div class="col-md-4">
-          <label class="form-label">Sender name</label>
-          <input type="text" name="email_from_name" class="form-control"
-                 value="{{ config.get('email_from_name', '') }}"
-                 placeholder="Papers Daily">
-          <div class="form-text">The display name shown in the recipient's inbox next to the sender address.</div>
-        </div>
-        <div class="col-md-4">
           <label class="form-label">Sender address</label>
           <input type="email" name="email_from" class="form-control"
                  value="{{ config.get('email_from', '') }}"
                  placeholder="noreply@papers.example.com">
-          <div class="form-text">The From address on all outgoing emails. If you use a custom domain, make sure SPF and DKIM records are configured to avoid messages being marked as spam.</div>
+          <div class="form-text">The From address on all outgoing emails. The display name shown in the recipient's inbox is taken from the application name above. If you use a custom domain, make sure SPF and DKIM records are configured to avoid messages being marked as spam.</div>
         </div>
         <div class="col-12">
           <label class="form-label">Digest subject line template</label>
@@ -208,8 +201,9 @@
                  value="{{ config.get('email_subject_template', 'Your daily digest, {new_papers} new paper(s), {date}') }}">
           <div class="form-text">
             Available placeholders: <code>{new_papers}</code> number of new papers,
+            <code>{s}</code> plural suffix ("s" or ""),
             <code>{date}</code> today's date,
-            <code>{username}</code> the recipient's username,
+            <code>{name}</code> the recipient's display name,
             <code>{app_name}</code> the application name.
           </div>
         </div>
