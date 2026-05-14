@@ -56,37 +56,47 @@
 
         <div class="card mb-3">
           <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email</div>
-          <div class="card-body row g-3">
-            <div class="col-md-7">
-              <label class="form-label">Email address</label>
-              <input type="email" name="email" class="form-control"
-                     value="{{ cfg.get('email', '') }}" required>
-              <div class="form-text">Your digest emails are delivered here. Use an address you check regularly.</div>
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Email address</label>
+                <input type="email" name="email" class="form-control"
+                       value="{{ cfg.get('email', '') }}" required>
+                <div class="form-text">Your digest emails are delivered here. Use an address you check regularly.</div>
+              </div>
             </div>
-            <div class="col-md-5 d-flex flex-column gap-3 pt-md-4 mt-md-2">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="fetch_enabled"
-                       id="fetchEnabled" {% if cfg.get('fetch_enabled', True) %}checked{% endif %}>
-                <label class="form-check-label" for="fetchEnabled">Fetching enabled</label>
-                <div class="form-text">Turn this off to pause all scheduled fetching for your account. Your existing library is not affected.</div>
+            <div class="row g-3 mt-1">
+              <div class="col-md-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="fetch_enabled"
+                         id="fetchEnabled" {% if cfg.get('fetch_enabled', True) %}checked{% endif %}>
+                  <label class="form-check-label fw-medium" for="fetchEnabled">Fetching enabled</label>
+                </div>
+                <div class="form-text ms-4 ps-1">Turn this off to pause all scheduled fetching for your account. Your existing library is not affected.</div>
               </div>
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="email_suppress_empty"
-                       id="suppressEmpty" {% if cfg.get('email_suppress_empty', True) %}checked{% endif %}>
-                <label class="form-check-label" for="suppressEmpty">Suppress empty digest</label>
-                <div class="form-text">When on, no email is sent on days when nothing new was found. When off, you receive a brief confirmation that the fetch ran.</div>
+              <div class="col-md-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="email_suppress_empty"
+                         id="suppressEmpty" {% if cfg.get('email_suppress_empty', True) %}checked{% endif %}>
+                  <label class="form-check-label fw-medium" for="suppressEmpty">Suppress empty digest</label>
+                </div>
+                <div class="form-text ms-4 ps-1">When on, no email is sent on days when nothing new was found. When off, you receive a brief confirmation that the fetch ran.</div>
               </div>
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="email_only_new"
-                       id="emailOnlyNew" {% if cfg.get('email_only_new', True) %}checked{% endif %}>
-                <label class="form-check-label" for="emailOnlyNew">Only email newly fetched papers</label>
-                <div class="form-text">When on (default), each digest only includes papers not yet sent in any previous digest. When off, all unread papers from the last 24 hours are included every time, which may resend papers you have already received.</div>
+              <div class="col-md-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="email_only_new"
+                         id="emailOnlyNew" {% if cfg.get('email_only_new', True) %}checked{% endif %}>
+                  <label class="form-check-label fw-medium" for="emailOnlyNew">Only email newly fetched papers</label>
+                </div>
+                <div class="form-text ms-4 ps-1">When on (default), each digest only includes papers not yet sent in any previous digest. When off, all unread papers from the last 24 hours are included every time, which may resend papers you have already received.</div>
               </div>
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="email_group_by_profile"
-                       id="emailGroupByProfile" {% if cfg.get('email_group_by_profile', False) %}checked{% endif %}>
-                <label class="form-check-label" for="emailGroupByProfile">Group digest by search profile</label>
-                <div class="form-text">When on, the daily email digest is divided into sections, one per search profile, with a labelled header between them.</div>
+              <div class="col-md-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="email_group_by_profile"
+                         id="emailGroupByProfile" {% if cfg.get('email_group_by_profile', False) %}checked{% endif %}>
+                  <label class="form-check-label fw-medium" for="emailGroupByProfile">Group digest by search profile</label>
+                </div>
+                <div class="form-text ms-4 ps-1">When on, the daily email digest is divided into sections, one per search profile, with a labelled header between them.</div>
               </div>
             </div>
           </div>
@@ -171,14 +181,19 @@
           <div class="card-body row g-3">
             <div class="col-md-6">
               <label class="form-label">Colour theme</label>
+              {% set admin_theme = config.get('bootstrap_theme', 'flatly') %}
+              {% set admin_theme_label = 'Bootstrap (plain)' if admin_theme == 'default' else admin_theme | capitalize %}
               <select name="bootstrap_theme" class="form-select" style="max-width:220px">
-                {% for t in valid_themes %}
-                <option value="{{ t }}" {% if cfg.get('bootstrap_theme', config.get('bootstrap_theme', 'flatly')) == t %}selected{% endif %}>
-                  {{ t | capitalize }}
+                <option value="" {% if not cfg.get('bootstrap_theme') %}selected{% endif %}>
+                  Default ({{ admin_theme_label }})
+                </option>
+                {% for t in valid_themes | sort %}
+                <option value="{{ t }}" {% if cfg.get('bootstrap_theme') == t %}selected{% endif %}>
+                  {% if t == 'default' %}Bootstrap (plain){% else %}{{ t | capitalize }}{% endif %}
                 </option>
                 {% endfor %}
               </select>
-              <div class="form-text">Applies across the whole application after the next page load. Your choice overrides the administrator's default.</div>
+              <div class="form-text">Applies across the whole application after the next page load. Choosing <em>Default</em> follows the administrator's theme setting.</div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Papers per page</label>

@@ -5,6 +5,7 @@
 <style>
   .paper-card { transition: background .15s; }
   .paper-card:hover { background: rgba(0,0,0,.03); }
+  .glance-bar { height: 40px; }
 </style>
 {% endblock %}
 
@@ -21,25 +22,101 @@
   <div class="sidebar collapse d-sm-block flex-shrink-0" id="sidebarCollapse">
     <form method="get" action="/feed" id="filterForm">
 
+      {# At a Glance #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">At a Glance</div>
+        <div class="card-body py-2 px-3">
+          <div class="small text-muted mb-1">Papers added (7 days)</div>
+          {% set max_day = daily_counts | map(attribute='count') | max %}
+          <div class="d-flex align-items-end gap-1 mb-3 glance-bar">
+            {% for day in daily_counts %}
+            {% set bar_h = ((day.count / max_day * 36) | int) if max_day else 0 %}
+            <div class="flex-grow-1 rounded-top" data-bs-toggle="tooltip" data-bs-placement="top"
+                 title="{{ day.date }}: {{ day.count }} paper{{ 's' if day.count != 1 else '' }}"
+                 style="height:{{ [bar_h, 2] | max }}px; background:var(--bs-primary); opacity:0.6"></div>
+            {% endfor %}
+          </div>
+
+          {% if total > 0 %}
+          <div class="small text-muted mb-1">Journal quartiles</div>
+          {% set q_labels = [('Q1','bg-success','text-success','Top 25% of journals by CiteScore'),
+                             ('Q2','bg-info','text-info','50–75th percentile by CiteScore'),
+                             ('Q3','bg-warning','text-warning','25–50th percentile by CiteScore'),
+                             ('Q4','bg-danger','text-danger','Bottom 25% by CiteScore')] %}
+          <div class="progress mb-1" style="height:8px"
+               title="Q1: {{ quartile_breakdown.get('Q1',0) }} · Q2: {{ quartile_breakdown.get('Q2',0) }} · Q3: {{ quartile_breakdown.get('Q3',0) }} · Q4: {{ quartile_breakdown.get('Q4',0) }} · Unranked: {{ quartile_breakdown.get('Unranked',0) }}">
+            {% for q, bg, tc, desc in q_labels %}
+            {% set pct = (quartile_breakdown.get(q, 0) / total * 100) | round(1) %}
+            {% if pct > 0 %}<div class="progress-bar {{ bg }}" style="width:{{ pct }}%"
+                 data-bs-toggle="tooltip" title="{{ q }}: {{ quartile_breakdown.get(q, 0) }} papers — {{ desc }}"></div>{% endif %}
+            {% endfor %}
+            {% set u_pct = (quartile_breakdown.get('Unranked', 0) / total * 100) | round(1) %}
+            {% if u_pct > 0 %}<div class="progress-bar bg-secondary" style="width:{{ u_pct }}%"
+                 data-bs-toggle="tooltip" title="Unranked: {{ quartile_breakdown.get('Unranked', 0) }} papers — not indexed in Scopus"></div>{% endif %}
+          </div>
+          <div class="d-flex flex-wrap gap-2 mb-3" style="font-size:.68rem">
+            {% for q, bg, tc, desc in q_labels %}
+            {% if quartile_breakdown.get(q, 0) %}
+            <span class="{{ tc }} fw-semibold" data-bs-toggle="tooltip" title="{{ desc }}">{{ q }}:&thinsp;{{ quartile_breakdown.get(q, 0) }}</span>
+            {% endif %}
+            {% endfor %}
+            {% if quartile_breakdown.get('Unranked', 0) %}
+            <span class="text-muted" data-bs-toggle="tooltip" title="Not indexed in Scopus">Unr:&thinsp;{{ quartile_breakdown.get('Unranked', 0) }}</span>
+            {% endif %}
+          </div>
+
+          {% if all_topics | length > 1 %}
+          <div class="small text-muted mb-1">Topics</div>
+          <div class="progress mb-1" style="height:8px">
+            {% for topic in all_topics %}
+            {% set t_pct = (topic_counts.get(topic, 0) / total * 100) | round(1) %}
+            {% if t_pct > 0 %}
+            {% set seg_cls = 'bg-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ (topic_color_map.get(topic, loop.index0) % 8) %}
+            <div class="progress-bar {{ seg_cls }}" style="width:{{ t_pct }}%"
+                 data-bs-toggle="tooltip" title="{{ topic }}: {{ topic_counts.get(topic, 0) }} papers"></div>
+            {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% else %}
+          <p class="small text-muted mb-0">No papers in current view.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Search #}
+      <div class="card mb-3">
+        <div class="card-body py-2">
+          <div class="input-group input-group-sm">
+            <input type="text" name="search" id="searchInput" class="form-control"
+                   placeholder="Search title &amp; abstract" value="{{ search }}"
+                   oninput="debounceSearch()">
+            <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
+          </div>
+        </div>
+      </div>
+
+      {# View #}
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">View</div>
         <div class="list-group list-group-flush">
-          <a href="/feed?view=unread&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
+          <a href="/feed?view=unread&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'unread' %}active{% endif %}">
             <i class="bi bi-envelope me-1"></i> Unread
             {% if unread_count %}<span class="badge bg-secondary float-end">{{ unread_count }}</span>{% endif %}
           </a>
-          <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
+          <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'all' %}active{% endif %}">
             <i class="bi bi-grid me-1"></i> All papers
+            {% if total_user_papers %}<span class="badge bg-secondary float-end">{{ total_user_papers }}</span>{% endif %}
           </a>
-          <a href="/feed?view=starred&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
+          <a href="/feed?view=starred&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'starred' %}active{% endif %}">
             <i class="bi bi-star-fill text-warning me-1"></i> Starred
             {% if starred_count %}<span class="badge bg-secondary float-end">{{ starred_count }}</span>{% endif %}
           </a>
           {% for f in folders %}
-          <a href="/feed?view=folder&folder_id={{ f.id }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}"
+          <a href="/feed?view=folder&folder_id={{ f.id }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'folder' and folder_id == f.id %}active{% endif %}">
             <i class="bi bi-folder me-1"></i> {{ f.name }}
             {% set cnt = folder_counts.get(f.id, 0) %}
@@ -49,54 +126,16 @@
         </div>
       </div>
 
-      {# Topics #}
+      {# Sort #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Topics</div>
+        <div class="card-header fw-semibold py-2">Sort</div>
         <div class="card-body py-2">
-          {% for topic in all_topics %}
+          {% for val, label in [('newest', 'Newest first'), ('oldest', 'Oldest first'), ('quartile', 'By quartile'), ('citescore', 'By CiteScore')] %}
           <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="topic_cb" value="{{ topic }}"
-                   id="topic_{{ loop.index }}"
-                   {% if topic in selected_topics %}checked{% endif %}
-                   onchange="updateTopics()">
-            <label class="form-check-label small" for="topic_{{ loop.index }}">{{ topic }}</label>
-          </div>
-          {% endfor %}
-          <input type="hidden" name="topics" id="topicsHidden" value="{{ selected_topics | join(',') }}">
-          <input type="hidden" name="view" value="{{ view }}">
-          {% if folder_id %}<input type="hidden" name="folder_id" value="{{ folder_id }}">{% endif %}
-        </div>
-      </div>
-
-      {# Search Profile #}
-      {% if all_profiles %}
-      <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Search Profile</div>
-        <div class="list-group list-group-flush">
-          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile_id=0"
-             class="list-group-item list-group-item-action py-2 small {% if not profile_id %}active{% endif %}">
-            All profiles
-          </a>
-          {% for p in all_profiles %}
-          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile_id={{ p.id }}"
-             class="list-group-item list-group-item-action py-2 small {% if profile_id == p.id %}active{% endif %}">
-            {{ p.name }}
-          </a>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-
-      {# Quartile #}
-      <div class="card mb-3">
-        <div class="card-header fw-semibold py-2">Journal Quartile</div>
-        <div class="card-body py-2">
-          {% for val, label in [('q1', 'Q1 only'), ('q1q2', 'Q1 + Q2'), ('all', 'All')] %}
-          <div class="form-check">
-            <input class="form-check-input" type="radio" name="quartile" value="{{ val }}"
-                   id="q_{{ val }}" {% if quartile == val %}checked{% endif %}
+            <input class="form-check-input" type="radio" name="sort" value="{{ val }}"
+                   id="sort_{{ val }}" {% if sort == val %}checked{% endif %}
                    onchange="this.form.submit()">
-            <label class="form-check-label small" for="q_{{ val }}">{{ label }}</label>
+            <label class="form-check-label small" for="sort_{{ val }}">{{ label }}</label>
           </div>
           {% endfor %}
         </div>
@@ -121,15 +160,63 @@
         </div>
       </div>
 
-      {# Search #}
+      {# Topics #}
       <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Topics</div>
         <div class="card-body py-2">
-          <div class="input-group input-group-sm">
-            <input type="text" name="search" class="form-control" placeholder="Search title &amp; abstract" value="{{ search }}">
-            <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
+          {% for topic in all_topics %}
+          {% set dot_cls = 'bg-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ (topic_color_map.get(topic, loop.index0) % 8) %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="topic_cb" value="{{ topic }}"
+                   id="topic_{{ loop.index }}"
+                   {% if topic in selected_topics %}checked{% endif %}
+                   onchange="updateTopics()">
+            <label class="form-check-label small d-flex align-items-center gap-1" for="topic_{{ loop.index }}">
+              <span class="{{ dot_cls }} flex-shrink-0" style="display:inline-block;width:10px;height:10px;border-radius:3px"></span>
+              {{ topic }}{% if topic_counts.get(topic) %}&thinsp;<span class="text-muted">({{ topic_counts.get(topic) }})</span>{% endif %}
+            </label>
           </div>
+          {% endfor %}
+          <input type="hidden" name="topics" id="topicsHidden" value="{{ selected_topics | join(',') }}">
+          <input type="hidden" name="view" value="{{ view }}">
+          {% if folder_id %}<input type="hidden" name="folder_id" value="{{ folder_id }}">{% endif %}
         </div>
       </div>
+
+      {# Search Profile #}
+      {% if all_profiles %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Search Profile</div>
+        <div class="list-group list-group-flush">
+          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile_id=0&sort={{ sort }}"
+             class="list-group-item list-group-item-action py-2 small {% if not profile_id %}active{% endif %}">
+            All profiles
+          </a>
+          {% for p in all_profiles %}
+          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile_id={{ p.id }}&sort={{ sort }}"
+             class="list-group-item list-group-item-action py-2 small {% if profile_id == p.id %}active{% endif %}">
+            {{ p.name }}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# Quartile #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold py-2">Journal Quartile</div>
+        <div class="card-body py-2">
+          {% for val, label in [('q1', 'Q1 only'), ('q1q2', 'Q1 + Q2'), ('all', 'All')] %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="quartile" value="{{ val }}"
+                   id="q_{{ val }}" {% if quartile == val %}checked{% endif %}
+                   onchange="this.form.submit()">
+            <label class="form-check-label small" for="q_{{ val }}">{{ label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
 
     </form>
   </div>
@@ -186,7 +273,7 @@
       <div class="card border-0 bg-light mb-3">
         <div class="card-body py-4 px-4">
           <h6 class="mb-3"><i class="bi bi-check2-all me-2"></i>You are all caught up</h6>
-          <p class="mb-0">All <strong>{{ total_user_papers }}</strong> paper(s) in your library have been read. Switch to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}"><strong>All papers</strong></a> to browse your full library, or come back after the next fetch.</p>
+          <p class="mb-0">All <strong>{{ total_user_papers }}</strong> paper(s) in your library have been read. Switch to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>All papers</strong></a> to browse your full library, or come back after the next fetch.</p>
         </div>
       </div>
       {% else %}
@@ -196,7 +283,7 @@
           <h6 class="mb-3"><i class="bi bi-funnel me-2"></i>No papers match the current filters</h6>
           <p class="mb-2">Your library contains <strong>{{ total_user_papers }}</strong> paper(s), but none pass all the active filters at once. A few things to try:</p>
           <ul class="mb-0 ps-3">
-            <li>Switch the view to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}"><strong>All papers</strong></a> — the Unread view only shows papers not yet marked as read.</li>
+            <li>Switch the view to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>All papers</strong></a> — the Unread view only shows papers not yet marked as read.</li>
             <li>Clear any topic checkboxes selected in the sidebar.</li>
             <li>Widen the <strong>Date Range</strong> filter, or set it to <em>All time</em>.</li>
             <li>Relax the <strong>Journal Quartile</strong> filter to include Q3/Q4 journals.</li>
@@ -246,10 +333,11 @@
                 </a>
               </div>
             </div>
-            <div class="small text-muted mt-1">
+            <div class="small text-muted">
               {% set authors = paper.authors | from_json %}
               {% if authors | length > 2 %}
                 {{ authors[0] | dim_initials | safe }} &hellip; {{ authors[-1] | dim_initials | safe }}
+                <span class="opacity-75">&middot; {{ authors | length }} authors</span>
               {% elif authors %}
                 {{ authors | map('dim_initials') | join('; ') | safe }}
               {% endif %}
@@ -257,19 +345,35 @@
               <em>{{ paper.journal | clean_journal }}</em>
               {% if paper.publisher %}&bull; {{ paper.publisher | publisher_display(config.get('publisher_map', {}), config.get('predatory_publishers', [])) | safe }}{% endif %}
               &bull; {{ paper.epub_date or paper.pub_date or '' }}
+              {% if paper.days_ago is not none %}
+              &bull; <span class="opacity-75">{% if paper.days_ago == 0 %}added today{% elif paper.days_ago == 1 %}added yesterday{% else %}added {{ paper.days_ago }}d ago{% endif %}</span>
+              {% endif %}
             </div>
+            {% if paper.abstract %}
+            <div class="mt-1">
+              <a class="small text-muted text-decoration-none user-select-none"
+                 data-bs-toggle="collapse" href="#abs-{{ paper.pmid }}"
+                 role="button" aria-expanded="false">
+                <i class="bi bi-chevron-down" style="font-size:.7em"></i> Abstract
+              </a>
+              <div class="collapse" id="abs-{{ paper.pmid }}">
+                <p class="small text-muted mt-1 mb-0" style="line-height:1.5">{{ paper.abstract }}</p>
+              </div>
+            </div>
+            {% endif %}
             <div class="mt-1 d-flex flex-wrap gap-1">
               {% set metric_val = paper.scopus_citescore %}
               {% set cites_str = ' (' ~ '%.1f'|format(metric_val) ~ ')' if metric_val else '' %}
+              {% set pct_str = ' · top ' ~ paper.scopus_percentile|int ~ '%' if paper.scopus_percentile else '' %}
               {% if show_quartile %}
                 {% if paper.scopus_quartile == 'Q1' %}
-                  <span class="badge badge-q1">Q1{{ cites_str }}</span>
+                  <span class="badge badge-q1">Q1{{ cites_str }}{{ pct_str }}</span>
                 {% elif paper.scopus_quartile == 'Q2' %}
-                  <span class="badge badge-q2">Q2{{ cites_str }}</span>
+                  <span class="badge badge-q2">Q2{{ cites_str }}{{ pct_str }}</span>
                 {% elif paper.scopus_quartile == 'Q3' %}
-                  <span class="badge badge-q3">Q3{{ cites_str }}</span>
+                  <span class="badge badge-q3">Q3{{ cites_str }}{{ pct_str }}</span>
                 {% elif paper.scopus_quartile == 'Q4' %}
-                  <span class="badge badge-q4">Q4{{ cites_str }}</span>
+                  <span class="badge badge-q4">Q4{{ cites_str }}{{ pct_str }}</span>
                 {% else %}
                   <span class="badge badge-unranked">Unranked</span>
                 {% endif %}
@@ -326,6 +430,20 @@
 
 {% block extra_scripts %}
 <script>
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+    new bootstrap.Tooltip(el, { trigger: 'hover' });
+  });
+});
+
+let _searchTimer = null;
+function debounceSearch() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(function () {
+    document.getElementById('filterForm').submit();
+  }, 350);
+}
+
 function updateTopics() {
   const checks = document.querySelectorAll('input[name=topic_cb]:checked');
   const vals = Array.from(checks).map(c => c.value).join(',');

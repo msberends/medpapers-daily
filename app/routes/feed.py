@@ -1,5 +1,6 @@
 import json
-from datetime import datetime, timedelta, timezone
+from collections import Counter
+from datetime import date as _date, datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -22,6 +23,17 @@ def _get_user_yaml(username: str) -> dict:
         return yaml.safe_load(f) or {}
 
 
+def _sort_clause(sort: str) -> str:
+    if sort == "oldest":
+        return "up.added_at ASC"
+    if sort == "quartile":
+        return ("CASE p.scopus_quartile WHEN 'Q1' THEN 1 WHEN 'Q2' THEN 2 "
+                "WHEN 'Q3' THEN 3 WHEN 'Q4' THEN 4 ELSE 5 END, up.added_at DESC")
+    if sort == "citescore":
+        return "p.scopus_citescore DESC NULLS LAST, up.added_at DESC"
+    return "up.added_at DESC"
+
+
 def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict) -> list[str]:
     if not mesh_terms_json:
         return []
@@ -38,7 +50,8 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
                       date_from: str, date_to: str, search: str,
                       folder_id: Optional[int], mesh_topic_map: dict,
                       profile_id: int = 0, q2_hard: bool = False,
-                      group_by_profile: bool = False) -> tuple[str, list]:
+                      group_by_profile: bool = False,
+                      sort: str = "newest") -> tuple[str, list]:
     conditions = ["up.user_id = ?"]
     params: list = [user_id]
 
@@ -93,9 +106,9 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
 
     where = " AND ".join(conditions)
     order_by = (
-        "sp.name NULLS LAST, up.added_at DESC"
+        "sp.name NULLS LAST, " + _sort_clause(sort)
         if group_by_profile and not profile_id
-        else "up.added_at DESC"
+        else _sort_clause(sort)
     )
     sql = f"""
         SELECT p.*, up.is_read, up.is_starred, up.folder_id, up.ris_exported_at,
@@ -122,6 +135,7 @@ async def feed(
     date_to: str = "",
     search: str = "",
     profile_id: int = 0,
+    sort: str = "newest",
     page: int = 1,
 ):
     user = require_auth(request)
@@ -136,10 +150,13 @@ async def feed(
 
     selected_topics = topics.split(",") if topics else []
 
+    if sort not in ("newest", "oldest", "quartile", "citescore"):
+        sort = "newest"
+
     sql, params = _build_feed_query(
         user["user_id"], view, selected_topics, quartile,
         date_filter, date_from, date_to, search, folder_id, mesh_topic_map,
-        profile_id, q2_hard, feed_group_by_profile,
+        profile_id, q2_hard, feed_group_by_profile, sort,
     )
 
     with conn_ctx() as conn:
@@ -199,6 +216,37 @@ async def feed(
     all_topics = sorted(all_topic_set) + ["Unclassified"]
     topic_color_map = {topic: i % 8 for i, topic in enumerate(all_topics)}
 
+    # Derived analytics computed from the full filtered set (before pagination)
+    today_date = datetime.now(timezone.utc).date()
+
+    topic_counts: dict = Counter()
+    for _paper, _topics in papers_with_topics:
+        for _t in _topics:
+            topic_counts[_t] += 1
+
+    quartile_breakdown: dict = Counter(
+        (_paper.get("scopus_quartile") or "Unranked")
+        for _paper, _ in papers_with_topics
+    )
+
+    daily_raw: dict = Counter(
+        _paper["user_added_at"][:10]
+        for _paper, _ in papers_with_topics
+        if _paper.get("user_added_at")
+    )
+    daily_counts = [
+        {"date": str(today_date - timedelta(days=i)),
+         "count": daily_raw.get(str(today_date - timedelta(days=i)), 0)}
+        for i in range(6, -1, -1)
+    ]
+
+    for _paper, _ in papers_with_topics:
+        if _paper.get("user_added_at"):
+            _d = _date.fromisoformat(_paper["user_added_at"][:10])
+            _paper["days_ago"] = (today_date - _d).days
+        else:
+            _paper["days_ago"] = None
+
     total = len(papers_with_topics)
     total_pages = max(1, (total + page_size - 1) // page_size)
     page = max(1, min(page, total_pages))
@@ -206,7 +254,7 @@ async def feed(
     papers_page = papers_with_topics[offset:offset + page_size]
 
     # Base URL for pagination links — all current filters, no page param
-    qp: dict = {"view": view, "quartile": quartile, "date_filter": date_filter}
+    qp: dict = {"view": view, "quartile": quartile, "date_filter": date_filter, "sort": sort}
     if search:
         qp["search"] = search
     if selected_topics:
@@ -249,6 +297,10 @@ async def feed(
         "total_pages": total_pages,
         "page_url_base": page_url_base,
         "total_user_papers": total_user_papers,
+        "sort": sort,
+        "topic_counts": dict(topic_counts),
+        "quartile_breakdown": dict(quartile_breakdown),
+        "daily_counts": daily_counts,
         "config": request.app.state.config,
     })
 

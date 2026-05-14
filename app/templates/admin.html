@@ -105,9 +105,9 @@
         <div class="col-md-4">
           <label class="form-label">Default theme</label>
           <select name="bootstrap_theme" class="form-select">
-            {% for t in valid_themes %}
+            {% for t in valid_themes | sort %}
             <option value="{{ t }}" {% if config.get('bootstrap_theme') == t %}selected{% endif %}>
-              {{ t | capitalize }}
+              {% if t == 'default' %}Bootstrap (plain){% else %}{{ t | capitalize }}{% endif %}
             </option>
             {% endfor %}
           </select>

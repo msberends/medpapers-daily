@@ -171,7 +171,7 @@ async def save_settings(request: Request):
         "show_quartile": "show_quartile" in form,
         "feed_group_by_profile": "feed_group_by_profile" in form,
         "q2_hard": "q2_hard" in form,
-        "bootstrap_theme": theme if theme in VALID_THEMES else existing.get("bootstrap_theme", ""),
+        "bootstrap_theme": theme if (theme == "" or theme in VALID_THEMES) else existing.get("bootstrap_theme", ""),
         "search_profiles": profiles,
         "mesh_topic_map": mesh_map,
         "folders": existing.get("folders", []),

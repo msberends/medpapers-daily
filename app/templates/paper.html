@@ -87,14 +87,15 @@
     </a>
 
     {% if up %}
-    <form method="post" action="/paper/{{ paper.pmid }}/mark-read" class="d-inline">
-      {% if up.is_read %}
-        <input type="hidden" name="is_read" value="0">
-        <button type="submit" class="btn btn-outline-secondary btn-sm"><i class="bi bi-envelope me-1"></i>Mark unread</button>
-      {% else %}
-        <input type="hidden" name="is_read" value="1">
-        <button type="submit" class="btn btn-outline-secondary btn-sm"><i class="bi bi-envelope-open me-1"></i>Mark read</button>
-      {% endif %}
+    <form method="post" action="/paper/{{ paper.pmid }}/mark-read" class="d-inline" id="markReadForm">
+      <input type="hidden" name="is_read" id="markReadValue" value="{{ '0' if up.is_read else '1' }}">
+      <button type="submit" class="btn btn-outline-secondary btn-sm" id="markReadBtn">
+        {% if up.is_read %}
+          <i class="bi bi-envelope me-1"></i>Mark unread
+        {% else %}
+          <i class="bi bi-envelope-open me-1"></i>Mark read
+        {% endif %}
+      </button>
     </form>
     <form method="post" action="/paper/{{ paper.pmid }}/star" class="d-inline">
       {% if up.is_starred %}
@@ -149,4 +150,32 @@
 
 </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('markReadForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  const input = document.getElementById('markReadValue');
+  const btn   = document.getElementById('markReadBtn');
+  const markingUnread = input.value === '0';
+
+  btn.disabled = true;
+  fetch(this.action, { method: 'POST', body: new FormData(this) })
+    .then(function (r) {
+      if (!r.ok) throw new Error();
+      if (markingUnread) {
+        input.value   = '1';
+        btn.innerHTML = '<i class="bi bi-envelope-open me-1"></i>Mark read';
+      } else {
+        input.value   = '0';
+        btn.innerHTML = '<i class="bi bi-envelope me-1"></i>Mark unread';
+      }
+    })
+    .catch(function () {
+      document.getElementById('markReadForm').submit();
+    })
+    .finally(function () { btn.disabled = false; });
+});
+</script>
 {% endblock %}
