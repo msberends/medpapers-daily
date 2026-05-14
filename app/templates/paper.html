@@ -150,11 +150,13 @@
     <summary class="text-muted small">MeSH Terms ({{ paper.mesh_list | length }})</summary>
     <div class="mt-2 d-flex flex-wrap gap-1">
       {% for term in paper.mesh_list %}
-      <span class="d-inline-flex align-items-center gap-1">
-        <span class="badge bg-light text-dark border">{{ term }}</span>
-        {% set mapped_topic = mesh_topic_map.get(term) %}
+      {% set mapped_topic = mesh_topic_map.get(term) %}
+      <span class="d-inline-flex align-items-center">
+        <a href="https://www.ncbi.nlm.nih.gov/mesh/?term=%22{{ term | urlenc }}%22[MeSH+Terms]"
+           target="_blank" rel="noopener"
+           class="badge bg-light text-dark border text-decoration-none{% if mapped_topic %} rounded-end-0 border-end-0{% endif %}">{{ term }}</a>
         {% if mapped_topic %}
-        <span class="badge badge-topic-{{ topic_color_map.get(mapped_topic, 0) }}">{{ mapped_topic }}</span>
+        <span class="badge badge-topic-{{ topic_color_map.get(mapped_topic, 0) }} rounded-start-0">{{ mapped_topic }}</span>
         {% endif %}
       </span>
       {% endfor %}
