@@ -36,9 +36,9 @@ venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 2711 --reload
 Use Cron to fetch new papers daily, and send a per-user email digest of new papers.
 
 ```
-0  6 * * * /path/to/papersdailyvenv/bin/python /path/to/papersdailyfetch.py && /path/to/papersdailyvenv/bin/python /path/to/papersdailyemail_digest.py
+0  6 * * * /path/to/papersdaily/venv/bin/python /path/to/papersdaily/fetch.py && /path/to/papersdaily/venv/bin/python /path/to/papersdaily/email_digest.py
 # or only fetch, without email
-0  6 * * * /path/to/papersdailyvenv/bin/python /path/to/papersdailyfetch.py
+0  6 * * * /path/to/papersdaily/venv/bin/python /path/to/papersdaily/fetch.py
 ```
 
 ## Deploy as a systemd service
