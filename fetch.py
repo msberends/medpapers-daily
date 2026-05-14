@@ -449,6 +449,22 @@ def main():
                 query = profile.get("query", "").strip()
                 if not query:
                     continue
+
+                # Upsert this profile into search_profiles and get its stable integer ID
+                enabled_int = 1 if profile.get("enabled", True) else 0
+                with conn_ctx(db_path) as conn:
+                    conn.execute(
+                        """INSERT INTO search_profiles (user_id, name, query, enabled, created_at)
+                           VALUES (?, ?, ?, ?, ?)
+                           ON CONFLICT(user_id, name) DO UPDATE
+                           SET query=excluded.query, enabled=excluded.enabled""",
+                        (user_id, profile_name, query, enabled_int, now_iso),
+                    )
+                    sp_row = conn.execute(
+                        "SELECT id FROM search_profiles WHERE user_id=? AND name=?",
+                        (user_id, profile_name),
+                    ).fetchone()
+                    sp_id = sp_row["id"] if sp_row else None
                 print(f"[fetch] {username}/{profile_name}: querying PubMed ({mindate} to {maxdate})")
 
                 pf_found = 0
@@ -535,9 +551,10 @@ def main():
 
                             conn.execute(
                                 """INSERT OR IGNORE INTO user_papers
-                                   (user_id, pmid, is_read, is_starred, added_at, search_profile)
-                                   VALUES (?, ?, 0, 0, ?, ?)""",
-                                (user_id, record["pmid"], now_iso, profile_name),
+                                   (user_id, pmid, is_read, is_starred, added_at,
+                                    search_profile, search_profile_id)
+                                   VALUES (?, ?, 0, 0, ?, ?, ?)""",
+                                (user_id, record["pmid"], now_iso, profile_name, sp_id),
                             )
 
                 print(

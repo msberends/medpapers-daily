@@ -73,14 +73,14 @@
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">Search Profile</div>
         <div class="list-group list-group-flush">
-          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile="
-             class="list-group-item list-group-item-action py-2 small {% if not profile %}active{% endif %}">
+          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile_id=0"
+             class="list-group-item list-group-item-action py-2 small {% if not profile_id %}active{% endif %}">
             All profiles
           </a>
           {% for p in all_profiles %}
-          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile={{ p | urlenc }}"
-             class="list-group-item list-group-item-action py-2 small {% if profile == p %}active{% endif %}">
-            {{ p }}
+          <a href="/feed?view={{ view }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&topics={{ selected_topics | join(',') }}&profile_id={{ p.id }}"
+             class="list-group-item list-group-item-action py-2 small {% if profile_id == p.id %}active{% endif %}">
+            {{ p.name }}
           </a>
           {% endfor %}
         </div>
@@ -201,7 +201,7 @@
             <li>Widen the <strong>Date Range</strong> filter, or set it to <em>All time</em>.</li>
             <li>Relax the <strong>Journal Quartile</strong> filter to include Q3/Q4 journals.</li>
             {% if search %}<li>Remove the search term <em>"{{ search }}"</em> — it matches against title and abstract only.</li>{% endif %}
-            {% if profile %}<li>Switch the <strong>Search Profile</strong> back to <em>All profiles</em>.</li>{% endif %}
+            {% if profile_id %}<li>Switch the <strong>Search Profile</strong> back to <em>All profiles</em>.</li>{% endif %}
           </ul>
         </div>
       </div>
@@ -210,7 +210,7 @@
 
     {% set _ns = namespace(cur_profile=none) %}
     {% for paper, topics in papers %}
-    {% if group_by_profile and not profile %}
+    {% if group_by_profile and not profile_id %}
       {% set _paper_profile = paper.search_profile or '' %}
       {% if _paper_profile != _ns.cur_profile %}
         {% set _ns.cur_profile = _paper_profile %}

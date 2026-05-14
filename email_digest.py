@@ -391,33 +391,45 @@ def main():
 
         user_email = user_cfg.get("email", "")
         suppress_empty = user_cfg.get("email_suppress_empty", True)
+        email_only_new = user_cfg.get("email_only_new", True)
         mesh_topic_map = user_cfg.get("mesh_topic_map", {})
         journal_metric = user_cfg.get("journal_metric", "if")
         group_by_profile = user_cfg.get("email_group_by_profile", False)
         user_id = None
+        display_name = username
 
         try:
             with conn_ctx(db_path) as conn:
-                row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+                row = conn.execute(
+                    "SELECT id, display_name FROM users WHERE username = ?", (username,)
+                ).fetchone()
                 if row is None:
                     print(f"[email] User {username} not in DB, skipping.")
                     continue
                 user_id = row["id"]
+                display_name = row["display_name"] or username
 
                 order_sql = (
-                    "up.search_profile NULLS LAST, up.added_at DESC"
+                    "sp.name NULLS LAST, up.added_at DESC"
                     if group_by_profile else "up.added_at DESC"
                 )
+                if email_only_new:
+                    extra_filter = "AND up.emailed_at IS NULL"
+                    query_params = (user_id,)
+                else:
+                    extra_filter = "AND up.added_at >= ?"
+                    query_params = (user_id, cutoff)
                 papers_rows = conn.execute(
-                    f"""SELECT p.*, up.search_profile FROM papers p
+                    f"""SELECT p.*, sp.name as search_profile FROM papers p
                        JOIN user_papers up ON up.pmid = p.pmid
+                       LEFT JOIN search_profiles sp ON sp.id = up.search_profile_id
                        WHERE up.user_id = ?
                          AND up.is_read = 0
                          AND up.is_starred = 0
                          AND up.folder_id IS NULL
-                         AND up.added_at >= ?
+                         {extra_filter}
                        ORDER BY {order_sql}""",
-                    (user_id, cutoff),
+                    query_params,
                 ).fetchall()
 
             papers = [dict(r) for r in papers_rows]
@@ -447,12 +459,21 @@ def main():
                     new_papers=len(papers),
                     date=today_str,
                     username=username,
+                    display_name=display_name,
                     app_name=app_name,
+                    s="s" if len(papers) != 1 else "",
                 )
             except KeyError:
-                subject = f"Your daily digest, {len(papers)} new paper(s), {today_str}"
+                subject = f"{len(papers)} new paper{'s' if len(papers) != 1 else ''} in your digest ({today_str})"
             send_email(config, user_email, subject, html, plain)
             _log_mail(db_path, user_id, user_email, subject, "sent")
+            pmids = [p["pmid"] for p in papers]
+            with conn_ctx(db_path) as conn:
+                placeholders = ",".join("?" * len(pmids))
+                conn.execute(
+                    f"UPDATE user_papers SET emailed_at = ? WHERE user_id = ? AND pmid IN ({placeholders})",
+                    [today.isoformat(), user_id] + pmids,
+                )
             print(f"[email] {username}: sent digest with {len(papers)} paper(s).")
 
         except Exception:

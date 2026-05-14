@@ -54,7 +54,7 @@ def get_current_user(request: Request):
     now = datetime.now(timezone.utc)
     with conn_ctx() as conn:
         row = conn.execute(
-            """SELECT s.user_id, s.expires_at, u.username, u.is_admin
+            """SELECT s.user_id, s.expires_at, u.username, u.is_admin, u.display_name
                FROM sessions s JOIN users u ON u.id = s.user_id
                WHERE s.token_hash = ?""",
             (token_hash,),
@@ -68,7 +68,12 @@ def get_current_user(request: Request):
             "UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?",
             (now.isoformat(), token_hash),
         )
-    return {"user_id": row["user_id"], "username": row["username"], "is_admin": bool(row["is_admin"])}
+    return {
+        "user_id": row["user_id"],
+        "username": row["username"],
+        "is_admin": bool(row["is_admin"]),
+        "display_name": row["display_name"] or "",
+    }
 
 
 def require_auth(request: Request):

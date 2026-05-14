@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import yaml
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -26,10 +28,67 @@ def _save_user_cfg(username: str, data: dict):
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
+def _enrich_profiles(user_id: int, profiles: list[dict]) -> list[dict]:
+    """Add 'id' field to each profile dict by looking up the search_profiles table."""
+    if not profiles:
+        return profiles
+    with conn_ctx() as conn:
+        db_map = {
+            r["name"]: r["id"]
+            for r in conn.execute(
+                "SELECT id, name FROM search_profiles WHERE user_id = ?", (user_id,)
+            ).fetchall()
+        }
+    return [{**p, "id": db_map.get(p.get("name", ""), "")} for p in profiles]
+
+
+def _sync_profiles_to_db(user_id: int, profile_ids: list[str],
+                         profile_names: list[str], profile_queries: list[str],
+                         profile_enableds: list[str]):
+    """Sync the submitted profile form fields to the search_profiles table."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    form_profile_ids: set[int] = set()
+    with conn_ctx() as conn:
+        for pid, name, query, enabled in zip(profile_ids, profile_names,
+                                             profile_queries, profile_enableds):
+            name = name.strip()
+            if not name:
+                continue
+            enabled_int = 1 if enabled == "1" else 0
+            if pid and pid.strip().isdigit():
+                pid_int = int(pid.strip())
+                conn.execute(
+                    "UPDATE search_profiles SET name=?, query=?, enabled=? WHERE id=? AND user_id=?",
+                    (name, query.strip(), enabled_int, pid_int, user_id),
+                )
+                form_profile_ids.add(pid_int)
+            else:
+                conn.execute(
+                    """INSERT OR IGNORE INTO search_profiles
+                       (user_id, name, query, enabled, created_at) VALUES (?,?,?,?,?)""",
+                    (user_id, name, query.strip(), enabled_int, now_iso),
+                )
+                new_row = conn.execute(
+                    "SELECT id FROM search_profiles WHERE user_id=? AND name=?",
+                    (user_id, name),
+                ).fetchone()
+                if new_row:
+                    form_profile_ids.add(new_row["id"])
+        # Delete DB entries that were removed from the form
+        all_ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM search_profiles WHERE user_id=?", (user_id,)
+        ).fetchall()]
+        for old_id in all_ids:
+            if old_id not in form_profile_ids:
+                conn.execute("DELETE FROM search_profiles WHERE id=?", (old_id,))
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, saved: str = "", error: str = ""):
     user = require_auth(request)
     cfg = _load_user_cfg(user["username"])
+    if cfg.get("search_profiles"):
+        cfg = {**cfg, "search_profiles": _enrich_profiles(user["user_id"], cfg["search_profiles"])}
     return request.app.state.templates.TemplateResponse(request, "settings.html", {
         "user": user,
         "cfg": cfg,
@@ -46,6 +105,14 @@ async def save_settings(request: Request):
 
     existing = _load_user_cfg(user["username"])
 
+    display_name = form.get("display_name", "").strip()
+    with conn_ctx() as conn:
+        conn.execute(
+            "UPDATE users SET display_name=? WHERE id=?",
+            (display_name or None, user["user_id"]),
+        )
+
+    profile_ids = form.getlist("profile_id")
     profile_names = form.getlist("profile_name")
     profile_queries = form.getlist("profile_query")
     profile_enableds = form.getlist("profile_enabled")
@@ -54,6 +121,8 @@ async def save_settings(request: Request):
         for n, q, e in zip(profile_names, profile_queries, profile_enableds)
         if n.strip()
     ]
+    _sync_profiles_to_db(user["user_id"], profile_ids, profile_names,
+                         profile_queries, profile_enableds)
 
     mesh_terms = form.getlist("mesh_term")
     mesh_topics = form.getlist("mesh_topic")
@@ -91,6 +160,7 @@ async def save_settings(request: Request):
         **existing,
         "email": form.get("email", "").strip(),
         "email_suppress_empty": "email_suppress_empty" in form,
+        "email_only_new": "email_only_new" in form,
         "email_group_by_profile": "email_group_by_profile" in form,
         "fetch_enabled": "fetch_enabled" in form,
         "fetch_schedule": fetch_schedule,

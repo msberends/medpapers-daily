@@ -43,6 +43,18 @@
       <form method="post" action="/settings/save">
 
         <div class="card mb-3">
+          <div class="card-header fw-semibold"><i class="bi bi-person me-1"></i>Account</div>
+          <div class="card-body">
+            <div class="col-md-5">
+              <label class="form-label">Display name</label>
+              <input type="text" name="display_name" class="form-control"
+                     value="{{ user.display_name or '' }}" placeholder="{{ user.username }}">
+              <div class="form-text">Shown in the navigation bar and in email subject lines. Leave blank to use your login username.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
           <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email</div>
           <div class="card-body row g-3">
             <div class="col-md-7">
@@ -63,6 +75,12 @@
                        id="suppressEmpty" {% if cfg.get('email_suppress_empty', True) %}checked{% endif %}>
                 <label class="form-check-label" for="suppressEmpty">Suppress empty digest</label>
                 <div class="form-text">When on, no email is sent on days when nothing new was found. When off, you receive a brief confirmation that the fetch ran.</div>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="email_only_new"
+                       id="emailOnlyNew" {% if cfg.get('email_only_new', True) %}checked{% endif %}>
+                <label class="form-check-label" for="emailOnlyNew">Only email newly fetched papers</label>
+                <div class="form-text">When on (default), each digest only includes papers not yet sent in any previous digest. When off, all unread papers from the last 24 hours are included every time, which may resend papers you have already received.</div>
               </div>
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="email_group_by_profile"
@@ -206,7 +224,9 @@
         </div>
 
         {# Hidden profile/mesh fields so the save endpoint gets current values #}
+        <input type="hidden" name="display_name" value="{{ user.display_name or '' }}">
         {% for p in cfg.get('search_profiles', []) %}
+        <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
         <input type="hidden" name="profile_name" value="{{ p.name }}">
         <input type="hidden" name="profile_query" value="{{ p.query }}">
         <input type="hidden" name="profile_enabled" value="{{ '1' if p.get('enabled', True) else '0' }}">
@@ -248,6 +268,7 @@
         <div id="profilesList">
           {% for p in cfg.get('search_profiles', []) %}
           <div class="profile-row p-3 mb-3 border">
+            <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
             <div class="row g-2 align-items-start">
               <div class="col-md-3">
                 <label class="form-label small">Profile name</label>
@@ -281,8 +302,10 @@
         </div>
 
         {# Pass general settings fields through #}
+        <input type="hidden" name="display_name" value="{{ user.display_name or '' }}">
         <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
         {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
+        {% if cfg.get('email_only_new', True) %}<input type="hidden" name="email_only_new" value="1">{% endif %}
         {% if cfg.get('email_group_by_profile', False) %}<input type="hidden" name="email_group_by_profile" value="1">{% endif %}
         {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
         <input type="hidden" name="fetch_schedule" value="{{ cfg.get('fetch_schedule', 'daily') }}">
@@ -341,8 +364,10 @@
         </div>
 
         {# Pass through #}
+        <input type="hidden" name="display_name" value="{{ user.display_name or '' }}">
         <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
         {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
+        {% if cfg.get('email_only_new', True) %}<input type="hidden" name="email_only_new" value="1">{% endif %}
         {% if cfg.get('email_group_by_profile', False) %}<input type="hidden" name="email_group_by_profile" value="1">{% endif %}
         {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
         <input type="hidden" name="fetch_schedule" value="{{ cfg.get('fetch_schedule', 'daily') }}">
@@ -354,6 +379,7 @@
         {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
         {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
         {% for p in cfg.get('search_profiles', []) %}
+        <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
         <input type="hidden" name="profile_name" value="{{ p.name }}">
         <input type="hidden" name="profile_query" value="{{ p.query }}">
         <input type="hidden" name="profile_enabled" value="{{ '1' if p.get('enabled', True) else '0' }}">
@@ -402,6 +428,7 @@ let _peIdx = 1000;
 function addProfile() {
   const idx = _peIdx++;
   const html = `<div class="profile-row p-3 mb-3 border">
+    <input type="hidden" name="profile_id" value="">
     <div class="row g-2 align-items-start">
       <div class="col-md-3">
         <label class="form-label small">Profile name</label>

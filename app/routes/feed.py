@@ -37,7 +37,7 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
                       quartile: str, date_filter: str,
                       date_from: str, date_to: str, search: str,
                       folder_id: Optional[int], mesh_topic_map: dict,
-                      profile: str, q2_hard: bool = False,
+                      profile_id: int = 0, q2_hard: bool = False,
                       group_by_profile: bool = False) -> tuple[str, list]:
     conditions = ["up.user_id = ?"]
     params: list = [user_id]
@@ -62,9 +62,9 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
         elif quartile == "q1q2":
             conditions.append("(p.scopus_quartile = 'Q1' OR p.scopus_quartile = 'Q2')")
 
-    if profile:
-        conditions.append("up.search_profile = ?")
-        params.append(profile)
+    if profile_id:
+        conditions.append("up.search_profile_id = ?")
+        params.append(profile_id)
 
     today = datetime.now(timezone.utc).date()
     if date_filter == "today":
@@ -93,15 +93,17 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
 
     where = " AND ".join(conditions)
     order_by = (
-        "up.search_profile NULLS LAST, up.added_at DESC"
-        if group_by_profile and not profile
+        "sp.name NULLS LAST, up.added_at DESC"
+        if group_by_profile and not profile_id
         else "up.added_at DESC"
     )
     sql = f"""
         SELECT p.*, up.is_read, up.is_starred, up.folder_id, up.ris_exported_at,
-               up.added_at as user_added_at, up.search_profile
+               up.added_at as user_added_at, up.search_profile_id,
+               sp.name as search_profile
         FROM user_papers up
         JOIN papers p ON p.pmid = up.pmid
+        LEFT JOIN search_profiles sp ON sp.id = up.search_profile_id
         WHERE {where}
         ORDER BY {order_by}
     """
@@ -119,13 +121,12 @@ async def feed(
     date_from: str = "",
     date_to: str = "",
     search: str = "",
-    profile: str = "",
+    profile_id: int = 0,
     page: int = 1,
 ):
     user = require_auth(request)
     user_yaml = _get_user_yaml(user["username"])
     mesh_topic_map = user_yaml.get("mesh_topic_map", {})
-    all_profiles = [p["name"] for p in user_yaml.get("search_profiles", []) if p.get("name")]
     q2_hard = user_yaml.get("q2_hard", True)
     show_quartile = user_yaml.get("show_quartile", True)
     journal_metric = user_yaml.get("journal_metric", "if")
@@ -139,11 +140,17 @@ async def feed(
     sql, params = _build_feed_query(
         user["user_id"], view, selected_topics, quartile,
         date_filter, date_from, date_to, search, folder_id, mesh_topic_map,
-        profile, q2_hard, feed_group_by_profile,
+        profile_id, q2_hard, feed_group_by_profile,
     )
 
     with conn_ctx() as conn:
         rows = conn.execute(sql, params).fetchall()
+        all_profiles = [
+            dict(r) for r in conn.execute(
+                "SELECT id, name FROM search_profiles WHERE user_id = ? ORDER BY name",
+                (user["user_id"],),
+            ).fetchall()
+        ]
         folders = conn.execute(
             "SELECT * FROM folders WHERE user_id = ? ORDER BY name", (user["user_id"],)
         ).fetchall()
@@ -207,8 +214,8 @@ async def feed(
         qp["topics"] = ",".join(selected_topics)
     if folder_id is not None:
         qp["folder_id"] = folder_id
-    if profile:
-        qp["profile"] = profile
+    if profile_id:
+        qp["profile_id"] = profile_id
     if date_filter == "custom":
         if date_from:
             qp["date_from"] = date_from
@@ -227,7 +234,7 @@ async def feed(
         "topic_color_map": topic_color_map,
         "selected_topics": selected_topics,
         "all_profiles": all_profiles,
-        "profile": profile,
+        "profile_id": profile_id,
         "group_by_profile": feed_group_by_profile,
         "view": view,
         "folder_id": folder_id,

@@ -1,5 +1,6 @@
 email: user@example.com
 email_suppress_empty: false        # true = skip the email when nothing new today
+email_only_new: true               # true = only include papers not yet in any previous digest
 email_group_by_profile: false      # true = divide digest into sections per search profile
 fetch_enabled: true
 

@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+from app.routes.settings import _enrich_profiles, _sync_profiles_to_db
+
 BASE_DIR = Path(__file__).parent.parent.parent  # /var/www/papersdaily
 
 import yaml
@@ -308,6 +310,8 @@ async def admin_user_page(username: str, request: Request, saved: str = "", erro
     if not target_user:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="User not found")
+    if cfg.get("search_profiles"):
+        cfg = {**cfg, "search_profiles": _enrich_profiles(target_user["id"], cfg["search_profiles"])}
     return request.app.state.templates.TemplateResponse(request, "admin_user.html", {
         "user": user,
         "target_user": dict(target_user),
@@ -324,6 +328,7 @@ async def admin_save_user(username: str, request: Request):
     form = await request.form()
     existing = _load_user_cfg(username)
 
+    profile_ids = form.getlist("profile_id")
     profile_names = form.getlist("profile_name")
     profile_queries = form.getlist("profile_query")
     profiles = [
@@ -331,6 +336,21 @@ async def admin_save_user(username: str, request: Request):
         for n, q in zip(profile_names, profile_queries)
         if n.strip()
     ]
+    with conn_ctx() as conn:
+        target_row = conn.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()
+    if target_row:
+        # enabled=1 for all admin-managed profiles (no toggle in admin form)
+        enabled_all = ["1"] * len(profile_ids)
+        _sync_profiles_to_db(target_row["id"], profile_ids, profile_names,
+                             profile_queries, enabled_all)
+        display_name = form.get("display_name", "").strip()
+        with conn_ctx() as conn:
+            conn.execute(
+                "UPDATE users SET display_name=? WHERE id=?",
+                (display_name or None, target_row["id"]),
+            )
 
     mesh_terms = form.getlist("mesh_term")
     mesh_topics = form.getlist("mesh_topic")
@@ -348,6 +368,7 @@ async def admin_save_user(username: str, request: Request):
         **existing,
         "email": (form.get("email") or "").strip(),
         "email_suppress_empty": "email_suppress_empty" in form,
+        "email_only_new": "email_only_new" in form,
         "fetch_enabled": "fetch_enabled" in form,
         "show_quartile": "show_quartile" in form,
         "q2_hard": "q2_hard" in form,
