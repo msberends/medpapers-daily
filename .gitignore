@@ -13,8 +13,9 @@ users/*.yaml
 # Database
 data/paperdigest.db
 
-# Scopus CSV (large; upload via /admin after setup)
-data/scopus.csv
+# Scopus CSV files (may contain proprietary Elsevier data)
+data/scopus*.csv
+data/scopus*.json
 
 # Logs
 logs/*.log

@@ -259,24 +259,8 @@
               &bull; {{ paper.epub_date or paper.pub_date or '' }}
             </div>
             <div class="mt-1 d-flex flex-wrap gap-1">
-              {% if journal_metric == 'citescore' %}
-                {% set metric_val = paper.scopus_cites_3yr %}
-                {% set metric_lbl = 'CiteScore' %}
-                {% set metric_fmt = '%.2f' %}
-              {% elif journal_metric == 'sjr' %}
-                {% set metric_val = paper.scopus_sjr %}
-                {% set metric_lbl = 'SJR' %}
-                {% set metric_fmt = '%.2f' %}
-              {% elif journal_metric == 'hindex' %}
-                {% set metric_val = paper.scopus_h_index %}
-                {% set metric_lbl = 'H' %}
-                {% set metric_fmt = '%d' %}
-              {% else %}
-                {% set metric_val = paper.scopus_cites_per_doc %}
-                {% set metric_lbl = 'IF' %}
-                {% set metric_fmt = '%.2f' %}
-              {% endif %}
-              {% set cites_str = ' (' ~ metric_lbl ~ ' ' ~ metric_fmt|format(metric_val) ~ ')' if metric_val else '' %}
+              {% set metric_val = paper.scopus_citescore %}
+              {% set cites_str = ' (' ~ '%.1f'|format(metric_val) ~ ')' if metric_val else '' %}
               {% if show_quartile %}
                 {% if paper.scopus_quartile == 'Q1' %}
                   <span class="badge badge-q1">Q1{{ cites_str }}</span>

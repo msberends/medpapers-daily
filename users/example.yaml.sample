@@ -4,7 +4,7 @@ email_only_new: true               # true = only include papers not yet in any p
 email_group_by_profile: false      # true = divide digest into sections per search profile
 fetch_enabled: true
 
-# Scopus quartile filtering (requires scopus.csv uploaded via /admin)
+# Scopus quartile filtering (requires journal harvest to have been run via Admin > Journal Rankings)
 q1_soft: true    # show Q1 papers (always included)
 q2_hard: true    # drop Q3/Q4 papers; keep Q1+Q2
 
@@ -29,4 +29,3 @@ fetch_schedule_dow: 0   # 0=Mon … 6=Sun (weekly only)
 fetch_schedule_dom: 1   # 1-28 (monthly only)
 page_size: 25
 lookback_days: 7
-journal_metric: if      # if = Impact Factor; sjr = SJR score

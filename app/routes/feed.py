@@ -129,7 +129,6 @@ async def feed(
     mesh_topic_map = user_yaml.get("mesh_topic_map", {})
     q2_hard = user_yaml.get("q2_hard", True)
     show_quartile = user_yaml.get("show_quartile", True)
-    journal_metric = user_yaml.get("journal_metric", "if")
     feed_group_by_profile = user_yaml.get("feed_group_by_profile", False)
     page_size = user_yaml.get("page_size", 50)
     if page_size not in (10, 25, 50, 100, 150, 200, 500):
@@ -244,7 +243,6 @@ async def feed(
         "date_to": date_to,
         "search": search,
         "show_quartile": show_quartile,
-        "journal_metric": journal_metric,
         "page": page,
         "page_size": page_size,
         "total": total,

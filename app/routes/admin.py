@@ -1,5 +1,5 @@
 import csv
-import io
+import json
 import os
 import subprocess
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ from app.routes.settings import _enrich_profiles, _sync_profiles_to_db
 BASE_DIR = Path(__file__).parent.parent.parent  # /var/www/papersdaily
 
 import yaml
-from fastapi import APIRouter, File, Request, UploadFile
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.auth import require_admin, hash_password
@@ -43,29 +43,28 @@ def _load_scopus_stats(scopus_path: Path) -> dict:
     quartile_counts: dict[str, int] = {"Q1": 0, "Q2": 0, "Q3": 0, "Q4": 0}
     preview: list[dict] = []
     total = 0
-    with open(scopus_path, encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f, delimiter=";")
+    with open(scopus_path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
         for row in reader:
-            q = (row.get("SJR Best Quartile") or "").strip()
-            if q in quartile_counts:
-                quartile_counts[q] += 1
+            try:
+                q_num = int(float(row.get("quartile") or ""))
+                q = f"Q{q_num}" if 1 <= q_num <= 4 else None
+            except (ValueError, TypeError):
+                q = None
+            if q:
+                quartile_counts[q] = quartile_counts.get(q, 0) + 1
             total += 1
             if len(preview) < 50:
-                def _fmt(raw: str) -> str:
-                    raw = raw.strip()
-                    try:
-                        return f"{float(raw.replace(',', '.')):.2f}"
-                    except (ValueError, AttributeError):
-                        return raw or "—"
+                try:
+                    cs = f"{float(row.get('citescore') or 0):.1f}"
+                except (ValueError, TypeError):
+                    cs = "—"
                 preview.append({
-                    "rank": row.get("Rank", "").strip(),
-                    "title": row.get("Title", "").strip(),
-                    "issn": row.get("Issn", "").strip(),
+                    "title": (row.get("title") or "").strip(),
+                    "issn": (row.get("issn") or row.get("eIssn") or "").strip(),
                     "quartile": q or "—",
-                    "if_score": _fmt(row.get("Citations / Doc. (2years)", "")),
-                    "citescore": _fmt(row.get("Citations / Doc. (3years)", "")),
-                    "sjr": _fmt(row.get("SJR", "")),
-                    "publisher": row.get("Publisher", "").strip(),
+                    "citescore": cs,
+                    "publisher": (row.get("publisher") or "").strip(),
                 })
     return {"mtime": mtime, "total": total, "quartile_counts": quartile_counts, "preview": preview}
 
@@ -78,12 +77,14 @@ async def admin_page(
     test_sent: str = "",
     fetch_started: str = "",
     digest_started: str = "",
+    scopus_started: str = "",
+    recategorised: str = "",
     deleted: str = "",
 ):
     require_admin(request)
     user = request.app.state.get_current_user(request)
     config = request.app.state.config
-    scopus_path = BASE_DIR / config.get("scopus_file", "data/scopus.csv")
+    scopus_path = BASE_DIR / "data" / "scopus_journals.csv"
     scopus_stats = _load_scopus_stats(scopus_path)
 
     with conn_ctx() as conn:
@@ -128,7 +129,10 @@ async def admin_page(
         "test_sent": test_sent,
         "fetch_started": fetch_started,
         "digest_started": digest_started,
+        "scopus_started": scopus_started,
+        "recategorised": recategorised,
         "deleted": deleted,
+        "elsevier_api_key": config.get("elsevier_api_key", ""),
         "valid_themes": VALID_THEMES,
         "config": config,
         "scopus_stats": scopus_stats,
@@ -148,8 +152,8 @@ async def save_config(request: Request):
         "base_url": form.get("base_url", "").strip(),
         "port": _int(form.get("port"), 2711),
         "db_path": existing.get("db_path", "data/paperdigest.db"),
-        "scopus_file": existing.get("scopus_file", "data/scopus.csv"),
         "log_path": existing.get("log_path", "logs/fetch.log"),
+        "elsevier_api_key": existing.get("elsevier_api_key", ""),
         "ncbi_api_key": form.get("ncbi_api_key", "").strip(),
         "ncbi_email": form.get("ncbi_email", "").strip(),
         "email_relay": relay,
@@ -221,38 +225,126 @@ async def test_email(request: Request):
     return RedirectResponse(f"/admin?test_sent={quote(to)}", status_code=303)
 
 
-@router.post("/admin/upload-scopus")
-async def upload_scopus(request: Request, scopus_file: UploadFile = File(...)):
+
+@router.post("/admin/save-scopus-key")
+async def save_scopus_key(request: Request):
     require_admin(request)
+    form = await request.form()
     config = request.app.state.config
-    dest = BASE_DIR / config.get("scopus_file", "data/scopus.csv")
-    dest.parent.mkdir(exist_ok=True)
-    content = await scopus_file.read()
+    key = (form.get("elsevier_api_key") or "").strip()
+    if key:
+        config["elsevier_api_key"] = key
+    with open(BASE_DIR / "config.yaml", "w") as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    request.app.state.config = config
+    return RedirectResponse("/admin?saved=1#tab-scopus", status_code=303)
 
-    # Inject computed 3-year citations/doc column (Total Citations 3yr / Total Docs 3yr)
-    text = content.decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(text), delimiter=";")
-    rows = list(reader)
-    fieldnames = list(reader.fieldnames or [])
-    if "Citations / Doc. (3years)" not in fieldnames:
-        fieldnames.append("Citations / Doc. (3years)")
-    # Always recompute from col15/col13 — the existing col27 is unreliable because
-    # the "Categories" field contains unquoted semicolons that shift subsequent columns.
-    for row in rows:
-        try:
-            cites = float((row.get("Total Citations (3years)") or "").replace(",", "."))
-            docs = float((row.get("Total Docs. (3years)") or "").replace(",", "."))
-            row["Citations / Doc. (3years)"] = f"{cites / docs:.2f}".replace(".", ",") if docs > 0 else ""
-        except (ValueError, ZeroDivisionError):
-            row["Citations / Doc. (3years)"] = ""
-    out = io.StringIO()
-    writer = csv.DictWriter(out, fieldnames=fieldnames, delimiter=";")
-    writer.writeheader()
-    writer.writerows(rows)
-    with open(dest, "w", encoding="utf-8") as f:
-        f.write(out.getvalue())
 
-    return RedirectResponse("/admin?saved=1", status_code=303)
+@router.post("/admin/run-scopus-refresh")
+async def run_scopus_refresh(request: Request):
+    require_admin(request)
+    venv_python = BASE_DIR / "venv" / "bin" / "python"
+    refresh_script = BASE_DIR / "fetch_scopus_journals.py"
+    log_path = BASE_DIR / "logs" / "scopus.log"
+    try:
+        log_path.parent.mkdir(exist_ok=True)
+        with open(log_path, "ab") as log_f:
+            subprocess.Popen(
+                [str(venv_python), str(refresh_script)],
+                stdout=log_f,
+                stderr=log_f,
+                cwd=str(BASE_DIR),
+            )
+        return RedirectResponse("/admin?scopus_started=1", status_code=303)
+    except Exception as e:
+        return RedirectResponse(f"/admin?error={quote(str(e))}", status_code=303)
+
+
+@router.get("/admin/scopus-refresh-status")
+async def scopus_refresh_status(request: Request):
+    require_admin(request)
+    status_path = BASE_DIR / "data" / "scopus_refresh_status.json"
+    if not status_path.exists():
+        return {"status": "idle"}
+    try:
+        return json.loads(status_path.read_text())
+    except Exception:
+        return {"status": "idle"}
+
+
+@router.post("/admin/reset-scopus-status")
+async def reset_scopus_status(request: Request):
+    require_admin(request)
+    status_path = BASE_DIR / "data" / "scopus_refresh_status.json"
+    try:
+        status_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+    return RedirectResponse("/admin?saved=1#tab-scopus", status_code=303)
+
+
+@router.post("/admin/run-recategorise")
+async def run_recategorise(request: Request):
+    require_admin(request)
+    csv_path = BASE_DIR / "data" / "scopus_journals.csv"
+    if not csv_path.exists():
+        return RedirectResponse(
+            "/admin?error=No+journal+data+yet.+Run+a+refresh+first.#tab-scopus",
+            status_code=303,
+        )
+    mapping: dict[str, tuple] = {}
+    with open(csv_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            try:
+                q_num = int(float(row.get("quartile") or ""))
+                quartile = f"Q{q_num}" if 1 <= q_num <= 4 else None
+            except (ValueError, TypeError):
+                quartile = None
+            if quartile is None:
+                continue
+            try:
+                citescore: float | None = float(row.get("citescore") or "")
+            except (ValueError, TypeError):
+                citescore = None
+            try:
+                percentile: float | None = float(row.get("percentile") or "")
+            except (ValueError, TypeError):
+                percentile = None
+            publisher = (row.get("publisher") or "").strip() or None
+            for field in (row.get("issn") or "", row.get("eIssn") or ""):
+                for raw in field.split(","):
+                    norm = raw.replace("-", "").strip().upper()
+                    if norm and norm not in mapping:
+                        mapping[norm] = (quartile, citescore, percentile, publisher)
+
+    updated = 0
+    with conn_ctx() as conn:
+        papers = conn.execute(
+            "SELECT pmid, issn FROM papers WHERE issn IS NOT NULL"
+        ).fetchall()
+        for paper in papers:
+            norm = paper["issn"].replace("-", "").strip().upper()
+            data = mapping.get(norm)
+            if data:
+                q, cs, pct, pub = data
+                conn.execute(
+                    """UPDATE papers
+                       SET scopus_quartile   = ?,
+                           scopus_citescore  = ?,
+                           scopus_percentile = ?,
+                           publisher = CASE WHEN ? IS NOT NULL THEN ? ELSE publisher END
+                       WHERE pmid = ?""",
+                    (q, cs, pct, pub, pub, paper["pmid"]),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    """UPDATE papers
+                       SET scopus_quartile = NULL, scopus_citescore = NULL,
+                           scopus_percentile = NULL WHERE pmid = ?""",
+                    (paper["pmid"],),
+                )
+    return RedirectResponse(f"/admin?recategorised={updated}#tab-scopus", status_code=303)
 
 
 @router.post("/admin/create-user")

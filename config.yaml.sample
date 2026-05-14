@@ -2,8 +2,11 @@ app_name: Papers Daily
 base_url: http://localhost:2711
 port: 2711
 db_path: data/paperdigest.db
-scopus_file: data/scopus.csv
 log_path: logs/fetch.log
+
+# Elsevier Scopus API key — required to run the journal harvest (Admin > Journal Rankings).
+# Free API keys are available at https://dev.elsevier.com/
+elsevier_api_key: ''
 lookback_days: 7
 
 # Get a free NCBI API key at https://www.ncbi.nlm.nih.gov/account/

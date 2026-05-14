@@ -15,7 +15,7 @@ from app.auth import (
     SESSION_COOKIE, clean_expired_sessions, create_session,
     delete_session, get_current_user, verify_password,
 )
-from app.routes import admin, feed, folders, logs, paper, settings
+from app.routes import admin, feed, folders, journals, logs, paper, settings
 from app.themes import get_theme_url, VALID_THEMES
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -153,6 +153,19 @@ async def startup():
             return dt_str[:19].replace("T", " ")
 
     app.state.templates.env.filters["to_local"] = to_local
+
+    def _ordinal_suffix(n: int) -> str:
+        n = int(n)
+        if 11 <= (n % 100) <= 13:
+            return "th"
+        return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+
+    def ordinal(n) -> str:
+        n = int(n)
+        return f"{n}{_ordinal_suffix(n)}"
+
+    app.state.templates.env.filters["ordinal"] = ordinal
+    app.state.templates.env.filters["ordinal_suffix"] = _ordinal_suffix
     app.state.get_current_user = get_current_user
 
     clean_expired_sessions()
@@ -170,6 +183,7 @@ app.include_router(folders.router)
 app.include_router(settings.router)
 app.include_router(admin.router)
 app.include_router(logs.router)
+app.include_router(journals.router)
 
 
 @app.get("/", response_class=HTMLResponse)

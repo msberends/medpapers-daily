@@ -97,42 +97,37 @@ def _parse_float(raw: str) -> float | None:
         return None
 
 
-def load_scopus(scopus_path: str) -> dict[str, tuple[str, float | None, float | None, float | None, str | None, int | None]]:
-    """Returns ISSN (hyphen-free) -> (quartile, cites_2yr, cites_3yr, sjr, publisher, h_index)."""
-    mapping: dict[str, tuple[str, float | None, float | None, float | None, str | None, int | None]] = {}
-    p = Path(scopus_path)
+def load_scopus() -> dict[str, tuple[str, float | None, float | None, str | None]]:
+    """Returns ISSN (hyphen-free) -> (quartile, citescore, percentile, publisher).
+
+    Reads data/scopus_journals.csv produced by fetch_scopus_journals.py.
+    Columns used: issn, eIssn, quartile (numeric 1-4), citescore, percentile, publisher.
+    """
+    mapping: dict[str, tuple[str, float | None, float | None, str | None]] = {}
+    p = BASE_DIR / "data" / "scopus_journals.csv"
     if not p.exists():
-        print(f"[fetch] WARNING: Scopus file not found at {scopus_path}. Quartile filtering disabled.")
+        print(f"[fetch] WARNING: {p} not found. Quartile filtering disabled.")
         return mapping
-    with open(p, encoding="utf-8-sig") as f:
-        # SCImago uses semicolon delimiter; Publisher appears twice — DictReader keeps last value
-        reader = csv.DictReader(f, delimiter=";")
+    with open(p, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
         for row in reader:
-            quartile = (row.get("SJR Best Quartile") or "").strip()
-            if quartile not in ("Q1", "Q2", "Q3", "Q4"):
-                continue
-            cites_2yr = _parse_float(row.get("Citations / Doc. (2years)") or "")
-            # col27 ("Citations / Doc. (3years)") is unreliable when Categories (col25)
-            # contains unquoted semicolons — fall back to col15/col13 when not parseable.
-            cites_3yr = _parse_float(row.get("Citations / Doc. (3years)") or "")
-            if cites_3yr is None:
-                tc = _parse_float(row.get("Total Citations (3years)") or "")
-                td = _parse_float(row.get("Total Docs. (3years)") or "")
-                if tc is not None and td:
-                    cites_3yr = tc / td
-            sjr = _parse_float(row.get("SJR") or "")
-            publisher = (row.get("Publisher") or "").strip() or None
             try:
-                h_index: int | None = int(row.get("H index") or "")
+                q_num = int(float(row.get("quartile") or ""))
+                quartile = f"Q{q_num}" if 1 <= q_num <= 4 else None
             except (ValueError, TypeError):
-                h_index = None
-            issn_field = row.get("Issn") or row.get("ISSN") or ""
-            for raw_issn in issn_field.split(","):
-                raw_issn = raw_issn.strip()
-                if raw_issn:
-                    norm = _norm_issn(raw_issn)
-                    if norm not in mapping:
-                        mapping[norm] = (quartile, cites_2yr, cites_3yr, sjr, publisher, h_index)
+                quartile = None
+            if quartile is None:
+                continue
+            citescore  = _parse_float(row.get("citescore")  or "")
+            percentile = _parse_float(row.get("percentile") or "")
+            publisher  = (row.get("publisher") or "").strip() or None
+            for issn_field in (row.get("issn") or "", row.get("eIssn") or ""):
+                for raw_issn in issn_field.split(","):
+                    raw_issn = raw_issn.strip()
+                    if raw_issn:
+                        norm = _norm_issn(raw_issn)
+                        if norm not in mapping:
+                            mapping[norm] = (quartile, citescore, percentile, publisher)
     return mapping
 
 
@@ -352,8 +347,7 @@ def main():
     api_key = config.get("ncbi_api_key", "")
     ncbi_email = config.get("ncbi_email", "anonymous@example.com")
     db_path = str(BASE_DIR / config.get("db_path", "data/paperdigest.db"))
-    scopus_path = str(BASE_DIR / config.get("scopus_file", "data/scopus.csv"))
-    scopus = load_scopus(scopus_path)
+    scopus = load_scopus()
     now_iso = datetime.now(timezone.utc).isoformat()
 
     users = load_user_configs(config)
@@ -370,23 +364,21 @@ def main():
         with conn_ctx(db_path) as conn:
             to_fix = conn.execute(
                 """SELECT pmid, issn FROM papers
-                   WHERE (scopus_cites_per_doc IS NULL OR publisher IS NULL
-                          OR scopus_cites_3yr IS NULL OR scopus_h_index IS NULL)
+                   WHERE (scopus_citescore IS NULL OR scopus_percentile IS NULL OR publisher IS NULL)
                      AND issn IS NOT NULL"""
             ).fetchall()
             updated = 0
             for row in to_fix:
                 data = scopus.get(_norm_issn(row["issn"]))
                 if data:
-                    _, cites_2yr, cites_3yr, _, pub, h_index = data
+                    _, citescore, percentile, pub = data
                     conn.execute(
                         """UPDATE papers
-                           SET scopus_cites_per_doc = COALESCE(scopus_cites_per_doc, ?),
-                               scopus_cites_3yr = COALESCE(scopus_cites_3yr, ?),
-                               scopus_h_index = COALESCE(scopus_h_index, ?),
-                               publisher = COALESCE(publisher, ?)
+                           SET scopus_citescore  = COALESCE(scopus_citescore,  ?),
+                               scopus_percentile = COALESCE(scopus_percentile, ?),
+                               publisher         = COALESCE(publisher,         ?)
                            WHERE pmid = ?""",
-                        (cites_2yr, cites_3yr, h_index, pub, row["pmid"]),
+                        (citescore, percentile, pub, row["pmid"]),
                     )
                     updated += 1
         if updated:
@@ -510,13 +502,11 @@ def main():
 
                         norm_issn = _norm_issn(record["issn"])
                         scopus_data = scopus.get(norm_issn)
-                        quartile, cites_2yr, cites_3yr, sjr, publisher, h_index = scopus_data if scopus_data else (None, None, None, None, None, None)
-                        record["scopus_quartile"] = quartile
-                        record["scopus_cites_per_doc"] = cites_2yr
-                        record["scopus_cites_3yr"] = cites_3yr
-                        record["scopus_sjr"] = sjr
-                        record["publisher"] = publisher
-                        record["scopus_h_index"] = h_index
+                        quartile, citescore, percentile, publisher = scopus_data if scopus_data else (None, None, None, None)
+                        record["scopus_quartile"]   = quartile
+                        record["scopus_citescore"]  = citescore
+                        record["scopus_percentile"] = percentile
+                        record["publisher"]         = publisher
 
                         if q2_hard and quartile in ("Q3", "Q4"):
                             pf_filtered += 1
@@ -537,14 +527,14 @@ def main():
                                        (pmid, title, authors, journal, issn,
                                         pub_date, epub_date, abstract, doi,
                                         oa_url, mesh_terms, scopus_quartile,
-                                        scopus_cites_per_doc, scopus_cites_3yr,
-                                        scopus_sjr, scopus_h_index, publisher, first_seen_at)
+                                        scopus_citescore, scopus_percentile,
+                                        publisher, first_seen_at)
                                        VALUES
                                        (:pmid,:title,:authors,:journal,:issn,
                                         :pub_date,:epub_date,:abstract,:doi,
                                         :oa_url,:mesh_terms,:scopus_quartile,
-                                        :scopus_cites_per_doc,:scopus_cites_3yr,
-                                        :scopus_sjr,:scopus_h_index,:publisher,:first_seen_at)""",
+                                        :scopus_citescore,:scopus_percentile,
+                                        :publisher,:first_seen_at)""",
                                     record,
                                 )
                                 pf_new += 1

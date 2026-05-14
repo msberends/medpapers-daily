@@ -66,12 +66,10 @@ def _create_tables(conn: sqlite3.Connection):
             doi             TEXT,
             oa_url          TEXT,
             mesh_terms      TEXT,
-            scopus_quartile      TEXT,
-            scopus_cites_per_doc REAL,
-            scopus_cites_3yr     REAL,
-            scopus_sjr           REAL,
-            scopus_h_index       INTEGER,
-            first_seen_at        TEXT NOT NULL
+            scopus_quartile   TEXT,
+            scopus_citescore  REAL,
+            scopus_percentile REAL,
+            first_seen_at     TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS folders (
@@ -129,8 +127,14 @@ def _create_tables(conn: sqlite3.Connection):
     conn.commit()
 
 
+def _drop_col(conn: sqlite3.Connection, table: str, col: str):
+    existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if col in existing:
+        conn.execute(f"ALTER TABLE {table} DROP COLUMN {col}")
+
+
 def _migrate(conn: sqlite3.Connection):
-    """Add columns introduced after the initial schema."""
+    """Add/remove columns introduced after the initial schema."""
     users_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "display_name" not in users_cols:
         conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
@@ -138,16 +142,17 @@ def _migrate(conn: sqlite3.Connection):
     papers_cols = {r[1] for r in conn.execute("PRAGMA table_info(papers)").fetchall()}
     if "epub_date" not in papers_cols:
         conn.execute("ALTER TABLE papers ADD COLUMN epub_date TEXT")
-    if "scopus_cites_per_doc" not in papers_cols:
-        conn.execute("ALTER TABLE papers ADD COLUMN scopus_cites_per_doc REAL")
-    if "scopus_cites_3yr" not in papers_cols:
-        conn.execute("ALTER TABLE papers ADD COLUMN scopus_cites_3yr REAL")
-    if "scopus_sjr" not in papers_cols:
-        conn.execute("ALTER TABLE papers ADD COLUMN scopus_sjr REAL")
     if "publisher" not in papers_cols:
         conn.execute("ALTER TABLE papers ADD COLUMN publisher TEXT")
-    if "scopus_h_index" not in papers_cols:
-        conn.execute("ALTER TABLE papers ADD COLUMN scopus_h_index INTEGER")
+    if "scopus_citescore" not in papers_cols:
+        conn.execute("ALTER TABLE papers ADD COLUMN scopus_citescore REAL")
+    if "scopus_percentile" not in papers_cols:
+        conn.execute("ALTER TABLE papers ADD COLUMN scopus_percentile REAL")
+    # Remove legacy SCImago metric columns
+    _drop_col(conn, "papers", "scopus_cites_per_doc")
+    _drop_col(conn, "papers", "scopus_cites_3yr")
+    _drop_col(conn, "papers", "scopus_sjr")
+    _drop_col(conn, "papers", "scopus_h_index")
 
     fetchlog_cols = {r[1] for r in conn.execute("PRAGMA table_info(fetch_log)").fetchall()}
     if "details" not in fetchlog_cols:

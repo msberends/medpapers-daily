@@ -43,33 +43,16 @@
 
   {# Badges #}
   <div class="d-flex flex-wrap gap-2 mb-3">
-    {% if journal_metric == 'citescore' %}
-      {% set metric_val = paper.scopus_cites_3yr %}
-      {% set metric_lbl = 'CiteScore' %}
-      {% set metric_fmt = '%.2f' %}
-    {% elif journal_metric == 'sjr' %}
-      {% set metric_val = paper.scopus_sjr %}
-      {% set metric_lbl = 'SJR' %}
-      {% set metric_fmt = '%.2f' %}
-    {% elif journal_metric == 'hindex' %}
-      {% set metric_val = paper.scopus_h_index %}
-      {% set metric_lbl = 'H' %}
-      {% set metric_fmt = '%d' %}
-    {% else %}
-      {% set metric_val = paper.scopus_cites_per_doc %}
-      {% set metric_lbl = 'IF' %}
-      {% set metric_fmt = '%.2f' %}
-    {% endif %}
-    {% set cites_str = ' (' ~ metric_lbl ~ ' ' ~ metric_fmt|format(metric_val) ~ ')' if metric_val else '' %}
     {% if show_quartile %}
-      {% if paper.scopus_quartile == 'Q1' %}
-        <span class="badge badge-q1 fs-6">Q1{{ cites_str }}</span>
-      {% elif paper.scopus_quartile == 'Q2' %}
-        <span class="badge badge-q2 fs-6">Q2{{ cites_str }}</span>
-      {% elif paper.scopus_quartile == 'Q3' %}
-        <span class="badge badge-q3 fs-6">Q3{{ cites_str }}</span>
-      {% elif paper.scopus_quartile == 'Q4' %}
-        <span class="badge badge-q4 fs-6">Q4{{ cites_str }}</span>
+      {% set q   = paper.scopus_quartile %}
+      {% set cs  = paper.scopus_citescore %}
+      {% set pct = paper.scopus_percentile %}
+      {% if q in ('Q1','Q2','Q3','Q4') %}
+        <span class="badge badge-{{ q | lower }} fs-6">{{ q -}}
+          {%- if cs %} (CiteScore {{ '%.1f' | format(cs) -}}
+            {%- if pct is not none %}, {{ pct | int }}<sup>{{ pct | int | ordinal_suffix }}</sup> percentile{%- endif -%}
+          ){%- endif %}
+        </span>
       {% else %}
         <span class="badge badge-unranked fs-6">Unranked</span>
       {% endif %}

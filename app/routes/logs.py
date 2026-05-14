@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
@@ -6,6 +8,18 @@ from app.db import conn_ctx
 
 router = APIRouter()
 PAGE_SIZE = 50
+BASE_DIR = Path(__file__).parent.parent.parent
+LOG_TAIL = 300  # lines to show for raw log files
+
+
+def _tail_log(path: Path, n: int = LOG_TAIL) -> str:
+    if not path.exists():
+        return ""
+    try:
+        lines = path.read_text(errors="replace").splitlines()
+        return "\n".join(lines[-n:])
+    except Exception:
+        return ""
 
 
 @router.get("/logs", response_class=HTMLResponse)
@@ -76,10 +90,13 @@ async def logs_page(request: Request, page: int = 1, filter_user_id: int = 0):
 
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
 
+    scopus_log = _tail_log(BASE_DIR / "logs" / "scopus.log") if user["is_admin"] else ""
+
     return request.app.state.templates.TemplateResponse(request, "logs.html", {
         "user": user,
         "logs": [dict(r) for r in fetch_rows],
         "mail_logs": [dict(r) for r in mail_rows],
+        "scopus_log": scopus_log,
         "page": page,
         "total_pages": total_pages,
         "total": total,

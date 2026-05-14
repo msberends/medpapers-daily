@@ -38,6 +38,18 @@
   <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
+{% if scopus_started %}
+<div class="alert alert-info alert-dismissible py-2" role="alert">
+  <i class="bi bi-arrow-repeat me-1"></i> Journal data refresh started in the background. The progress bar on the <strong>Journal Rankings</strong> tab will update automatically. Check <a href="/logs">Logs</a> for details.
+  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if recategorised %}
+<div class="alert alert-success alert-dismissible py-2" role="alert">
+  <i class="bi bi-arrow-clockwise me-1"></i> Rankings re-applied to <strong>{{ recategorised }}</strong> paper(s).
+  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
 {% if digest_started %}
 <div class="alert alert-info alert-dismissible py-2" role="alert">
   <i class="bi bi-envelope-arrow-up me-1"></i> Email digest started in the background. Check <a href="/logs">Logs</a> for results.
@@ -303,34 +315,87 @@
 
     <div class="tip-box p-3 mb-3" style="max-width:640px">
       <p class="fw-semibold small mb-1"><i class="bi bi-info-circle me-1"></i>About journal ranking data</p>
-      <p class="small mb-2">Journal quartile rankings come from the <a href="https://www.scimagojr.com/journalrank.php" target="_blank" rel="noopener">SCImago Journal Rank</a> database, updated annually. Q1 journals fall in the top 25% by citation impact for their subject area; Q4 are in the bottom 25%.</p>
-      <p class="small mb-0">Without this data, all journals appear as Unranked and no papers are filtered out regardless of a user's quartile filter settings. Download the full CSV from SCImago (use the default export with all fields) and upload it here. Refreshing the file once a year is recommended to reflect newly ranked journals.</p>
+      <p class="small mb-2">Journal quartile rankings and CiteScore values are fetched directly from the <strong>Elsevier Scopus API</strong>. Q1 journals fall in the top 25% by CiteScore for their subject area; Q4 are in the bottom 25%.</p>
+      <p class="small mb-2">An API key is required. Free institutional and individual keys are available at <a href="https://dev.elsevier.com/" target="_blank" rel="noopener">dev.elsevier.com</a>. Once the key is saved, click <strong>Refresh now</strong> to fetch all journals in the background (typically ~10 minutes). The refresh writes to <code>data/scopus_journals.csv</code> and a live progress bar is shown below. Without ranking data, all journals appear as Unranked and quartile filtering is inactive.</p>
+      <p class="small mb-0">Re-run the refresh once a year to pick up newly ranked journals and updated CiteScore values.</p>
     </div>
 
     <div class="card mb-3" style="max-width:640px">
-      <div class="card-header fw-semibold"><i class="bi bi-upload me-1"></i>Upload Ranking Data</div>
+      <div class="card-header fw-semibold"><i class="bi bi-key me-1"></i>Elsevier API Key</div>
       <div class="card-body">
-        <form method="post" action="/admin/upload-scopus" enctype="multipart/form-data">
+        <form method="post" action="/admin/save-scopus-key">
           <div class="d-flex gap-2 align-items-center">
-            <input type="file" name="scopus_file" class="form-control" accept=".csv" required>
+            <input type="password" name="elsevier_api_key" class="form-control font-monospace"
+                   placeholder="Paste your Elsevier API key here" autocomplete="off">
             <button type="submit" class="btn btn-primary flex-shrink-0">
-              <i class="bi bi-upload me-1"></i>Upload
+              <i class="bi bi-check-lg me-1"></i>Save key
             </button>
           </div>
-          {% if scopus_stats.mtime %}
-          <div class="form-text mt-2">
-            <i class="bi bi-clock me-1"></i>Current data last updated:
-            <strong>{{ scopus_stats.mtime | to_local }}</strong>,
-            {{ scopus_stats.total | default(0) }} journals indexed.
-          </div>
+          {% if elsevier_api_key %}
+          <div class="form-text mt-2 text-success"><i class="bi bi-lock-fill me-1"></i>A key is currently stored. Paste a new one above to replace it.</div>
           {% else %}
-          <div class="form-text mt-2 text-warning"><i class="bi bi-exclamation-triangle me-1"></i>No ranking data uploaded yet. Quartile filtering is inactive.</div>
+          <div class="form-text mt-2 text-warning"><i class="bi bi-exclamation-triangle me-1"></i>No API key set. The refresh cannot run without one.</div>
           {% endif %}
         </form>
       </div>
     </div>
 
+    <div class="card mb-3" style="max-width:640px">
+      <div class="card-header fw-semibold"><i class="bi bi-arrow-repeat me-1"></i>Journal Data Refresh</div>
+      <div class="card-body">
+        {% if scopus_stats.mtime %}
+        <p class="small text-muted mb-2">
+          <i class="bi bi-clock me-1"></i>Last completed:
+          <strong>{{ scopus_stats.mtime | to_local }}</strong> &mdash;
+          {{ scopus_stats.total | default(0) }} journals indexed.
+        </p>
+        {% else %}
+        <p class="small text-warning mb-2"><i class="bi bi-exclamation-triangle me-1"></i>No data yet. Quartile filtering is inactive until the first refresh completes.</p>
+        {% endif %}
+
+        <div id="refreshProgress" class="mb-3" style="display:none">
+          <div class="d-flex justify-content-between small mb-1">
+            <span id="refreshLabel" class="text-muted">Running refresh&hellip;</span>
+            <span id="refreshPct" class="text-muted"></span>
+          </div>
+          <div class="progress" style="height:18px">
+            <div id="refreshBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                 role="progressbar" style="width:0%" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+        </div>
+
+        <form method="post" action="/admin/run-scopus-refresh" id="runRefreshForm"
+              onsubmit="return confirm('Refresh Scopus journal data now? It will run in the background and typically takes ~10 minutes.')">
+          <button type="submit" id="btnRunRefresh" class="btn btn-outline-secondary" {% if not elsevier_api_key %}disabled title="Save an API key first"{% endif %}>
+            <i class="bi bi-play-circle me-1"></i>Refresh now
+          </button>
+        </form>
+        <div class="form-text mt-2">The refresh runs in the background. Check the <a href="/logs">Logs</a> tab (<code>scopus.log</code>) for detailed progress. The progress bar above polls automatically while this tab is open.</div>
+        <hr class="my-3">
+        <p class="small text-muted mb-1"><i class="bi bi-question-circle me-1"></i><strong>Progress bar stuck?</strong> This can happen if the refresh process crashed unexpectedly. Delete the status file to reset:</p>
+        <form method="post" action="/admin/reset-scopus-status" class="d-inline"
+              onsubmit="return confirm('Clear the stuck status file? This will not stop any running process — only the progress indicator will be reset.')">
+          <button type="submit" class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-x-circle me-1"></i>Reset stuck status
+          </button>
+        </form>
+      </div>
+    </div>
+
     {% if scopus_stats.total %}
+    <div class="card mb-3" style="max-width:640px">
+      <div class="card-header fw-semibold"><i class="bi bi-arrow-clockwise me-1"></i>Re-apply Rankings to Existing Papers</div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">After a refresh, existing papers in the database still carry their old CiteScore and quartile values. Click below to update all papers using the current <code>scopus_journals.csv</code>. Papers whose journal is not found in the data will have their quartile and CiteScore cleared.</p>
+        <form method="post" action="/admin/run-recategorise"
+              onsubmit="return confirm('Re-apply journal rankings to all existing papers? This may take a moment.')">
+          <button type="submit" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-clockwise me-1"></i>Re-apply rankings to existing papers
+          </button>
+        </form>
+      </div>
+    </div>
+
     <div class="card mb-3" style="max-width:640px">
       <div class="card-header fw-semibold">Quartile breakdown</div>
       <div class="card-body p-0">
@@ -350,44 +415,9 @@
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-header fw-semibold">Top 50 journals by rank</div>
-      <div class="table-responsive" style="max-height:420px;overflow-y:auto">
-        <table class="table table-sm table-hover mb-0 align-middle">
-          <thead class="table-light" style="position:sticky;top:0">
-            <tr>
-              <th>#</th>
-              <th>Title</th>
-              <th>ISSN</th>
-              <th>Q</th>
-              <th class="text-end">IF</th>
-              <th class="text-end">CiteScore</th>
-              <th class="text-end">SJR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in scopus_stats.preview %}
-            <tr>
-              <td class="text-muted small">{{ row.rank }}</td>
-              <td class="small">{{ row.title }}</td>
-              <td class="small text-muted font-monospace">{{ row.issn }}</td>
-              <td>
-                {% set q = row.quartile %}
-                {% if q == 'Q1' %}<span class="badge badge-q1 text-white">Q1</span>
-                {% elif q == 'Q2' %}<span class="badge badge-q2 text-white">Q2</span>
-                {% elif q == 'Q3' %}<span class="badge badge-q3">Q3</span>
-                {% elif q == 'Q4' %}<span class="badge badge-q4 text-white">Q4</span>
-                {% else %}<span class="text-muted small">N/A</span>{% endif %}
-              </td>
-              <td class="text-end small text-muted">{{ row.if_score }}</td>
-              <td class="text-end small text-muted">{{ row.citescore }}</td>
-              <td class="text-end small text-muted">{{ row.sjr }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <p class="text-muted small mt-2">
+      <i class="bi bi-journals me-1"></i>Browse all ranked journals in the <a href="/journals">Journal Rankings</a> page.
+    </p>
     {% endif %}
   </div>
 
@@ -615,16 +645,20 @@ toggleSmtp();
 
 // Restore active tab: prefer URL hash, then server-side hints
 const hash = window.location.hash;
-const testSent      = {{ 'true' if test_sent      else 'false' }};
-const fetchStarted  = {{ 'true' if fetch_started  else 'false' }};
-const digestStarted = {{ 'true' if digest_started else 'false' }};
-const deleted       = {{ 'true' if deleted        else 'false' }};
+const testSent       = {{ 'true' if test_sent       else 'false' }};
+const fetchStarted   = {{ 'true' if fetch_started   else 'false' }};
+const digestStarted  = {{ 'true' if digest_started  else 'false' }};
+const scopusStarted  = {{ 'true' if scopus_started  else 'false' }};
+const recategorised  = {{ 'true' if recategorised   else 'false' }};
+const deleted        = {{ 'true' if deleted         else 'false' }};
 const savedPublishers = window.location.hash === '#tab-publishers';
 const activeTab = hash
   || (savedPublishers ? '#tab-publishers' : null)
   || (testSent        ? '#tab-email'      : null)
   || (fetchStarted    ? '#tab-fetch'      : null)
   || (digestStarted   ? '#tab-email'      : null)
+  || (scopusStarted   ? '#tab-scopus'     : null)
+  || (recategorised   ? '#tab-scopus'     : null)
   || (deleted         ? '#tab-papers'     : null);
 if (activeTab) {
   const tab = document.querySelector(`[href="${activeTab}"]`);
@@ -642,5 +676,91 @@ function confirmPaperDelete() {
   if (n === 0) { alert('Select at least one paper first.'); return false; }
   return confirm(`Permanently delete ${n} paper(s) for all users? This cannot be undone.`);
 }
+
+// Journal data refresh progress bar polling
+let refreshPollInterval = null;
+
+function startRefreshPoll() {
+  if (refreshPollInterval) return;
+  refreshPollInterval = setInterval(pollRefreshStatus, 2000);
+  pollRefreshStatus();
+}
+
+function stopRefreshPoll() {
+  if (refreshPollInterval) { clearInterval(refreshPollInterval); refreshPollInterval = null; }
+}
+
+function pollRefreshStatus() {
+  fetch('/admin/scopus-refresh-status')
+    .then(r => r.json())
+    .then(data => {
+      const bar     = document.getElementById('refreshBar');
+      const label   = document.getElementById('refreshLabel');
+      const pct     = document.getElementById('refreshPct');
+      const wrapper = document.getElementById('refreshProgress');
+      if (!bar) return;
+
+      const btn = document.getElementById('btnRunRefresh');
+
+      if (data.status === 'running') {
+        let pctVal, labelText;
+        if (data.phase === 'discovering') {
+          const done  = data.done  || 0;
+          const total = data.total || 16;
+          pctVal    = Math.round(done / total * 100);
+          labelText = `Discovering subject areas… ${done}/${total}`;
+        } else if (data.phase === 'recategorising') {
+          pctVal    = 99;
+          labelText = `Applying rankings to existing papers… (${(data.records || 0).toLocaleString()} journals loaded)`;
+        } else {
+          const fetched = data.fetched || 0;
+          const total   = data.total   || 1;
+          pctVal    = total > 0 ? Math.round(fetched / total * 100) : 0;
+          labelText = fetched > 0
+            ? `${fetched.toLocaleString()} / ${total.toLocaleString()} journals — ${data.subject || ''}`
+            : 'Starting refresh…';
+        }
+        wrapper.style.display = '';
+        bar.style.width = pctVal + '%';
+        bar.setAttribute('aria-valuenow', pctVal);
+        bar.classList.add('progress-bar-striped', 'progress-bar-animated');
+        label.textContent = labelText;
+        pct.textContent = pctVal + '%';
+        if (btn) { btn.disabled = true; btn.title = 'A refresh is already running'; }
+
+      } else if (data.status === 'done') {
+        wrapper.style.display = '';
+        bar.style.width = '100%';
+        bar.setAttribute('aria-valuenow', 100);
+        bar.classList.remove('progress-bar-striped', 'progress-bar-animated');
+        bar.classList.add('bg-success');
+        label.textContent = `Done — ${(data.records || 0).toLocaleString()} journals loaded. Reloading…`;
+        pct.textContent = '100%';
+        if (btn) btn.disabled = true;
+        stopRefreshPoll();
+        setTimeout(() => location.reload(), 3000);
+
+      } else {
+        wrapper.style.display = 'none';
+        if (btn && {{ 'true' if elsevier_api_key else 'false' }}) btn.disabled = false;
+        stopRefreshPoll();
+      }
+    })
+    .catch(() => {});
+}
+
+// Start polling when the Journal Rankings tab is shown
+document.querySelectorAll('[data-bs-toggle="tab"]').forEach(el => {
+  el.addEventListener('shown.bs.tab', e => {
+    if (e.target.getAttribute('href') === '#tab-scopus') startRefreshPoll();
+    else stopRefreshPoll();
+  });
+});
+
+// Auto-start polling if we land on the scopus tab
+document.addEventListener('DOMContentLoaded', () => {
+  const active = document.querySelector('.tab-pane.show.active');
+  if (active && active.id === 'tab-scopus') startRefreshPoll();
+});
 </script>
 {% endblock %}

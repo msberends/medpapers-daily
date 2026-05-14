@@ -79,7 +79,6 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
         "topic_color_map": topic_color_map,
         "mesh_topic_map": mesh_topic_map,
         "show_quartile": user_yaml.get("show_quartile", True),
-        "journal_metric": user_yaml.get("journal_metric", "if"),
         "config": request.app.state.config,
     })
 

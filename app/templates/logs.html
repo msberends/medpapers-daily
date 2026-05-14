@@ -34,6 +34,13 @@
         <span class="badge bg-secondary ms-1">{{ mail_logs | length }}</span>
       </a>
     </li>
+    {% if user.is_admin %}
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="tab" href="#tab-scopus">
+        <i class="bi bi-journal-text me-1"></i>Scopus harvest
+      </a>
+    </li>
+    {% endif %}
   </ul>
 
   <div class="tab-content">
@@ -170,6 +177,18 @@
         </table>
       </div>
     </div>
+
+    {# ── Scopus harvest tab (admin only) ── #}
+    {% if user.is_admin %}
+    <div class="tab-pane fade" id="tab-scopus">
+      {% if scopus_log %}
+      <pre class="small font-monospace p-3 rounded" style="background:var(--bs-tertiary-bg);max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">{{ scopus_log }}</pre>
+      <div class="text-muted small mt-1">Showing last {{ scopus_log.splitlines()|length }} lines of <code>logs/scopus.log</code>.</div>
+      {% else %}
+      <p class="text-muted small py-3">No harvest log yet. Run the journal harvest from Admin &rsaquo; Journal Rankings to generate one.</p>
+      {% endif %}
+    </div>
+    {% endif %}
 
   </div>{# end tab-content #}
 
