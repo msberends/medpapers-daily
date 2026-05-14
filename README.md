@@ -33,9 +33,24 @@ venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 2711 --reload
 ## Deploy as a systemd service
 
 ```bash
-# Edit papersdaily.service to match your paths and user, then:
+cp papersdaily.service.example papersdaily.service
+# Edit papersdaily.service: replace YOUR_USERNAME and /path/to/papersdaily
+nano papersdaily.service
+
 sudo cp papersdaily.service /etc/systemd/system/
 sudo systemctl enable --now papersdaily
 ```
 
 See `CLAUDE.md` for full architecture and design notes.
+
+## Screenshots
+
+![Feed](static/screenshots/feed.jpg)
+
+![Journals](static/screenshots/journals.jpg)
+
+![Profiles](static/screenshots/profiles.jpg)
+
+![Topics](static/screenshots/topics.jpg)
+
+![Admin](static/screenshots/admin.jpg)

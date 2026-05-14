@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=uscloud
-WorkingDirectory=/var/www/papersdaily
-ExecStart=/var/www/papersdaily/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 2711 --workers 1
+User=YOUR_USERNAME
+WorkingDirectory=/path/to/papersdaily
+ExecStart=/path/to/papersdaily/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 2711 --workers 1
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
