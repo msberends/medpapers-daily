@@ -65,6 +65,13 @@ Tables: `users`, `sessions`, `papers`, `user_papers` (join table with `is_read`,
 ### MeSH topic classification
 Classification into user-defined topic labels happens at query time in the web app (not at fetch time), by matching `papers.mesh_terms` against the user's `mesh_topic_map`. This means users can update their topic map and immediately see reclassified results without re-fetching. Papers matching no MeSH term show as "Unclassified".
 
+### Country flags on the paper page
+Each author line on `paper.html` shows a small country flag (20×15 px SVG) derived from their first affiliation string. Logic lives in `app/flags.py`:
+- `extract_country_iso(aff_text)` — strips email addresses (both `Electronic address: …` and bare emails at end), strips domain-name tokens (e.g. `rsu.lv`), then walks the comma-split tokens from the right to find a country name or US state in `_COUNTRY_MAP` / `_US_STATES`.
+- `affil_flag_html(aff_text)` — returns an `<img>` tag or a fixed-width placeholder `<span>` (so author names stay aligned when no country is known). Registered as a Jinja2 filter in `app/main.py`.
+
+Flag SVGs are self-hosted in `static/flags/{iso2}.svg` (sourced from [flagcdn.com](https://flagcdn.com/), public domain). To add flags for new ISO codes or refresh existing ones, add the code to `CODES` in `scripts/fetch_flags.py` and re-run it. The SVGs are committed to the repository so deployments work without a network request.
+
 ## Infrastructure
 
 The app runs at whatever is set in `base_url` of `config.yaml`.
@@ -102,3 +109,5 @@ These explain why the code looks the way it does — don't change these patterns
 - **Silent Scopus CSV overwrite.** No confirmation dialog on upload — intentional simpler UX for an admin action.
 - **No hard-coded colours.** Always use Bootstrap utility classes (`text-danger`, `text-muted`, `text-body-tertiary`, `opacity-75`, etc.) or CSS variables (`var(--bs-danger)`) in templates and Python filter functions. The one exception is `email_digest.py`: HTML email clients strip stylesheets and do not support CSS variables, so inline hex/rgba values are unavoidable there — keep them close to the corresponding Bootstrap token and comment why.
 - **British English only.** All user-visible text, variable names, route slugs, and comments must use British spelling. In particular: always -ise/-isation (never -ize/-ization), colour not color (except in Bootstrap class names which are fixed), etc.
+- **Country flags use SVG, not emoji.** This is a professional public project on GitHub. Flag emoji rendering is inconsistent across platforms. SVG images from flagcdn.com (self-hosted in `static/flags/`) are consistent everywhere. Do not switch to emoji flags.
+- **Flag SVGs are committed to the repository.** They are static assets required for the app to work out of the box after cloning, equivalent to Bootstrap icons. Do not gitignore them. Update via `scripts/fetch_flags.py`.

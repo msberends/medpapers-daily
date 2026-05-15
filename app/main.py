@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import db
+from app.flags import affil_flag_html
 from app.auth import (
     SESSION_COOKIE, clean_expired_sessions, create_session,
     delete_session, get_current_user, verify_password,
@@ -182,6 +183,7 @@ async def startup():
 
     app.state.templates.env.filters["ordinal"] = ordinal
     app.state.templates.env.filters["ordinal_suffix"] = _ordinal_suffix
+    app.state.templates.env.filters["affil_flag_html"] = affil_flag_html
     app.state.get_current_user = get_current_user
 
     clean_expired_sessions()

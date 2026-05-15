@@ -5,7 +5,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from app.auth import require_auth, SESSION_COOKIE
 from app.db import conn_ctx
@@ -454,6 +454,7 @@ async def rate_paper(pmid: str, request: Request, relevance: int = Form(...)):
     user = require_auth(request)
     if relevance not in (-1, 0, 1):
         relevance = 0
+    new_val = None
     with conn_ctx() as conn:
         row = conn.execute(
             "SELECT relevance FROM user_papers WHERE user_id = ? AND pmid = ?",
@@ -469,5 +470,7 @@ async def rate_paper(pmid: str, request: Request, relevance: int = Form(...)):
                 "UPDATE user_papers SET relevance = ? WHERE user_id = ? AND pmid = ?",
                 (new_val, user["user_id"], pmid),
             )
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"relevance": new_val})
     referer = request.headers.get("referer", "/feed")
     return RedirectResponse(referer, status_code=303)

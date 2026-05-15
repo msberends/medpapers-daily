@@ -44,7 +44,8 @@
   <div class="text-muted mb-1" style="line-height:1.6">
     {% for author in paper.authors_list %}
       {% set aff_indices = paper.author_aff[loop.index0] if paper.author_aff and loop.index0 < paper.author_aff|length else [] %}
-      <span class="d-block">{{ author | dim_initials | safe }}{% if aff_indices %}{% for idx in aff_indices %}<sup>{{ idx + 1 }}</sup>{% if not loop.last %}<sup>,</sup>{% endif %}{% endfor %}{% endif %}</span>
+      {% set first_aff = paper.aff_list[aff_indices[0]] if aff_indices and paper.aff_list else '' %}
+      <span class="d-block">{{ first_aff | affil_flag_html | safe }}{{ author | dim_initials | safe }}{% if aff_indices %}{% for idx in aff_indices %}<sup>{{ idx + 1 }}</sup>{% if not loop.last %}<sup>,</sup>{% endif %}{% endfor %}{% endif %}</span>
     {% endfor %}
   </div>
   {# Affiliations #}

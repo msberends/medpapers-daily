@@ -47,7 +47,6 @@
     <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-general">General</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">Topics</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-relevance">Relevance</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-password">Password</a></li>
   </ul>
 
@@ -250,7 +249,18 @@
 
     {# ── Search Profiles ── #}
     <div class="tab-pane fade" id="tab-profiles">
+
+      {# Per-profile reset forms — defined outside the main form to avoid nesting #}
+      {% for p in cfg.get('search_profiles', []) %}
+      {% if p.get('id') %}
+      <form id="reset-form-{{ p.get('id') }}" method="post"
+            action="/settings/reset-profile-relevance/{{ p.get('id') }}"
+            onsubmit="return confirm('Reset all relevance ratings for \'{{ p.name | e }}\'?')"></form>
+      {% endif %}
+      {% endfor %}
+
       <form method="post" action="/settings/save" id="profilesForm">
+        <input type="hidden" name="relevance_tab" value="1">
 
         <div class="tip-box p-3 mb-4">
           <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How search profiles work</p>
@@ -262,7 +272,10 @@
             <li>Search specific fields with tags: <code>[tiab]</code> for title and abstract, <code>[au]</code> for author, <code>[jour]</code> for journal</li>
             <li>Phrase search with quotes: <code>"antimicrobial resistance"</code></li>
           </ul>
-          <p class="small mb-0">Use <a href="https://pubmed.ncbi.nlm.nih.gov/advanced/" target="_blank" rel="noopener">PubMed Advanced Search</a> to build and test queries interactively before pasting them here.</p>
+          <p class="small mb-2">Use <a href="https://pubmed.ncbi.nlm.nih.gov/advanced/" target="_blank" rel="noopener">PubMed Advanced Search</a> to build and test queries interactively before pasting them here.</p>
+          <p class="fw-semibold small mb-1"><i class="bi bi-hand-thumbs-up me-1"></i>Relevance tracking</p>
+          <p class="small mb-2">Each paper in your feed that was fetched by a named search profile shows thumbs-up (<i class="bi bi-hand-thumbs-up"></i>) and thumbs-down (<i class="bi bi-hand-thumbs-down"></i>) buttons. Use them to tell the system whether the paper was a good result. You can also rate papers from the paper detail page. Clicking a button a second time clears the rating.</p>
+          <p class="small mb-0">Because a paper can be matched by more than one search profile, a single rating counts as feedback for <em>every</em> profile that fetched it. When a profile's relevant percentage falls below your alert threshold and enough papers have been rated, a warning appears at the top of your feed. Per-profile stats are shown within each profile below.</p>
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -273,6 +286,13 @@
 
         <div id="profilesList">
           {% for p in cfg.get('search_profiles', []) %}
+          {% set pid = p.get('id') %}
+          {% set stats = profile_relevance_stats.get(pid, {}) %}
+          {% set rated = stats.get('rated', 0) %}
+          {% set relevant = stats.get('relevant', 0) %}
+          {% set not_relevant = stats.get('not_relevant', 0) %}
+          {% set pct = ((relevant / rated * 100) | int) if rated > 0 else none %}
+          {% set threshold_pct = (rel_cfg.threshold * 100) | int %}
           <div class="profile-row p-3 mb-3 border">
             <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
             <div class="row g-2 align-items-start">
@@ -292,14 +312,48 @@
                   <i class="bi bi-trash"></i>
                 </button>
               </div>
-              <div class="col-12">
-                <input type="hidden" name="profile_enabled"
-                       value="{{ '1' if p.get('enabled', True) else '0' }}">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="pe_{{ loop.index }}"
-                         onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'"
-                         {% if p.get('enabled', True) %}checked{% endif %}>
-                  <label class="form-check-label small text-muted" for="pe_{{ loop.index }}">Active</label>
+              <div class="col-12 d-flex align-items-center justify-content-between flex-wrap gap-2 pt-1">
+                <div>
+                  <input type="hidden" name="profile_enabled"
+                         value="{{ '1' if p.get('enabled', True) else '0' }}">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="pe_{{ loop.index }}"
+                           onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'"
+                           {% if p.get('enabled', True) %}checked{% endif %}>
+                    <label class="form-check-label small text-muted" for="pe_{{ loop.index }}">Active</label>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <span class="small text-muted">
+                    {% if rated == 0 %}
+                    No ratings yet (last {{ rel_cfg.lookback_days }} days)
+                    {% else %}
+                    <i class="bi bi-hand-thumbs-up text-success"></i> {{ relevant }}
+                    &middot;
+                    <i class="bi bi-hand-thumbs-down text-danger"></i> {{ not_relevant }}
+                    &middot; {{ rated }} rated
+                    {% if pct is not none %}
+                    <span class="badge ms-1
+                      {% if pct >= threshold_pct %}text-bg-success
+                      {% elif pct >= threshold_pct - 10 %}text-bg-warning
+                      {% else %}text-bg-danger{% endif %}">{{ pct }}%</span>
+                    {% endif %}
+                    {% if rated < rel_cfg.min_rated and pct is not none and pct < threshold_pct %}
+                    <span class="text-muted small">({{ rel_cfg.min_rated - rated }} more needed for alert)</span>
+                    {% endif %}
+                    {% endif %}
+                  </span>
+                  {% if pid %}
+                  <button type="submit" form="reset-form-{{ pid }}"
+                          class="btn btn-sm btn-outline-secondary">Reset ratings</button>
+                  {% endif %}
+                  {% if pid and rated >= rel_cfg.min_rated and pct is not none and pct < threshold_pct %}
+                  <button type="button" id="suggest-btn-{{ pid }}"
+                          class="btn btn-sm btn-outline-primary"
+                          onclick="generatePrompt({{ pid }})">
+                    <i class="bi bi-stars me-1"></i>Suggest improvements
+                  </button>
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -307,7 +361,46 @@
           {% endfor %}
         </div>
 
-        {# Pass general settings fields through #}
+        <div class="card mb-3 mt-4">
+          <div class="card-header fw-semibold"><i class="bi bi-bell me-1"></i>Relevance alert settings</div>
+          <div class="card-body">
+            <p class="text-muted small mb-3">When a search profile's relevance drops below your threshold, a warning appears at the top of your feed. Rate papers using the thumbs-up/down buttons to build up data.</p>
+
+            <div class="mb-3">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="relevance_alert_enabled"
+                       id="relevanceEnabled" {% if rel_cfg.enabled %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="relevanceEnabled">Show relevance alerts on feed</label>
+              </div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-3">
+                <label class="form-label">Alert threshold (%)</label>
+                <div class="input-group" style="max-width:130px">
+                  <input type="number" name="relevance_alert_threshold" class="form-control"
+                         value="{{ (rel_cfg.threshold * 100) | int }}" min="1" max="99">
+                  <span class="input-group-text">%</span>
+                </div>
+                <div class="form-text">Alert when relevant% falls below this.</div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Minimum rated papers</label>
+                <input type="number" name="relevance_alert_min_rated" class="form-control"
+                       value="{{ rel_cfg.min_rated }}" min="1" max="1000" style="max-width:100px">
+                <div class="form-text">Wait for this many ratings before alerting.</div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Lookback window (days)</label>
+                <input type="number" name="relevance_alert_lookback_days" class="form-control"
+                       value="{{ rel_cfg.lookback_days }}" min="7" max="365" style="max-width:100px">
+                <div class="form-text">Calculate relevance over this period.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {# Pass-through: general settings #}
         <input type="hidden" name="display_name" value="{{ user.display_name or '' }}">
         <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
         {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
@@ -331,6 +424,21 @@
           <i class="bi bi-check-lg me-1"></i>Save search profiles
         </button>
       </form>
+
+      {# Danger zone: resets #}
+      <div class="card mt-4 border-danger-subtle">
+        <div class="card-header fw-semibold text-danger-emphasis"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset</div>
+        <div class="card-body">
+          <div>
+            <form method="post" action="/settings/reset-all-relevance"
+                  onsubmit="return confirm('Reset ALL relevance ratings for every paper? This cannot be undone.')">
+              <button type="submit" class="btn btn-outline-danger btn-sm">Reset all relevance ratings</button>
+            </form>
+            <div class="form-text">Clears thumbs-up/down ratings from every paper in your library.</div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     {# ── Topics ── #}
@@ -524,160 +632,6 @@
       </form>
     </div>
 
-    {# ── Relevance ── #}
-    <div class="tab-pane fade" id="tab-relevance">
-
-      <div class="tip-box p-3 mb-4">
-        <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How relevance tracking works</p>
-        <p class="small mb-2">Each paper in your feed that was fetched by a named search profile shows two small buttons — a thumbs-up (<i class="bi bi-hand-thumbs-up"></i>) and a thumbs-down (<i class="bi bi-hand-thumbs-down"></i>). Use them to tell the system whether the paper was a good result for that search. You can also rate papers from the paper detail page. Clicking a button a second time clears the rating.</p>
-        <p class="small mb-2">Because a paper can be matched by more than one search profile, a single rating counts as feedback for <em>every</em> profile that fetched it, not just the primary one shown in the feed grouping.</p>
-        <p class="small mb-0">When a profile's relevant percentage falls below your alert threshold and enough papers have been rated, a warning appears at the top of your feed with a link back here. Use the stats below to decide whether to tighten the query, broaden it, or remove the profile entirely.</p>
-      </div>
-
-      {# Per-profile relevance stats #}
-      <div class="card mb-4">
-        <div class="card-header fw-semibold"><i class="bi bi-bar-chart me-1"></i>Per-profile relevance (last {{ rel_cfg.lookback_days }} days)</div>
-        <div class="card-body p-0">
-          {% set profiles = cfg.get('search_profiles', []) %}
-          {% if not profiles %}
-          <p class="text-muted small p-3 mb-0">No search profiles configured. Add profiles in the <a href="#tab-profiles" data-bs-toggle="tab">Search Profiles</a> tab.</p>
-          {% else %}
-          <ul class="list-group list-group-flush">
-            {% for p in profiles %}
-            {% set pid = p.get('id') %}
-            {% set stats = profile_relevance_stats.get(pid, {}) %}
-            {% set rated = stats.get('rated', 0) %}
-            {% set relevant = stats.get('relevant', 0) %}
-            {% set not_relevant = stats.get('not_relevant', 0) %}
-            {% set pct = ((relevant / rated * 100) | int) if rated > 0 else none %}
-            {% set threshold_pct = (rel_cfg.threshold * 100) | int %}
-            <li class="list-group-item py-2 px-3">
-              <div class="d-flex align-items-center gap-3">
-                <div class="flex-grow-1">
-                  <span class="fw-medium">{{ p.name }}</span>
-                  {% if rated == 0 %}
-                  <span class="text-muted small ms-2">No ratings yet in this window</span>
-                  {% else %}
-                  <span class="small ms-2 text-muted">
-                    {{ relevant }} relevant &middot; {{ not_relevant }} not relevant &middot; {{ rated }} rated
-                  </span>
-                  {% if pct is not none %}
-                  <span class="badge ms-1
-                    {% if pct >= threshold_pct %}text-bg-success
-                    {% elif pct >= threshold_pct - 10 %}text-bg-warning
-                    {% else %}text-bg-danger{% endif %}">{{ pct }}%</span>
-                  {% endif %}
-                  {% if rated < rel_cfg.min_rated %}
-                  <span class="text-muted small ms-1">(fewer than {{ rel_cfg.min_rated }} rated — no alert yet)</span>
-                  {% endif %}
-                  {% endif %}
-                </div>
-                {% if pid %}
-                <form method="post" action="/settings/reset-profile-relevance/{{ pid }}" class="flex-shrink-0"
-                      onsubmit="return confirm('Reset all relevance ratings for \'{{ p.name }}\'?')">
-                  <button type="submit" class="btn btn-sm btn-outline-secondary">Reset ratings</button>
-                </form>
-                {% endif %}
-              </div>
-            </li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-        </div>
-      </div>
-
-      {# Relevance alert configuration #}
-      <form method="post" action="/settings/save" id="relevanceForm">
-        <input type="hidden" name="relevance_tab" value="1">
-
-        <div class="card mb-3">
-          <div class="card-header fw-semibold"><i class="bi bi-bell me-1"></i>Relevance alert settings</div>
-          <div class="card-body">
-            <p class="text-muted small mb-3">When a search profile's relevance drops below your threshold, a warning appears at the top of your feed. Rate papers using the thumbs-up/down buttons to build up data.</p>
-
-            <div class="mb-3">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="relevance_alert_enabled"
-                       id="relevanceEnabled" {% if rel_cfg.enabled %}checked{% endif %}>
-                <label class="form-check-label fw-medium" for="relevanceEnabled">Show relevance alerts on feed</label>
-              </div>
-            </div>
-
-            <div class="row g-3">
-              <div class="col-md-3">
-                <label class="form-label">Alert threshold (%)</label>
-                <div class="input-group" style="max-width:130px">
-                  <input type="number" name="relevance_alert_threshold" class="form-control"
-                         value="{{ (rel_cfg.threshold * 100) | int }}" min="1" max="99">
-                  <span class="input-group-text">%</span>
-                </div>
-                <div class="form-text">Alert when relevant% falls below this.</div>
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Minimum rated papers</label>
-                <input type="number" name="relevance_alert_min_rated" class="form-control"
-                       value="{{ rel_cfg.min_rated }}" min="1" max="1000" style="max-width:100px">
-                <div class="form-text">Wait for this many ratings before alerting.</div>
-              </div>
-              <div class="col-md-3">
-                <label class="form-label">Lookback window (days)</label>
-                <input type="number" name="relevance_alert_lookback_days" class="form-control"
-                       value="{{ rel_cfg.lookback_days }}" min="7" max="365" style="max-width:100px">
-                <div class="form-text">Calculate relevance over this period.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {# Pass-through: general settings #}
-        <input type="hidden" name="display_name" value="{{ user.display_name or '' }}">
-        <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
-        {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
-        {% if cfg.get('email_only_new', True) %}<input type="hidden" name="email_only_new" value="1">{% endif %}
-        {% if cfg.get('email_group_by_profile', False) %}<input type="hidden" name="email_group_by_profile" value="1">{% endif %}
-        {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
-        <input type="hidden" name="fetch_schedule" value="{{ cfg.get('fetch_schedule', 'daily') }}">
-        <input type="hidden" name="fetch_schedule_dow" value="{{ cfg.get('fetch_schedule_dow', 0) }}">
-        <input type="hidden" name="fetch_schedule_dom" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
-        <input type="hidden" name="page_size" value="{{ cfg.get('page_size', 50) }}">
-        <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
-        {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
-        {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
-        {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
-        {# Pass-through: search profiles #}
-        {% for p in cfg.get('search_profiles', []) %}
-        <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
-        <input type="hidden" name="profile_name" value="{{ p.name }}">
-        <input type="hidden" name="profile_query" value="{{ p.query }}">
-        <input type="hidden" name="profile_enabled" value="{{ '1' if p.get('enabled', True) else '0' }}">
-        {% endfor %}
-        {# Pass-through: mesh topic map #}
-        {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
-        <input type="hidden" name="mesh_term" value="{{ term }}">
-        <input type="hidden" name="mesh_topic" value="{{ topic }}">
-        {% endfor %}
-
-        <button type="submit" class="btn btn-primary">
-          <i class="bi bi-check-lg me-1"></i>Save relevance settings
-        </button>
-      </form>
-
-      {# Danger zone: resets #}
-      <div class="card mt-4 border-danger-subtle">
-        <div class="card-header fw-semibold text-danger-emphasis"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset</div>
-        <div class="card-body">
-          <div>
-            <form method="post" action="/settings/reset-all-relevance"
-                  onsubmit="return confirm('Reset ALL relevance ratings for every paper? This cannot be undone.')">
-              <button type="submit" class="btn btn-outline-danger btn-sm">Reset all relevance ratings</button>
-            </form>
-            <div class="form-text">Clears thumbs-up/down ratings from every paper in your library.</div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-
     {# ── Password ── #}
     <div class="tab-pane fade" id="tab-password">
       <div class="card" style="max-width:480px">
@@ -705,6 +659,29 @@
     </div>
 
   </div>{# end tab-content #}
+
+  {# ── LLM prompt modal (shared, reused across all profiles) ── #}
+  <div class="modal fade" id="promptModal" tabindex="-1" aria-labelledby="promptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="promptModalLabel"><i class="bi bi-stars me-1"></i>Suggested improvements</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-2">Copy this prompt and paste it into your preferred AI assistant (e.g. ChatGPT, Claude, Gemini). It includes your current query and your rated papers so the assistant can suggest specific improvements.</p>
+          <textarea id="promptTextarea" class="form-control font-monospace" rows="15" readonly
+                    style="resize:vertical;font-size:.85em"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" id="copyPromptBtn" onclick="copyPrompt()">
+            <i class="bi bi-clipboard me-1"></i>Copy to clipboard
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 </div>
 {% endblock %}
@@ -938,6 +915,45 @@ function updateScheduleUI() {
   document.getElementById('domPicker').style.display = val === 'monthly' ? '' : 'none';
 }
 updateScheduleUI();
+
+// ── LLM prompt generation ─────────────────────────────────────────────────
+
+async function generatePrompt(profileId) {
+  const btn = document.getElementById('suggest-btn-' + profileId);
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Generating…';
+  try {
+    const resp = await fetch('/settings/profile-prompt/' + profileId);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    document.getElementById('promptModalLabel').innerHTML =
+      '<i class="bi bi-stars me-1"></i>' + escapeHtml(data.profile_name) + ' — suggested improvements';
+    document.getElementById('promptTextarea').value = data.prompt;
+    document.getElementById('copyPromptBtn').innerHTML =
+      '<i class="bi bi-clipboard me-1"></i>Copy to clipboard';
+    new bootstrap.Modal(document.getElementById('promptModal')).show();
+  } catch (err) {
+    alert('Could not generate prompt. Please try again.');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+function copyPrompt() {
+  const text = document.getElementById('promptTextarea').value;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyPromptBtn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Copied!';
+    setTimeout(() => { btn.innerHTML = orig; }, 2000);
+  }).catch(() => {
+    document.getElementById('promptTextarea').select();
+    document.execCommand('copy');
+  });
+}
 
 // Restore active tab from URL hash or ?tab= query param (used after save redirects)
 const urlParams = new URLSearchParams(window.location.search);

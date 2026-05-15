@@ -4,7 +4,7 @@ import json
 
 import yaml
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pathlib import Path
 
 from app.auth import require_auth, verify_password, hash_password
@@ -282,7 +282,7 @@ async def save_settings(request: Request):
     if "topics_tab" in form:
         redirect_tab = "mesh"
     elif "relevance_tab" in form:
-        redirect_tab = "relevance"
+        redirect_tab = "profiles"
     else:
         redirect_tab = ""
     redirect_url = f"/settings?saved=1&tab={redirect_tab}" if redirect_tab else "/settings?saved=1"
@@ -302,7 +302,7 @@ async def reset_profile_relevance(profile_id: int, request: Request):
                 "UPDATE user_papers SET relevance = NULL WHERE user_id = ? AND search_profile_id = ?",
                 (user["user_id"], profile_id),
             )
-    return RedirectResponse("/settings?saved=1&tab=relevance", status_code=303)
+    return RedirectResponse("/settings?saved=1&tab=mesh", status_code=303)
 
 
 @router.post("/settings/reset-all-relevance")
@@ -313,8 +313,65 @@ async def reset_all_relevance(request: Request):
             "UPDATE user_papers SET relevance = NULL WHERE user_id = ?",
             (user["user_id"],),
         )
-    return RedirectResponse("/settings?saved=1&tab=relevance", status_code=303)
+    return RedirectResponse("/settings?saved=1&tab=mesh", status_code=303)
 
+
+
+def _build_prompt(profile_name: str, query: str,
+                  relevant: list[dict], not_relevant: list[dict]) -> str:
+    def _fmt(papers: list[dict]) -> str:
+        if not papers:
+            return "  (none)\n"
+        lines = []
+        for i, p in enumerate(papers, 1):
+            mesh_str = ", ".join(p["mesh"]) if p["mesh"] else "no MeSH terms"
+            lines.append(f"  {i}. {p['title']}\n     MeSH: {mesh_str}")
+        return "\n".join(lines) + "\n"
+
+    return (
+        "You are a PubMed search query expert. I use an automated literature monitoring tool "
+        "that fetches papers from PubMed using the search profile described below. "
+        "I have rated some of the retrieved papers as relevant or not relevant. "
+        "Based on the titles and MeSH terms of those papers, please suggest specific "
+        "improvements to my PubMed query that would retrieve more of the relevant papers "
+        "and fewer of the irrelevant ones.\n\n"
+        f"SEARCH PROFILE NAME: {profile_name}\n\n"
+        f"CURRENT PUBMED QUERY:\n{query}\n\n"
+        f"RELEVANT PAPERS ({len(relevant)}):\n{_fmt(relevant)}\n"
+        f"NOT RELEVANT PAPERS ({len(not_relevant)}):\n{_fmt(not_relevant)}\n"
+        "Please respond with only the following, without any additional explanation:\n\n"
+        "Here are the improved Search Profiles:\n"
+        f"{profile_name}: [revised query]"
+    )
+
+
+@router.get("/settings/profile-prompt/{profile_id}")
+async def profile_prompt(profile_id: int, request: Request):
+    user = require_auth(request)
+    with conn_ctx() as conn:
+        profile = conn.execute(
+            "SELECT id, name, query FROM search_profiles WHERE id = ? AND user_id = ?",
+            (profile_id, user["user_id"]),
+        ).fetchone()
+        if not profile:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404)
+        rows = conn.execute(
+            """SELECT p.title, p.mesh_terms, up.relevance
+               FROM user_paper_profiles upp
+               JOIN papers p ON p.pmid = upp.pmid
+               JOIN user_papers up ON up.user_id = upp.user_id AND up.pmid = upp.pmid
+               WHERE upp.profile_id = ? AND upp.user_id = ? AND up.relevance IS NOT NULL
+               ORDER BY upp.added_at DESC LIMIT 100""",
+            (profile_id, user["user_id"]),
+        ).fetchall()
+    relevant, not_relevant = [], []
+    for row in rows:
+        mesh = json.loads(row["mesh_terms"] or "[]")
+        entry = {"title": row["title"], "mesh": mesh}
+        (relevant if row["relevance"] == 1 else not_relevant).append(entry)
+    prompt = _build_prompt(profile["name"], profile["query"], relevant, not_relevant)
+    return JSONResponse({"prompt": prompt, "profile_name": profile["name"]})
 
 
 @router.post("/settings/change-password")

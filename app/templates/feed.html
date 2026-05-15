@@ -263,7 +263,7 @@
       <i class="bi bi-exclamation-triangle-fill me-1"></i>
       <strong>{{ alert.name }}</strong>: only {{ alert.pct }}% of {{ alert.rated }} rated papers were relevant in the last {{ rel_cfg.lookback_days }} days ({{ alert.relevant }} relevant, {{ alert.not_relevant }} not relevant).
       Consider tweaking or removing this search profile.
-      <a href="/settings?tab=relevance" class="alert-link ms-1">Review in settings &rarr;</a>
+      <a href="/settings?tab=mesh" class="alert-link ms-1">Review in settings &rarr;</a>
     </div>
     {% endfor %}
 
@@ -342,17 +342,19 @@
                   <i class="bi bi-box-arrow-up-right"></i>
                 </a>
                 {% if paper.search_profile_id %}
-                <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
+                <form method="post" action="/feed/rate-paper/{{ paper.pmid }}" class="rating-form">
                   <input type="hidden" name="relevance" value="{{ 0 if paper.relevance == 1 else 1 }}">
-                  <button type="submit" class="btn btn-sm btn-link p-0 {% if paper.relevance == 1 %}text-success{% else %}text-muted opacity-50{% endif %}"
+                  <button type="submit" data-pmid="{{ paper.pmid }}" data-rating="up"
+                          class="btn btn-sm btn-link p-0 {% if paper.relevance == 1 %}text-success{% else %}text-muted opacity-50{% endif %}"
                           title="{% if paper.relevance == 1 %}Clear: marked as relevant{% else %}Mark as relevant for this search profile{% endif %}"
                           style="font-size:.8em">
                     <i class="bi {% if paper.relevance == 1 %}bi-hand-thumbs-up-fill{% else %}bi-hand-thumbs-up{% endif %}"></i>
                   </button>
                 </form>
-                <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
+                <form method="post" action="/feed/rate-paper/{{ paper.pmid }}" class="rating-form">
                   <input type="hidden" name="relevance" value="{{ 0 if paper.relevance == -1 else -1 }}">
-                  <button type="submit" class="btn btn-sm btn-link p-0 {% if paper.relevance == -1 %}text-danger{% else %}text-muted opacity-50{% endif %}"
+                  <button type="submit" data-pmid="{{ paper.pmid }}" data-rating="down"
+                          class="btn btn-sm btn-link p-0 {% if paper.relevance == -1 %}text-danger{% else %}text-muted opacity-50{% endif %}"
                           title="{% if paper.relevance == -1 %}Clear: marked as not relevant{% else %}Mark as not relevant for this search profile{% endif %}"
                           style="font-size:.8em">
                     <i class="bi {% if paper.relevance == -1 %}bi-hand-thumbs-down-fill{% else %}bi-hand-thumbs-down{% endif %}"></i>
@@ -386,7 +388,7 @@
               <a class="small text-muted text-decoration-none user-select-none"
                  data-bs-toggle="collapse" href="#abs-{{ paper.pmid }}"
                  role="button" aria-expanded="false">
-                <i class="bi bi-chevron-down" style="font-size:.7em"></i> Abstract
+                <i class="bi bi-chevron-down" style="font-size:.7em"></i> Abstract <span class="fw-normal" style="font-size:.85em">({{ paper.abstract.split() | length }} words)</span>
               </a>
               <div class="collapse" id="abs-{{ paper.pmid }}">
                 <p class="small text-muted mt-1 mb-0" style="line-height:1.5">{{ paper.abstract }}</p>
@@ -508,5 +510,37 @@ function clearSelection() {
   document.querySelectorAll('.paper-cb').forEach(c => c.checked = false);
   updateBulkBar();
 }
+
+function updateRatingButtons(pmid, relevance) {
+  const upBtn = document.querySelector(`button[data-rating="up"][data-pmid="${pmid}"]`);
+  const downBtn = document.querySelector(`button[data-rating="down"][data-pmid="${pmid}"]`);
+  if (!upBtn || !downBtn) return;
+  const upActive = relevance === 1;
+  const downActive = relevance === -1;
+  upBtn.classList.toggle('text-success', upActive);
+  upBtn.classList.toggle('text-muted', !upActive);
+  upBtn.classList.toggle('opacity-50', !upActive);
+  upBtn.querySelector('i').className = `bi ${upActive ? 'bi-hand-thumbs-up-fill' : 'bi-hand-thumbs-up'}`;
+  upBtn.closest('form').querySelector('input[name=relevance]').value = upActive ? 0 : 1;
+  downBtn.classList.toggle('text-danger', downActive);
+  downBtn.classList.toggle('text-muted', !downActive);
+  downBtn.classList.toggle('opacity-50', !downActive);
+  downBtn.querySelector('i').className = `bi ${downActive ? 'bi-hand-thumbs-down-fill' : 'bi-hand-thumbs-down'}`;
+  downBtn.closest('form').querySelector('input[name=relevance]').value = downActive ? 0 : -1;
+}
+
+document.addEventListener('submit', function (e) {
+  const form = e.target;
+  if (!form.classList.contains('rating-form')) return;
+  e.preventDefault();
+  const pmid = form.querySelector('button[data-rating]').dataset.pmid;
+  fetch(form.action, {
+    method: 'POST',
+    body: new FormData(form),
+    headers: { 'Accept': 'application/json' },
+  }).then(r => r.json()).then(data => {
+    updateRatingButtons(pmid, data.relevance);
+  }).catch(() => { form.submit(); });
+});
 </script>
 {% endblock %}
