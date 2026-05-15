@@ -46,3 +46,23 @@ predatory_publishers: []
 bootstrap_theme: yeti   # any Bootswatch theme name
 theme: light            # light or dark
 timezone: UTC           # IANA timezone, e.g. Europe/Amsterdam
+
+# LLM integration — abstract highlights and search profile suggestions
+# Set llm_provider to 'claude', 'chatgpt', or 'ollama' to enable. Leave blank to disable.
+# Model lists: Claude → https://docs.anthropic.com/en/docs/about-claude/models/overview
+#              ChatGPT → https://platform.openai.com/docs/models
+#              Ollama → run 'ollama list' or see https://ollama.com/library
+llm_provider: ''
+llm_api_key: ''                          # Claude or OpenAI API key
+llm_ollama_url: 'http://localhost:11434' # Ollama base URL (ignored for claude/chatgpt)
+llm_model: ''                            # e.g. claude-sonnet-4-6, gpt-4o, llama3.2
+# System prompt for abstract highlights. The abstract is sent as the user message.
+llm_prompt: |
+  You summarise scientific abstracts. When given an abstract, respond with up to
+  5 concise bullet-point highlights capturing the key findings, methods, and
+  conclusions. Each highlight is one short sentence. Return only the bullet
+  points, one per line, each starting with a dash (-). No introduction, no
+  numbering, no trailing commentary. Use British English spelling throughout
+  (e.g. -ise not -ize, colour not color).
+# Allow users to send their Search Profile improvement prompts through the LLM.
+llm_allow_profile_optimisation: false

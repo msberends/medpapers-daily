@@ -213,6 +213,8 @@ def _migrate(conn: sqlite3.Connection):
 
     if "affiliations" not in papers_cols:
         conn.execute("ALTER TABLE papers ADD COLUMN affiliations TEXT")
+    if "highlights" not in papers_cols:
+        conn.execute("ALTER TABLE papers ADD COLUMN highlights TEXT")
 
     # Backfill user_paper_profiles from user_papers for existing installations.
     # Only runs once: when user_papers has profile-linked rows but user_paper_profiles is empty.

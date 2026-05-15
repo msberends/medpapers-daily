@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+from app.llm import DEFAULT_HIGHLIGHTS_PROMPT
+
 from app.routes.settings import _enrich_profiles, _sync_profiles_to_db
 
 BASE_DIR = Path(__file__).parent.parent.parent  # /var/www/papersdaily
@@ -69,6 +71,16 @@ def _load_scopus_stats(scopus_path: Path) -> dict:
     return {"mtime": mtime, "total": total, "quartile_counts": quartile_counts, "preview": preview}
 
 
+def _load_llm_status(base_dir: Path) -> dict:
+    status_path = base_dir / "data" / "llm_status.json"
+    if not status_path.exists():
+        return {"status": "idle"}
+    try:
+        return json.loads(status_path.read_text())
+    except Exception:
+        return {"status": "idle"}
+
+
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_page(
     request: Request,
@@ -80,6 +92,7 @@ async def admin_page(
     scopus_started: str = "",
     recategorised: str = "",
     deleted: str = "",
+    llm_started: str = "",
 ):
     require_admin(request)
     user = request.app.state.get_current_user(request)
@@ -116,6 +129,11 @@ async def admin_page(
                 "SELECT DISTINCT publisher FROM papers WHERE publisher IS NOT NULL AND publisher != '' ORDER BY publisher"
             ).fetchall()
         ]
+        llm_pending = conn.execute(
+            "SELECT COUNT(*) FROM papers WHERE highlights IS NULL AND abstract IS NOT NULL AND abstract != ''"
+        ).fetchone()[0]
+
+    llm_status = _load_llm_status(BASE_DIR)
 
     return request.app.state.templates.TemplateResponse(request, "admin.html", {
         "user": user,
@@ -132,10 +150,15 @@ async def admin_page(
         "scopus_started": scopus_started,
         "recategorised": recategorised,
         "deleted": deleted,
+        "llm_started": llm_started,
         "elsevier_api_key": config.get("elsevier_api_key", ""),
         "valid_themes": VALID_THEMES,
         "config": config,
         "scopus_stats": scopus_stats,
+        "llm_pending": llm_pending,
+        "llm_status": llm_status,
+        "llm_has_api_key": bool(config.get("llm_api_key", "")),
+        "llm_default_prompt": DEFAULT_HIGHLIGHTS_PROMPT,
     })
 
 
@@ -553,6 +576,87 @@ async def save_publisher_map(request: Request):
     with open(BASE_DIR / "config.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     return RedirectResponse("/admin?saved=1#tab-publishers", status_code=303)
+
+
+@router.post("/admin/save-llm-config")
+async def save_llm_config(request: Request):
+    require_admin(request)
+    form = await request.form()
+    config = request.app.state.config
+
+    provider = (form.get("llm_provider") or "").strip()
+    new_api_key = (form.get("llm_api_key") or "").strip()
+    model = (form.get("llm_model") or "").strip()
+    ollama_url = (form.get("llm_ollama_url") or "").strip()
+    prompt = (form.get("llm_prompt") or "").strip()
+    allow_opt = "llm_allow_profile_optimisation" in form
+
+    config["llm_provider"] = provider
+    config["llm_model"] = model
+    config["llm_ollama_url"] = ollama_url or "http://localhost:11434"
+    config["llm_prompt"] = prompt
+    config["llm_allow_profile_optimisation"] = allow_opt
+    # Only overwrite the stored key when a non-empty value is submitted
+    if new_api_key:
+        config["llm_api_key"] = new_api_key
+
+    with open(BASE_DIR / "config.yaml", "w") as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    request.app.state.config = config
+    return RedirectResponse("/admin?saved=1#tab-llm", status_code=303)
+
+
+@router.post("/admin/test-llm")
+async def test_llm(request: Request):
+    from fastapi.responses import JSONResponse
+    require_admin(request)
+    config = request.app.state.config
+    if not config.get("llm_provider"):
+        return JSONResponse({"ok": False, "error": "No LLM provider configured."})
+    if not config.get("llm_model"):
+        return JSONResponse({"ok": False, "error": "No model name configured."})
+    from app.llm import call_llm
+    try:
+        response = call_llm(
+            config,
+            system_prompt="You are a helpful assistant.",
+            user_message="Reply with exactly one word: OK",
+            timeout=30,
+        )
+        return JSONResponse({"ok": True, "response": response.strip()})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
+@router.post("/admin/run-llm-highlights")
+async def run_llm_highlights(request: Request):
+    require_admin(request)
+    config = request.app.state.config
+    if not config.get("llm_provider"):
+        return RedirectResponse(
+            "/admin?error=No+LLM+provider+configured#tab-llm", status_code=303
+        )
+    venv_python = BASE_DIR / "venv" / "bin" / "python"
+    llm_script = BASE_DIR / "llm_highlights.py"
+    log_path = BASE_DIR / "logs" / "llm.log"
+    try:
+        log_path.parent.mkdir(exist_ok=True)
+        with open(log_path, "ab") as log_f:
+            subprocess.Popen(
+                [str(venv_python), "-u", str(llm_script)],
+                stdout=log_f,
+                stderr=log_f,
+                cwd=str(BASE_DIR),
+            )
+        return RedirectResponse("/admin?llm_started=1#tab-llm", status_code=303)
+    except Exception as e:
+        return RedirectResponse(f"/admin?error={quote(str(e))}#tab-llm", status_code=303)
+
+
+@router.get("/admin/llm-status")
+async def llm_status(request: Request):
+    require_admin(request)
+    return _load_llm_status(BASE_DIR)
 
 
 def _int(val, default: int) -> int:

@@ -158,6 +158,10 @@ async def settings_page(request: Request, saved: str = "", error: str = "", tab:
         for i, name in enumerate(topics_grouped)
     }
 
+    llm_available = bool(
+        admin_config.get("llm_provider") and admin_config.get("llm_allow_profile_optimisation")
+    )
+
     return request.app.state.templates.TemplateResponse(request, "settings.html", {
         "user": user,
         "cfg": cfg,
@@ -173,6 +177,7 @@ async def settings_page(request: Request, saved: str = "", error: str = "", tab:
         "topics_grouped": topics_grouped,
         "all_terms_combined": all_terms_combined,
         "effective_topic_colours": effective_topic_colours,
+        "llm_available": llm_available,
     })
 
 
@@ -343,6 +348,45 @@ def _build_prompt(profile_name: str, query: str,
         "Here are the improved Search Profiles:\n"
         f"{profile_name}: [revised query]"
     )
+
+
+@router.post("/settings/run-profile-llm/{profile_id}")
+async def run_profile_llm(profile_id: int, request: Request):
+    user = require_auth(request)
+    config = request.app.state.config
+    if not (config.get("llm_provider") and config.get("llm_allow_profile_optimisation")):
+        return JSONResponse({"error": "LLM not available for this feature."}, status_code=403)
+
+    from app.llm import call_llm
+
+    with conn_ctx() as conn:
+        profile = conn.execute(
+            "SELECT id, name, query FROM search_profiles WHERE id = ? AND user_id = ?",
+            (profile_id, user["user_id"]),
+        ).fetchone()
+        if not profile:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404)
+        rows = conn.execute(
+            """SELECT p.title, p.mesh_terms, up.relevance
+               FROM user_paper_profiles upp
+               JOIN papers p ON p.pmid = upp.pmid
+               JOIN user_papers up ON up.user_id = upp.user_id AND up.pmid = upp.pmid
+               WHERE upp.profile_id = ? AND upp.user_id = ? AND up.relevance IS NOT NULL
+               ORDER BY upp.added_at DESC LIMIT 100""",
+            (profile_id, user["user_id"]),
+        ).fetchall()
+    relevant, not_relevant = [], []
+    for row in rows:
+        mesh = json.loads(row["mesh_terms"] or "[]")
+        entry = {"title": row["title"], "mesh": mesh}
+        (relevant if row["relevance"] == 1 else not_relevant).append(entry)
+    prompt = _build_prompt(profile["name"], profile["query"], relevant, not_relevant)
+    try:
+        response = call_llm(config, "", prompt)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"response": response, "profile_name": profile["name"]})
 
 
 @router.get("/settings/profile-prompt/{profile_id}")

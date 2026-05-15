@@ -347,11 +347,11 @@
                   <button type="submit" form="reset-form-{{ pid }}"
                           class="btn btn-sm btn-outline-secondary">Reset ratings</button>
                   {% endif %}
-                  {% if pid and rated >= rel_cfg.min_rated and pct is not none and pct < threshold_pct %}
+                  {% if pid and (llm_available or (rated >= rel_cfg.min_rated and pct is not none and pct < threshold_pct)) %}
                   <button type="button" id="suggest-btn-{{ pid }}"
                           class="btn btn-sm btn-outline-primary"
                           onclick="generatePrompt({{ pid }})">
-                    <i class="bi bi-stars me-1"></i>Suggest improvements
+                    <i class="bi bi-stars me-1"></i>{% if llm_available %}Improve with LLM{% else %}Suggest improvements{% endif %}
                   </button>
                   {% endif %}
                 </div>
@@ -669,11 +669,30 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <p class="text-muted small mb-2">Copy this prompt and paste it into your preferred AI assistant (e.g. ChatGPT, Claude, Gemini). It includes your current query and your rated papers so the assistant can suggest specific improvements.</p>
-          <textarea id="promptTextarea" class="form-control font-monospace" rows="15" readonly
+          <p class="text-muted small mb-2">
+            {% if llm_available %}
+            Copy this prompt to your clipboard, or click <strong>Run with LLM</strong> to send it directly to the configured LLM.
+            {% else %}
+            Copy this prompt and paste it into your preferred LLM (e.g. ChatGPT, Claude, Gemini). It includes your current query and your rated papers so the LLM can suggest specific improvements.
+            {% endif %}
+          </p>
+          <textarea id="promptTextarea" class="form-control font-monospace" rows="12" readonly
                     style="resize:vertical;font-size:.85em"></textarea>
+          <div id="llmResponseArea" class="mt-3" style="display:none">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="small fw-semibold"><i class="bi bi-stars me-1"></i>LLM suggestion</span>
+              <small class="text-muted">Review carefully before updating your query.</small>
+            </div>
+            <div id="llmResponseText" class="border rounded p-3 bg-body-tertiary"
+                 style="font-size:.875em;white-space:pre-wrap;font-family:inherit"></div>
+          </div>
         </div>
         <div class="modal-footer">
+          {% if llm_available %}
+          <button type="button" class="btn btn-outline-primary me-auto" id="runLlmBtn" onclick="runWithAI()">
+            <i class="bi bi-stars me-1"></i>Run with LLM
+          </button>
+          {% endif %}
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
           <button type="button" class="btn btn-primary" id="copyPromptBtn" onclick="copyPrompt()">
             <i class="bi bi-clipboard me-1"></i>Copy to clipboard
@@ -918,7 +937,10 @@ updateScheduleUI();
 
 // ── LLM prompt generation ─────────────────────────────────────────────────
 
+let _currentProfileId = null;
+
 async function generatePrompt(profileId) {
+  _currentProfileId = profileId;
   const btn = document.getElementById('suggest-btn-' + profileId);
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
@@ -932,9 +954,34 @@ async function generatePrompt(profileId) {
     document.getElementById('promptTextarea').value = data.prompt;
     document.getElementById('copyPromptBtn').innerHTML =
       '<i class="bi bi-clipboard me-1"></i>Copy to clipboard';
+    document.getElementById('llmResponseArea').style.display = 'none';
+    document.getElementById('llmResponseText').textContent = '';
     new bootstrap.Modal(document.getElementById('promptModal')).show();
   } catch (err) {
     alert('Could not generate prompt. Please try again.');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+async function runWithAI() {
+  if (!_currentProfileId) return;
+  const btn = document.getElementById('runLlmBtn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Querying LLM…';
+  document.getElementById('llmResponseArea').style.display = 'none';
+  document.getElementById('llmResponseText').textContent = '';
+  try {
+    const resp = await fetch('/settings/run-profile-llm/' + _currentProfileId, {method: 'POST'});
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    document.getElementById('llmResponseText').textContent = data.response;
+    document.getElementById('llmResponseArea').style.display = '';
+  } catch (err) {
+    alert('LLM request failed: ' + err.message);
     console.error(err);
   } finally {
     btn.disabled = false;

@@ -132,6 +132,23 @@
     {% endif %}
   </div>
 
+  {# LLM highlights #}
+  {% if paper.highlights %}
+  <div class="card mb-3 border-0 bg-body-tertiary">
+    <div class="card-header fw-semibold border-0 bg-body-tertiary">
+      <i class="bi bi-stars me-1"></i>Key Highlights
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for h in paper.highlights %}
+      <li class="list-group-item bg-transparent" style="font-size:1rem">{{ h | inline_md }}</li>
+      {% endfor %}
+    </ul>
+    <div class="card-footer border-0 bg-transparent pt-0">
+      <span class="text-muted" style="font-size:.72em"><i class="bi bi-robot me-1"></i>LLM-generated highlights based on the abstract.</span>
+    </div>
+  </div>
+  {% endif %}
+
   {# Abstract #}
   {% if paper.abstract %}
   <div class="card mb-3">

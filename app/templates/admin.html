@@ -62,6 +62,12 @@
   <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
+{% if llm_started %}
+<div class="alert alert-info alert-dismissible py-2" role="alert">
+  <i class="bi bi-stars me-1"></i> LLM highlights generation started in the background. Check <a href="/logs">Logs</a> (<code>llm.log</code>) for progress.
+  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
 
 <ul class="nav nav-tabs mb-4" id="adminTabs">
   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-app">Application</a></li>
@@ -69,6 +75,7 @@
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-email">Email</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-scopus">Journal Rankings</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-publishers">Publishers</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-llm">LLM</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-users">Users</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-papers">
     Papers <span class="badge bg-secondary ms-1">{{ papers | length }}</span>
@@ -472,6 +479,149 @@
     {% endif %}
   </div>
 
+  {# ── LLM ── #}
+  <div class="tab-pane fade" id="tab-llm">
+
+    <div class="tip-box p-3 mb-3" style="max-width:680px">
+      <p class="fw-semibold small mb-1"><i class="bi bi-stars me-1"></i>LLM integration</p>
+      <p class="small mb-2">When an LLM provider is configured, the system automatically generates up to 5 concise highlights for each paper's abstract. Highlights appear on the paper page above the abstract. Papers without highlights are processed in the background after each fetch run, or you can trigger a batch run manually below.</p>
+      <p class="small mb-0">You can also allow users to send their Search Profile improvement prompts directly to the LLM, rather than copy-pasting them into an external tool.</p>
+    </div>
+
+    <form method="post" action="/admin/save-llm-config" style="max-width:680px">
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold"><i class="bi bi-cpu me-1"></i>Provider</div>
+        <div class="card-body row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Provider</label>
+            <select name="llm_provider" id="llmProvider" class="form-select" onchange="updateLlmFields()">
+              <option value="" {% if not config.get('llm_provider') %}selected{% endif %}>Disabled</option>
+              <option value="claude" {% if config.get('llm_provider') == 'claude' %}selected{% endif %}>Claude (Anthropic)</option>
+              <option value="chatgpt" {% if config.get('llm_provider') == 'chatgpt' %}selected{% endif %}>ChatGPT (OpenAI)</option>
+              <option value="ollama" {% if config.get('llm_provider') == 'ollama' %}selected{% endif %}>Ollama (local)</option>
+            </select>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label">Model <span id="llmModelLink" class="fw-normal text-muted small"></span></label>
+            <input type="text" name="llm_model" id="llmModel" class="form-control font-monospace"
+                   value="{{ config.get('llm_model', '') }}"
+                   placeholder="e.g. claude-sonnet-4-6">
+            <div class="form-text" id="llmModelHint">Enter the exact model identifier for your chosen provider.</div>
+          </div>
+          <div class="col-md-8" id="llmApiKeyRow">
+            <label class="form-label">API key</label>
+            <input type="password" name="llm_api_key" class="form-control font-monospace"
+                   placeholder="Paste your API key here" autocomplete="off">
+            {% if llm_has_api_key %}
+            <div class="form-text text-success"><i class="bi bi-lock-fill me-1"></i>A key is currently stored. Paste a new one to replace it.</div>
+            {% else %}
+            <div class="form-text text-warning"><i class="bi bi-exclamation-triangle me-1"></i>No API key stored yet.</div>
+            {% endif %}
+          </div>
+          <div class="col-md-8" id="llmOllamaRow">
+            <label class="form-label">Ollama base URL</label>
+            <input type="url" name="llm_ollama_url" class="form-control font-monospace"
+                   value="{{ config.get('llm_ollama_url', 'http://localhost:11434') }}"
+                   placeholder="http://localhost:11434">
+            <div class="form-text">The URL where your Ollama instance is running. Must be reachable from this server.</div>
+          </div>
+          <div class="col-12 pt-1">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="llmTestBtn"
+                      onclick="testLlm()"
+                      {% if not config.get('llm_provider') or not config.get('llm_model') %}
+                      disabled title="Save a provider and model first"
+                      {% endif %}>
+                <i class="bi bi-plug me-1"></i>Test connection
+              </button>
+              <span id="llmTestResult" class="small"></span>
+            </div>
+            <div class="form-text mt-1">Sends a minimal request to verify the provider, model, and credentials are working. Save your settings before testing.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold"><i class="bi bi-chat-left-text me-1"></i>Highlights system prompt</div>
+        <div class="card-body">
+          <p class="text-muted small mb-2">This is sent as the <strong>system prompt</strong> on every highlights request. The paper's abstract is sent as the user message. Keep instructions clear and specific; the default below works well for most models.</p>
+          <textarea name="llm_prompt" class="form-control font-monospace" rows="7"
+                    style="font-size:.85em"
+                    placeholder="{{ llm_default_prompt }}">{{ config.get('llm_prompt', '') }}</textarea>
+          <div class="form-text">Leave blank to use the built-in default prompt.</div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold"><i class="bi bi-people me-1"></i>User access</div>
+        <div class="card-body">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="llm_allow_profile_optimisation"
+                   id="llmAllowOpt" {% if config.get('llm_allow_profile_optimisation') %}checked{% endif %}>
+            <label class="form-check-label fw-medium" for="llmAllowOpt">
+              Allow users to run their Search Profile improvement prompts through the configured LLM
+            </label>
+          </div>
+          <div class="form-text ms-4 ps-1">When enabled, a <strong>Run with LLM</strong> button appears in the Search Profile improvement modal (Settings &rsaquo; Search Profiles). Users can send their query-improvement prompt directly to the LLM rather than copying it to an external tool. The full prompt — including their rated paper titles and MeSH terms — is sent to the provider.</div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check-lg me-1"></i>Save LLM settings
+      </button>
+    </form>
+
+    <hr class="my-4">
+
+    <div style="max-width:680px">
+      <h6 class="fw-semibold mb-3"><i class="bi bi-lightning me-1"></i>Highlights generation</h6>
+
+      {% set ls = llm_status %}
+      {% if ls.status == 'running' %}
+      <div class="alert alert-info py-2 mb-3">
+        <i class="bi bi-hourglass-split me-1"></i>
+        Generation in progress &mdash; {{ ls.processed | default(0) }} of {{ ls.total | default('?') }} processed.
+      </div>
+      {% elif ls.status == 'error' %}
+      <div class="alert alert-danger py-2 mb-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>Last run encountered an error:
+        <code class="ms-1">{{ ls.last_error }}</code>
+      </div>
+      {% elif ls.status == 'done' and ls.finished_at %}
+      <div class="alert alert-success py-2 mb-3">
+        <i class="bi bi-check-circle me-1"></i>
+        Last run: {{ ls.finished_at | to_local }} &mdash;
+        {{ ls.processed }} processed, {{ ls.errors }} error(s).
+        {% if ls.last_error %}
+        <span class="text-muted small ms-2">Last error: {{ ls.last_error }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <p class="text-muted small mb-3">
+        {% if llm_pending %}
+        <strong>{{ llm_pending }}</strong> paper{{ 's' if llm_pending != 1 else '' }} in the database
+        {{ 'have' if llm_pending != 1 else 'has' }} no highlights yet.
+        {% else %}
+        All papers with abstracts already have highlights.
+        {% endif %}
+        Highlights are also generated automatically in the background after each fetch run.
+      </p>
+
+      <form method="post" action="/admin/run-llm-highlights" id="runLlmHighlightsForm"
+            onsubmit="return confirm('Generate LLM highlights for all {{ llm_pending }} paper(s) without them? This will run in the background.')">
+        <button type="submit" class="btn btn-outline-secondary"
+                {% if not config.get('llm_provider') %}disabled title="Configure a provider first"{% endif %}
+                {% if llm_pending == 0 %}disabled title="No papers need highlights"{% endif %}>
+          <i class="bi bi-play-circle me-1"></i>Generate highlights now
+        </button>
+      </form>
+      <div class="form-text mt-2">Runs in the background. Check <a href="/logs">Logs</a> (<code>llm.log</code>) for progress. The status above updates automatically while this tab is open.</div>
+    </div>
+
+  </div>
+
   {# ── Papers ── #}
   <div class="tab-pane fade" id="tab-papers">
     <div class="warn-box p-3 mb-3">
@@ -651,6 +801,7 @@ const digestStarted  = {{ 'true' if digest_started  else 'false' }};
 const scopusStarted  = {{ 'true' if scopus_started  else 'false' }};
 const recategorised  = {{ 'true' if recategorised   else 'false' }};
 const deleted        = {{ 'true' if deleted         else 'false' }};
+const llmStarted     = {{ 'true' if llm_started     else 'false' }};
 const savedPublishers = window.location.hash === '#tab-publishers';
 const activeTab = hash
   || (savedPublishers ? '#tab-publishers' : null)
@@ -659,11 +810,114 @@ const activeTab = hash
   || (digestStarted   ? '#tab-email'      : null)
   || (scopusStarted   ? '#tab-scopus'     : null)
   || (recategorised   ? '#tab-scopus'     : null)
-  || (deleted         ? '#tab-papers'     : null);
+  || (deleted         ? '#tab-papers'     : null)
+  || (llmStarted      ? '#tab-llm'        : null);
 if (activeTab) {
   const tab = document.querySelector(`[href="${activeTab}"]`);
   if (tab) tab.click();
 }
+
+// ── LLM provider field toggling ───────────────────────────────────────────
+
+const LLM_MODEL_LINKS = {
+  claude:  '<a href="https://docs.anthropic.com/en/docs/about-claude/models/overview" target="_blank" rel="noopener" class="small">Browse models</a>',
+  chatgpt: '<a href="https://platform.openai.com/docs/models" target="_blank" rel="noopener" class="small">Browse models</a>',
+  ollama:  '<a href="https://ollama.com/library" target="_blank" rel="noopener" class="small">Browse models</a>',
+};
+const LLM_MODEL_HINTS = {
+  claude:  'e.g. claude-sonnet-4-6, claude-opus-4-7',
+  chatgpt: 'e.g. gpt-4o, gpt-4o-mini',
+  ollama:  'e.g. llama3.2, mistral, gemma3',
+};
+
+function updateLlmFields() {
+  const provider = document.getElementById('llmProvider').value;
+  const apiKeyRow  = document.getElementById('llmApiKeyRow');
+  const ollamaRow  = document.getElementById('llmOllamaRow');
+  const modelHint  = document.getElementById('llmModelHint');
+  const modelLink  = document.getElementById('llmModelLink');
+  const modelInput = document.getElementById('llmModel');
+
+  apiKeyRow.style.display  = (provider === 'ollama' || !provider) ? 'none' : '';
+  ollamaRow.style.display  = provider === 'ollama' ? '' : 'none';
+  modelHint.textContent    = LLM_MODEL_HINTS[provider] || 'Enter the exact model identifier.';
+  modelLink.innerHTML      = LLM_MODEL_LINKS[provider] || '';
+  modelInput.placeholder   = LLM_MODEL_HINTS[provider]
+    ? LLM_MODEL_HINTS[provider].split(',')[0].replace('e.g. ', '')
+    : '';
+}
+updateLlmFields();
+
+// ── LLM connection test ───────────────────────────────────────────────────
+
+async function testLlm() {
+  const btn = document.getElementById('llmTestBtn');
+  const result = document.getElementById('llmTestResult');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Testing…';
+  result.innerHTML = '';
+  try {
+    const resp = await fetch('/admin/test-llm', {method: 'POST'});
+    const data = await resp.json();
+    if (data.ok) {
+      result.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i><span class="text-success">Connected. Response: <em>' + escapeHtml(data.response) + '</em></span>';
+    } else {
+      result.innerHTML = '<i class="bi bi-x-circle-fill text-danger me-1"></i><span class="text-danger">' + escapeHtml(data.error) + '</span>';
+    }
+  } catch (err) {
+    result.innerHTML = '<i class="bi bi-x-circle-fill text-danger me-1"></i><span class="text-danger">Request failed: ' + escapeHtml(String(err)) + '</span>';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── LLM highlights status polling ─────────────────────────────────────────
+
+let llmPollInterval = null;
+
+function startLlmPoll() {
+  if (llmPollInterval) return;
+  llmPollInterval = setInterval(pollLlmStatus, 3000);
+  pollLlmStatus();
+}
+
+function stopLlmPoll() {
+  if (llmPollInterval) { clearInterval(llmPollInterval); llmPollInterval = null; }
+}
+
+function pollLlmStatus() {
+  fetch('/admin/llm-status')
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'running') {
+        // Reload when done so counts update
+      } else if (data.status === 'done' && llmPollInterval) {
+        stopLlmPoll();
+        setTimeout(() => location.reload(), 2000);
+      } else {
+        stopLlmPoll();
+      }
+    })
+    .catch(() => {});
+}
+
+document.querySelectorAll('[data-bs-toggle="tab"]').forEach(el => {
+  el.addEventListener('shown.bs.tab', e => {
+    if (e.target.getAttribute('href') === '#tab-llm') startLlmPoll();
+    else stopLlmPoll();
+  });
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const active = document.querySelector('.tab-pane.show.active');
+  if (active && active.id === 'tab-llm') startLlmPoll();
+});
 
 function toggleAllPapers() {
   const cbs = document.querySelectorAll('.paper-del-cb');

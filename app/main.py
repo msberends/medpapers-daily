@@ -107,6 +107,17 @@ async def startup():
     app.state.templates.env.filters["urlenc"] = quote_plus
     app.state.templates.env.filters["clean_journal"] = lambda s: re.sub(r"\s*\([^)]*\)", "", s or "").strip()
 
+    def inline_md(text: str) -> "markupsafe.Markup":
+        from markupsafe import escape, Markup
+        s = str(escape(text))
+        s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
+        s = re.sub(r"\*(.+?)\*", r"<em>\1</em>", s)
+        s = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"<em>\1</em>", s)
+        s = re.sub(r"`(.+?)`", r"<code>\1</code>", s)
+        return Markup(s)
+
+    app.state.templates.env.filters["inline_md"] = inline_md
+
     def dim_initials(author: str) -> str:
         author = (author or "").strip()
         if "," in author:

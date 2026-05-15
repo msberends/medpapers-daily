@@ -67,6 +67,7 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
     paper["authors_list"] = json.loads(paper["authors"] or "[]")
     paper["mesh_list"] = json.loads(paper["mesh_terms"] or "[]")
     paper["keyword_list"] = json.loads(paper.get("keywords") or "[]")
+    paper["highlights"] = json.loads(paper.get("highlights") or "null") or []
     affil_raw = json.loads(paper.get("affiliations") or "null") or {}
     paper["aff_list"] = affil_raw.get("aff_list", [])
     paper["author_aff"] = affil_raw.get("author_aff", [])

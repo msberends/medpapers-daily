@@ -637,6 +637,30 @@ def main():
             f"status={run_status}"
         )
 
+    _launch_llm_highlights(config)
+
+
+def _launch_llm_highlights(config: dict):
+    """Fire-and-forget: launch llm_highlights.py in the background if an LLM is configured."""
+    if not config.get("llm_provider"):
+        return
+    try:
+        import subprocess
+        venv_py = BASE_DIR / "venv" / "bin" / "python"
+        llm_script = BASE_DIR / "llm_highlights.py"
+        log_path = BASE_DIR / "logs" / "llm.log"
+        log_path.parent.mkdir(exist_ok=True)
+        with open(log_path, "ab") as log_f:
+            subprocess.Popen(
+                [str(venv_py), "-u", str(llm_script)],
+                stdout=log_f,
+                stderr=log_f,
+                cwd=str(BASE_DIR),
+            )
+        print("[fetch] LLM highlights generation queued in background.")
+    except Exception as e:
+        print(f"[fetch] Could not start LLM highlights: {e}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     # Add project root to path so 'from app import db' works
