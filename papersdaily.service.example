@@ -1,5 +1,5 @@
 [Unit]
-Description=Papers Daily FastAPI application
+Description=MedPapers Daily FastAPI application
 After=network.target
 
 [Service]

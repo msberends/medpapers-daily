@@ -277,7 +277,7 @@ def _render_paper_card(p: dict, mesh_topic_map: dict, base_url: str,
 def build_html_digest(papers: list, mesh_topic_map: dict, base_url: str,
                       username: str, today_str: str, config: dict | None = None,
                       group_by_profile: bool = False) -> str:
-    app_name = (config or {}).get("app_name") or "Papers Daily"
+    app_name = (config or {}).get("app_name") or "MedPapers Daily"
     paper_word = "paper" if len(papers) == 1 else "papers"
     cfg = config or {}
     _sentinel = object()
@@ -318,7 +318,7 @@ def build_html_digest(papers: list, mesh_topic_map: dict, base_url: str,
 </html>"""
 
 
-def build_plain_digest(papers: list, base_url: str, app_name: str = "Papers Daily") -> str:
+def build_plain_digest(papers: list, base_url: str, app_name: str = "MedPapers Daily") -> str:
     lines = [f"{app_name} Digest — {len(papers)} new paper(s)\n", "=" * 60]
     for p in papers:
         lines.append(f"\n{p['title']}")
@@ -355,7 +355,7 @@ def send_email(config: dict, to: str, subject: str, html: str, plain: str):
 
 def send_error_email(config: dict, to: str, subject: str, body: str):
     from mail_helper import send_plain_email
-    app_name = config.get("app_name", "Papers Daily")
+    app_name = config.get("app_name", "MedPapers Daily")
     try:
         send_plain_email(config, to, f"[{app_name}] {subject}", body)
     except Exception as e:
@@ -372,7 +372,7 @@ def main():
         "email_subject_template",
         "Your daily digest, {new_papers} new paper(s), {date}"
     )
-    app_name = config.get("app_name", "Papers Daily")
+    app_name = config.get("app_name", "MedPapers Daily")
 
     today = datetime.now(timezone.utc)
     today_str = today.strftime("%d %B %Y")

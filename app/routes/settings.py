@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import json
+
 import yaml
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -26,6 +28,15 @@ def _save_user_cfg(username: str, data: dict):
     path.parent.mkdir(exist_ok=True)
     with open(path, "w") as f:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+
+def _get_relevance_cfg(user_yaml: dict) -> dict:
+    return {
+        "enabled": user_yaml.get("relevance_alert_enabled", True),
+        "threshold": user_yaml.get("relevance_alert_threshold", 0.30),
+        "min_rated": user_yaml.get("relevance_alert_min_rated", 10),
+        "lookback_days": user_yaml.get("relevance_alert_lookback_days", 30),
+    }
 
 
 def _enrich_profiles(user_id: int, profiles: list[dict]) -> list[dict]:
@@ -84,17 +95,67 @@ def _sync_profiles_to_db(user_id: int, profile_ids: list[str],
 
 
 @router.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request, saved: str = "", error: str = ""):
+async def settings_page(request: Request, saved: str = "", error: str = "", tab: str = ""):
     user = require_auth(request)
     cfg = _load_user_cfg(user["username"])
     if cfg.get("search_profiles"):
         cfg = {**cfg, "search_profiles": _enrich_profiles(user["user_id"], cfg["search_profiles"])}
+
+    admin_config = request.app.state.config
+    rel_cfg = _get_relevance_cfg(cfg)
+
+    # Per-profile relevance stats for the settings Relevance tab
+    profile_relevance_stats: dict = {}
+    date_modifier = f"-{int(rel_cfg['lookback_days'])} days"
+    with conn_ctx() as conn:
+        stat_rows = conn.execute(
+            """SELECT sp.id,
+                      SUM(CASE WHEN up.relevance = 1  THEN 1 ELSE 0 END) AS relevant,
+                      SUM(CASE WHEN up.relevance = -1 THEN 1 ELSE 0 END) AS not_relevant,
+                      SUM(CASE WHEN up.relevance IS NOT NULL THEN 1 ELSE 0 END) AS rated
+               FROM search_profiles sp
+               LEFT JOIN user_paper_profiles upp
+                   ON upp.profile_id = sp.id AND upp.user_id = sp.user_id
+                   AND date(upp.added_at) >= date('now', ?)
+               LEFT JOIN user_papers up
+                   ON up.user_id = upp.user_id AND up.pmid = upp.pmid
+               WHERE sp.user_id = ?
+               GROUP BY sp.id""",
+            (date_modifier, user["user_id"]),
+        ).fetchall()
+        for r in stat_rows:
+            profile_relevance_stats[r["id"]] = {
+                "relevant": r["relevant"] or 0,
+                "not_relevant": r["not_relevant"] or 0,
+                "rated": r["rated"] or 0,
+            }
+
+    # Collect all unique MeSH terms and author keywords from this user's papers
+    all_mesh: set[str] = set()
+    all_keywords: set[str] = set()
+    with conn_ctx() as conn:
+        term_rows = conn.execute(
+            """SELECT p.mesh_terms, p.keywords
+               FROM papers p
+               JOIN user_papers up ON up.pmid = p.pmid
+               WHERE up.user_id = ?""",
+            (user["user_id"],),
+        ).fetchall()
+    for row in term_rows:
+        all_mesh.update(t for t in json.loads(row["mesh_terms"] or "[]") if t)
+        all_keywords.update(t for t in json.loads(row["keywords"] or "[]") if t)
+
     return request.app.state.templates.TemplateResponse(request, "settings.html", {
         "user": user,
         "cfg": cfg,
         "saved": saved,
         "error": error,
-        "config": request.app.state.config,
+        "tab": tab,
+        "config": admin_config,
+        "rel_cfg": rel_cfg,
+        "profile_relevance_stats": profile_relevance_stats,
+        "all_mesh_terms": sorted(all_mesh),
+        "all_keywords": sorted(all_keywords),
     })
 
 
@@ -176,8 +237,56 @@ async def save_settings(request: Request):
         "mesh_topic_map": mesh_map,
         "folders": existing.get("folders", []),
     }
+
+    # Relevance alert settings — only written when submitted from the Relevance tab
+    if "relevance_tab" in form:
+        data["relevance_alert_enabled"] = "relevance_alert_enabled" in form
+        try:
+            t = max(1, min(99, int(form.get("relevance_alert_threshold", "30"))))
+            data["relevance_alert_threshold"] = round(t / 100.0, 4)
+        except (ValueError, TypeError):
+            data["relevance_alert_threshold"] = existing.get("relevance_alert_threshold", 0.30)
+        try:
+            data["relevance_alert_min_rated"] = max(1, min(1000, int(form.get("relevance_alert_min_rated", "10"))))
+        except (ValueError, TypeError):
+            data["relevance_alert_min_rated"] = existing.get("relevance_alert_min_rated", 10)
+        try:
+            data["relevance_alert_lookback_days"] = max(7, min(365, int(form.get("relevance_alert_lookback_days", "30"))))
+        except (ValueError, TypeError):
+            data["relevance_alert_lookback_days"] = existing.get("relevance_alert_lookback_days", 30)
+
     _save_user_cfg(user["username"], data)
-    return RedirectResponse("/settings?saved=1", status_code=303)
+    redirect_tab = "relevance" if "relevance_tab" in form else ""
+    redirect_url = f"/settings?saved=1&tab={redirect_tab}" if redirect_tab else "/settings?saved=1"
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@router.post("/settings/reset-profile-relevance/{profile_id}")
+async def reset_profile_relevance(profile_id: int, request: Request):
+    user = require_auth(request)
+    with conn_ctx() as conn:
+        row = conn.execute(
+            "SELECT id FROM search_profiles WHERE id = ? AND user_id = ?",
+            (profile_id, user["user_id"]),
+        ).fetchone()
+        if row:
+            conn.execute(
+                "UPDATE user_papers SET relevance = NULL WHERE user_id = ? AND search_profile_id = ?",
+                (user["user_id"], profile_id),
+            )
+    return RedirectResponse("/settings?saved=1&tab=relevance", status_code=303)
+
+
+@router.post("/settings/reset-all-relevance")
+async def reset_all_relevance(request: Request):
+    user = require_auth(request)
+    with conn_ctx() as conn:
+        conn.execute(
+            "UPDATE user_papers SET relevance = NULL WHERE user_id = ?",
+            (user["user_id"],),
+        )
+    return RedirectResponse("/settings?saved=1&tab=relevance", status_code=303)
+
 
 
 @router.post("/settings/change-password")

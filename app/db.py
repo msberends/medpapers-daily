@@ -123,6 +123,15 @@ def _create_tables(conn: sqlite3.Connection):
             status    TEXT    NOT NULL,
             error     TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS user_paper_profiles (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            pmid       TEXT    NOT NULL REFERENCES papers(pmid),
+            profile_id INTEGER NOT NULL REFERENCES search_profiles(id) ON DELETE CASCADE,
+            added_at   TEXT    NOT NULL,
+            UNIQUE(user_id, pmid, profile_id)
+        );
     """)
     conn.commit()
 
@@ -140,6 +149,8 @@ def _migrate(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
 
     papers_cols = {r[1] for r in conn.execute("PRAGMA table_info(papers)").fetchall()}
+    if "keywords" not in papers_cols:
+        conn.execute("ALTER TABLE papers ADD COLUMN keywords TEXT DEFAULT '[]'")
     if "epub_date" not in papers_cols:
         conn.execute("ALTER TABLE papers ADD COLUMN epub_date TEXT")
     if "publisher" not in papers_cols:
@@ -196,5 +207,24 @@ def _migrate(conn: sqlite3.Connection):
         conn.execute(
             "UPDATE user_papers SET emailed_at = added_at WHERE added_at IS NOT NULL"
         )
+
+    if "relevance" not in up_cols:
+        conn.execute("ALTER TABLE user_papers ADD COLUMN relevance INTEGER")
+
+    # Backfill user_paper_profiles from user_papers for existing installations.
+    # Only runs once: when user_papers has profile-linked rows but user_paper_profiles is empty.
+    up_has_profiles = conn.execute(
+        "SELECT 1 FROM user_papers WHERE search_profile_id IS NOT NULL LIMIT 1"
+    ).fetchone()
+    upp_is_empty = not conn.execute(
+        "SELECT 1 FROM user_paper_profiles LIMIT 1"
+    ).fetchone()
+    if up_has_profiles and upp_is_empty:
+        conn.execute("""
+            INSERT OR IGNORE INTO user_paper_profiles (user_id, pmid, profile_id, added_at)
+            SELECT user_id, pmid, search_profile_id, added_at
+            FROM user_papers
+            WHERE search_profile_id IS NOT NULL
+        """)
 
     conn.commit()

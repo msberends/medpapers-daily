@@ -279,6 +279,14 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
         if node.text
     ]
 
+    # Author-provided keywords (often present before MeSH indexing is complete).
+    # KeywordList is a child of MedlineCitation, not of Article.
+    keywords = [
+        node.text.strip()
+        for node in medline.findall(".//KeywordList/Keyword")
+        if node.text
+    ]
+
     return {
         "pmid": pmid,
         "title": title,
@@ -290,6 +298,7 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
         "abstract": abstract,
         "doi": doi,
         "mesh_terms": json.dumps(mesh_terms),
+        "keywords": json.dumps(keywords),
     }
 
 
@@ -330,7 +339,7 @@ def _log_mail(db_path: str, user_id: int, to: str, subject: str,
 def send_error_email(config: dict, db_path: str, user_id: int,
                      to: str, subject: str, body: str):
     from mail_helper import send_plain_email
-    app_name = config.get("app_name", "Papers Daily")
+    app_name = config.get("app_name", "MedPapers Daily")
     full_subject = f"[{app_name}] {subject}"
     try:
         send_plain_email(config, to, full_subject, body)
@@ -526,18 +535,26 @@ def main():
                                     """INSERT INTO papers
                                        (pmid, title, authors, journal, issn,
                                         pub_date, epub_date, abstract, doi,
-                                        oa_url, mesh_terms, scopus_quartile,
-                                        scopus_citescore, scopus_percentile,
-                                        publisher, first_seen_at)
+                                        oa_url, mesh_terms, keywords,
+                                        scopus_quartile, scopus_citescore,
+                                        scopus_percentile, publisher, first_seen_at)
                                        VALUES
                                        (:pmid,:title,:authors,:journal,:issn,
                                         :pub_date,:epub_date,:abstract,:doi,
-                                        :oa_url,:mesh_terms,:scopus_quartile,
-                                        :scopus_citescore,:scopus_percentile,
-                                        :publisher,:first_seen_at)""",
+                                        :oa_url,:mesh_terms,:keywords,
+                                        :scopus_quartile,:scopus_citescore,
+                                        :scopus_percentile,:publisher,:first_seen_at)""",
                                     record,
                                 )
                                 pf_new += 1
+                            else:
+                                # Refresh terms on existing papers: MeSH terms are
+                                # added by NLM weeks after first fetch; keywords may
+                                # also have been missing due to an earlier bug.
+                                conn.execute(
+                                    "UPDATE papers SET mesh_terms=?, keywords=? WHERE pmid=?",
+                                    (record["mesh_terms"], record["keywords"], record["pmid"]),
+                                )
 
                             conn.execute(
                                 """INSERT OR IGNORE INTO user_papers
@@ -545,6 +562,14 @@ def main():
                                     search_profile, search_profile_id)
                                    VALUES (?, ?, 0, 0, ?, ?, ?)""",
                                 (user_id, record["pmid"], now_iso, profile_name, sp_id),
+                            )
+                            # Record this profile match regardless of which profile
+                            # "won" the user_papers primary attribution above.
+                            conn.execute(
+                                """INSERT OR IGNORE INTO user_paper_profiles
+                                   (user_id, pmid, profile_id, added_at)
+                                   VALUES (?, ?, ?, ?)""",
+                                (user_id, record["pmid"], sp_id, now_iso),
                             )
 
                 print(

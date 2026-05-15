@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Admin &mdash; {{ config.get('app_name', 'Papers Daily') }}{% endblock %}
+{% block title %}Admin &mdash; {{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -87,7 +87,7 @@
           <label class="form-label">Application name</label>
           <input type="text" name="app_name" class="form-control"
                  value="{{ config.get('app_name', '') }}"
-                 placeholder="e.g. Papers Daily" required>
+                 placeholder="e.g. MedPapers Daily" required>
           <div class="form-text">Displayed in the page title, navbar, and all outgoing email notifications.</div>
         </div>
         <div class="col-md-6">

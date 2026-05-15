@@ -148,7 +148,7 @@ async def save_config(request: Request):
     relay = form.get("email_relay", "sendmail")
 
     new_config = {
-        "app_name": form.get("app_name", "Papers Daily").strip(),
+        "app_name": form.get("app_name", "MedPapers Daily").strip(),
         "base_url": form.get("base_url", "").strip(),
         "port": _int(form.get("port"), 2711),
         "db_path": existing.get("db_path", "data/paperdigest.db"),
@@ -197,7 +197,7 @@ async def test_email(request: Request):
     if not to:
         return RedirectResponse("/admin?error=No+email+address+configured+for+your+account", status_code=303)
     from urllib.parse import quote
-    app_name = config.get("app_name", "Papers Daily")
+    app_name = config.get("app_name", "MedPapers Daily")
     subject = f"[{app_name}] Test email"
     now = datetime.now(timezone.utc).isoformat()
     try:

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Login &mdash; {{ config.get('app_name', 'Papers Daily') }}</title>
+  <title>Login &mdash; {{ config.get('app_name', 'MedPapers Daily') }}</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="{{ get_theme_url(config.get('bootstrap_theme', 'flatly')) }}">
 </head>
@@ -11,7 +11,7 @@
 <div class="card shadow" style="width:380px">
   <div class="card-body p-4">
     <h4 class="card-title mb-1 text-center fw-bold">
-      <i class="bi bi-journal-bookmark-fill me-1"></i>{{ config.get('app_name', 'Papers Daily') }}
+      <i class="bi bi-journal-bookmark-fill me-1"></i>{{ config.get('app_name', 'MedPapers Daily') }}
     </h4>
     <p class="text-center text-muted small mb-4">Scientific literature monitoring</p>
     {% if error %}

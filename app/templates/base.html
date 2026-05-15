@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{{ config.get('app_name', 'Papers Daily') }}{% endblock %}</title>
+  <title>{% block title %}{{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="{{ get_theme_url(get_user_theme(user, config)) }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -50,7 +50,7 @@
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
   <div class="container-fluid">
     <a class="navbar-brand fw-bold" href="/feed">
-      <i class="bi bi-journal-bookmark-fill me-1"></i>{{ config.get('app_name', 'Papers Daily') }}
+      <i class="bi bi-journal-bookmark-fill me-1"></i>{{ config.get('app_name', 'MedPapers Daily') }}
     </a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
       <span class="navbar-toggler-icon"></span>
@@ -90,7 +90,7 @@
 </main>
 
 <footer class="text-center text-muted small py-3 border-top mt-4">
-  {{ config.get('app_name', 'Papers Daily') }} &mdash; <a href="{{ config.get('base_url', '') }}" class="text-muted">{{ config.get('base_url', '') }}</a>
+  {{ config.get('app_name', 'MedPapers Daily') }} &mdash; <a href="{{ config.get('base_url', '') }}" class="text-muted">{{ config.get('base_url', '') }}</a>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

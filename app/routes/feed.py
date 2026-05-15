@@ -23,6 +23,15 @@ def _get_user_yaml(username: str) -> dict:
         return yaml.safe_load(f) or {}
 
 
+def _get_relevance_cfg(user_yaml: dict) -> dict:
+    return {
+        "enabled": user_yaml.get("relevance_alert_enabled", True),
+        "threshold": user_yaml.get("relevance_alert_threshold", 0.30),
+        "min_rated": user_yaml.get("relevance_alert_min_rated", 10),
+        "lookback_days": user_yaml.get("relevance_alert_lookback_days", 30),
+    }
+
+
 def _sort_clause(sort: str) -> str:
     if sort == "oldest":
         return "up.added_at ASC"
@@ -34,14 +43,10 @@ def _sort_clause(sort: str) -> str:
     return "up.added_at DESC"
 
 
-def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict) -> list[str]:
-    if not mesh_terms_json:
-        return []
-    terms = json.loads(mesh_terms_json)
-    topics = set()
-    for term in terms:
-        if term in mesh_topic_map:
-            topics.add(mesh_topic_map[term])
+def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict,
+                    keywords_json: str = "[]") -> list[str]:
+    terms = json.loads(mesh_terms_json or "[]") + json.loads(keywords_json or "[]")
+    topics = {mesh_topic_map[t] for t in terms if t in mesh_topic_map}
     return sorted(topics)
 
 
@@ -76,7 +81,10 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
             conditions.append("(p.scopus_quartile = 'Q1' OR p.scopus_quartile = 'Q2')")
 
     if profile_id:
-        conditions.append("up.search_profile_id = ?")
+        conditions.append(
+            "EXISTS (SELECT 1 FROM user_paper_profiles upp"
+            " WHERE upp.user_id = up.user_id AND upp.pmid = up.pmid AND upp.profile_id = ?)"
+        )
         params.append(profile_id)
 
     today = datetime.now(timezone.utc).date()
@@ -112,7 +120,7 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
     )
     sql = f"""
         SELECT p.*, up.is_read, up.is_starred, up.folder_id, up.ris_exported_at,
-               up.added_at as user_added_at, up.search_profile_id,
+               up.added_at as user_added_at, up.search_profile_id, up.relevance,
                sp.name as search_profile
         FROM user_papers up
         JOIN papers p ON p.pmid = up.pmid
@@ -159,6 +167,8 @@ async def feed(
         profile_id, q2_hard, feed_group_by_profile, sort,
     )
 
+    rel_cfg = _get_relevance_cfg(user_yaml)
+
     with conn_ctx() as conn:
         rows = conn.execute(sql, params).fetchall()
         all_profiles = [
@@ -199,10 +209,40 @@ async def feed(
             (user["user_id"],),
         ).fetchone()[0]
 
+        profile_alerts = []
+        if rel_cfg["enabled"]:
+            threshold = float(rel_cfg["threshold"])
+            min_rated = int(rel_cfg["min_rated"])
+            date_modifier = f"-{int(rel_cfg['lookback_days'])} days"
+            alert_rows = conn.execute(
+                """SELECT sp.id, sp.name,
+                          SUM(CASE WHEN up.relevance = 1  THEN 1 ELSE 0 END) AS relevant,
+                          SUM(CASE WHEN up.relevance = -1 THEN 1 ELSE 0 END) AS not_relevant,
+                          SUM(CASE WHEN up.relevance IS NOT NULL THEN 1 ELSE 0 END) AS rated
+                   FROM search_profiles sp
+                   JOIN user_paper_profiles upp
+                        ON upp.profile_id = sp.id AND upp.user_id = sp.user_id
+                   JOIN user_papers up
+                        ON up.user_id = upp.user_id AND up.pmid = upp.pmid
+                   WHERE sp.user_id = ? AND date(upp.added_at) >= date('now', ?)
+                   GROUP BY sp.id, sp.name""",
+                (user["user_id"], date_modifier),
+            ).fetchall()
+            for ar in alert_rows:
+                if ar["rated"] >= min_rated and ar["relevant"] / ar["rated"] < threshold:
+                    profile_alerts.append({
+                        "id": ar["id"],
+                        "name": ar["name"],
+                        "relevant": ar["relevant"],
+                        "not_relevant": ar["not_relevant"],
+                        "rated": ar["rated"],
+                        "pct": round(ar["relevant"] / ar["rated"] * 100),
+                    })
+
     papers_with_topics = []
     all_topic_set = set()
     for row in rows:
-        paper_topics = _classify_paper(row["mesh_terms"], mesh_topic_map)
+        paper_topics = _classify_paper(row["mesh_terms"], mesh_topic_map, row["keywords"])
         all_topic_set.update(paper_topics)
         if not paper_topics:
             paper_topics = ["Unclassified"]
@@ -301,6 +341,8 @@ async def feed(
         "topic_counts": dict(topic_counts),
         "quartile_breakdown": dict(quartile_breakdown),
         "daily_counts": daily_counts,
+        "profile_alerts": profile_alerts,
+        "rel_cfg": rel_cfg,
         "config": request.app.state.config,
     })
 
@@ -396,6 +438,30 @@ async def toggle_read(pmid: str, request: Request):
             new_val = 0 if row["is_read"] else 1
             conn.execute(
                 "UPDATE user_papers SET is_read = ? WHERE user_id = ? AND pmid = ?",
+                (new_val, user["user_id"], pmid),
+            )
+    referer = request.headers.get("referer", "/feed")
+    return RedirectResponse(referer, status_code=303)
+
+
+@router.post("/feed/rate-paper/{pmid}")
+async def rate_paper(pmid: str, request: Request, relevance: int = Form(...)):
+    user = require_auth(request)
+    if relevance not in (-1, 0, 1):
+        relevance = 0
+    with conn_ctx() as conn:
+        row = conn.execute(
+            "SELECT relevance FROM user_papers WHERE user_id = ? AND pmid = ?",
+            (user["user_id"], pmid),
+        ).fetchone()
+        if row:
+            # Toggle: clicking the already-active rating clears it
+            if relevance != 0 and row["relevance"] == relevance:
+                new_val = None
+            else:
+                new_val = relevance if relevance != 0 else None
+            conn.execute(
+                "UPDATE user_papers SET relevance = ? WHERE user_id = ? AND pmid = ?",
                 (new_val, user["user_id"], pmid),
             )
     referer = request.headers.get("referer", "/feed")

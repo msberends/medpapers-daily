@@ -21,14 +21,10 @@ def _get_user_yaml(username: str) -> dict:
         return yaml.safe_load(f) or {}
 
 
-def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict) -> list[str]:
-    if not mesh_terms_json:
-        return []
-    terms = json.loads(mesh_terms_json)
-    topics = set()
-    for term in terms:
-        if term in mesh_topic_map:
-            topics.add(mesh_topic_map[term])
+def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict,
+                    keywords_json: str = "[]") -> list[str]:
+    terms = json.loads(mesh_terms_json or "[]") + json.loads(keywords_json or "[]")
+    topics = {mesh_topic_map[t] for t in terms if t in mesh_topic_map}
     return sorted(topics)
 
 
@@ -56,11 +52,22 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
             "SELECT * FROM folders WHERE user_id = ? ORDER BY name",
             (user["user_id"],),
         ).fetchall()
+        matched_profiles = [
+            dict(r) for r in conn.execute(
+                """SELECT sp.id, sp.name
+                   FROM user_paper_profiles upp
+                   JOIN search_profiles sp ON sp.id = upp.profile_id
+                   WHERE upp.user_id = ? AND upp.pmid = ?
+                   ORDER BY sp.name""",
+                (user["user_id"], pmid),
+            ).fetchall()
+        ]
 
     paper = dict(paper)
     paper["authors_list"] = json.loads(paper["authors"] or "[]")
     paper["mesh_list"] = json.loads(paper["mesh_terms"] or "[]")
-    topics = _classify_paper(paper["mesh_terms"], mesh_topic_map)
+    paper["keyword_list"] = json.loads(paper.get("keywords") or "[]")
+    topics = _classify_paper(paper["mesh_terms"], mesh_topic_map, paper.get("keywords"))
     if not topics:
         topics = ["Unclassified"]
     all_topics = sorted(set(mesh_topic_map.values())) + ["Unclassified"]
@@ -78,6 +85,7 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
         "topics": topics,
         "topic_color_map": topic_color_map,
         "mesh_topic_map": mesh_topic_map,
+        "matched_profiles": matched_profiles,
         "show_quartile": user_yaml.get("show_quartile", True),
         "config": request.app.state.config,
     })

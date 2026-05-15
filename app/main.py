@@ -82,7 +82,7 @@ def load_config() -> tuple[dict, str]:
     return yaml.safe_load(raw) or {}, raw
 
 
-app = FastAPI(title="Papers Daily")
+app = FastAPI(title="MedPapers Daily")
 
 
 @app.on_event("startup")
@@ -90,7 +90,7 @@ async def startup():
     config, config_yaml_str = load_config()
     app.state.config = config
     app.state.config_yaml_str = config_yaml_str
-    app.title = config.get("app_name", "Papers Daily")
+    app.title = config.get("app_name", "MedPapers Daily")
 
     db_path = os.path.join(BASE_DIR, config.get("db_path", "data/paperdigest.db"))
     db.init_db(db_path)

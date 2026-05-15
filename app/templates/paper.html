@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ paper.title | striptags | truncate(80, killwords=True, end='') }} &mdash; {{ config.get('app_name', 'Papers Daily') }}{% endblock %}
+{% block title %}{{ paper.title | striptags | truncate(80, killwords=True, end='') }} &mdash; {{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -128,6 +128,24 @@
   </div>
   {% endif %}
 
+  {# Author keywords — shown first: often present before MeSH indexing is complete #}
+  {% if paper.keyword_list %}
+  <details class="mb-3">
+    <summary class="text-muted small">Author Keywords ({{ paper.keyword_list | length }})</summary>
+    <div class="mt-2 d-flex flex-wrap gap-1">
+      {% for kw in paper.keyword_list %}
+      {% set mapped_topic = mesh_topic_map.get(kw) %}
+      <span class="d-inline-flex align-items-center">
+        <span class="badge bg-light text-dark border{% if mapped_topic %} rounded-end-0 border-end-0{% endif %}">{{ kw }}</span>
+        {% if mapped_topic %}
+        <span class="badge badge-topic-{{ topic_color_map.get(mapped_topic, 0) }} rounded-start-0">{{ mapped_topic }}</span>
+        {% endif %}
+      </span>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
   {# MeSH terms #}
   {% if paper.mesh_list %}
   <details class="mb-3">
@@ -146,6 +164,44 @@
       {% endfor %}
     </div>
   </details>
+  {% endif %}
+
+  {# Search profile coverage + relevance rating #}
+  {% if matched_profiles %}
+  <div class="card mb-3">
+    <div class="card-body py-2 px-3">
+      <p class="small mb-2">
+        <i class="bi bi-search me-1 text-muted"></i>
+        This paper was covered by the following search
+        profile{{ 's' if matched_profiles | length > 1 else '' }}:
+        {% for p in matched_profiles %}
+          <a href="/feed?view=all&profile_id={{ p.id }}" class="text-decoration-none">{{ p.name }}</a>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </p>
+      {% if up %}
+      <p class="small text-muted mb-2">Rate how well this paper matches what you are looking for. Your rating contributes to the relevance score for {{ 'each of these profiles' if matched_profiles | length > 1 else 'this profile' }} and helps you spot searches that need tweaking.</p>
+      <div class="d-flex align-items-center gap-2">
+        <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
+          <input type="hidden" name="relevance" value="{{ 0 if up.relevance == 1 else 1 }}">
+          <button type="submit"
+                  class="btn btn-sm {% if up.relevance == 1 %}btn-success{% else %}btn-outline-success{% endif %}">
+            <i class="bi {% if up.relevance == 1 %}bi-hand-thumbs-up-fill{% else %}bi-hand-thumbs-up{% endif %} me-1"></i>Relevant
+          </button>
+        </form>
+        <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
+          <input type="hidden" name="relevance" value="{{ 0 if up.relevance == -1 else -1 }}">
+          <button type="submit"
+                  class="btn btn-sm {% if up.relevance == -1 %}btn-danger{% else %}btn-outline-danger{% endif %}">
+            <i class="bi {% if up.relevance == -1 %}bi-hand-thumbs-down-fill{% else %}bi-hand-thumbs-down{% endif %} me-1"></i>Not relevant
+          </button>
+        </form>
+        {% if up.relevance is not none %}
+        <span class="small text-muted">Click again to clear</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
   {% endif %}
 
 </div>

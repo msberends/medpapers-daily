@@ -28,7 +28,7 @@ There is no test suite.
 
 ## Architecture
 
-**Papers Daily** is a self-hosted scientific literature monitor. It fetches papers from PubMed, filters by Scopus journal quartile, and delivers daily email digests. Multi-user, with per-user PubMed search profiles.
+**MedPapers Daily** is a self-hosted scientific literature monitor. It fetches papers from PubMed, filters by Scopus journal quartile, and delivers daily email digests. Multi-user, with per-user PubMed search profiles.
 
 ### Stack
 - FastAPI + Jinja2 templates (Bootstrap 5 / Bootswatch)

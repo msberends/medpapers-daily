@@ -1,4 +1,4 @@
-app_name: Papers Daily
+app_name: MedPapers Daily
 base_url: http://localhost:2711
 port: 2711
 db_path: data/paperdigest.db

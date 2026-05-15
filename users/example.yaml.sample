@@ -14,9 +14,14 @@ search_profiles:
     query: '"antimicrobial resistance"[MeSH] AND (software OR bioinformatics)'
     enabled: true
 
-# MeSH term → topic label mapping used for in-app classification
+# Term → topic label mapping used for in-app classification.
+# Matches both MeSH headings (assigned by NLM indexers) and author keywords
+# (provided at submission, often present before MeSH indexing is complete).
+# All matches are exact and case-sensitive. Copy MeSH headings from
+# https://www.ncbi.nlm.nih.gov/mesh/ and author keywords from the paper detail page.
 mesh_topic_map:
   Anti-Bacterial Agents: AMR
+  antimicrobial resistance: AMR
   Machine Learning: AI
 
 # Per-user UI overrides (optional; inherits from config.yaml if omitted)
@@ -29,3 +34,9 @@ fetch_schedule_dow: 0   # 0=Mon … 6=Sun (weekly only)
 fetch_schedule_dom: 1   # 1-28 (monthly only)
 page_size: 25
 lookback_days: 7
+
+# Relevance alerts — shown on the feed when a search profile's relevant% falls below the threshold
+relevance_alert_enabled: true
+relevance_alert_threshold: 0.30   # alert when relevant% drops below this fraction
+relevance_alert_min_rated: 10     # minimum rated papers before alerting
+relevance_alert_lookback_days: 30 # rolling window in days

@@ -1,10 +1,16 @@
-# Papers Daily
+# MedPapers Daily
 
-A self-hosted scientific interactive literature monitor.
+A self-hosted monitor for medical scientific literature. This webapp fetches papers from PubMed daily and provides:
 
-It fetches papers from PubMed on a daily basis and sends them to email, with filters by Scopus journal quartile.
-
-Multi-user, with per-user PubMed search profiles.
+- Daily HTML email digests per user
+- Web feed for browsing, searching, and filtering papers
+- Scopus journal quartile filtering (Q1–Q4)
+- MeSH-based topic classification
+- Starring, read/unread tracking, folders, and relevance rating
+- RIS export (for EndNote and reference managers)
+- Open-access links via Unpaywall and institutional proxy support
+- Per-user PubMed search profiles
+- Multi-user support with an admin panel
 
 ## Requirements
 
@@ -36,22 +42,22 @@ venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 2711 --reload
 Use Cron to fetch new papers daily, and send a per-user email digest of new papers.
 
 ```
-0  6 * * * /path/to/papersdaily/venv/bin/python /path/to/papersdaily/fetch.py && /path/to/papersdaily/venv/bin/python /path/to/papersdaily/email_digest.py
+0  6 * * * /path/to/medpapers-daily/venv/bin/python /path/to/medpapers-daily/fetch.py && /path/to/medpapers-daily/venv/bin/python /path/to/medpapers-daily/email_digest.py
 # or only fetch, without email
-0  6 * * * /path/to/papersdaily/venv/bin/python /path/to/papersdaily/fetch.py
+0  6 * * * /path/to/medpapers-daily/venv/bin/python /path/to/medpapers-daily/fetch.py
 ```
 
 ## Deploy as a systemd service
 
-Run Papers Daily as a service to keep the webserver alive. A reverse proxy is a very effective way to get the app as one of your subdomains.
+Run MedPapers Daily as a service to keep the webserver alive. A reverse proxy is a very effective way to get the app as one of your subdomains.
 
 ```bash
-cp papersdaily.service.example papersdaily.service
-# Edit papersdaily.service: replace YOUR_USERNAME and /path/to/papersdaily
-nano papersdaily.service
+cp medpapers-daily.service.example medpapers-daily.service
+# Edit medpapers-daily.service: replace YOUR_USERNAME and /path/to/medpapers-daily
+nano medpapers-daily.service
 
-sudo cp papersdaily.service /etc/systemd/system/
-sudo systemctl enable --now papersdaily
+sudo cp medpapers-daily.service /etc/systemd/system/
+sudo systemctl enable --now medpapers-daily
 ```
 
 ## Screenshots
