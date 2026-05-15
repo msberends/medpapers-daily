@@ -123,21 +123,39 @@ QUARTILE_COLORS = {
     "Q4": ("#fcd9d3", "#f9b3a7"),
 }
 
-TOPIC_COLORS = [
-    ("#ede0ff", "#c4a8f8"),  # violet
-    ("#ffe0ef", "#f4a8cc"),  # rose
-    ("#ccf4ea", "#80d8b8"),  # teal
-    ("#fff3cc", "#f5d87a"),  # amber
-    ("#dce8ff", "#a8c0f5"),  # sky
-    ("#e2f0d8", "#a8d490"),  # sage
-    ("#ffe8dc", "#f4b89a"),  # coral
-    ("#f0dcff", "#d498f8"),  # plum
-]
+# Inline hex required — email clients strip stylesheets and don't support CSS variables.
+# Values kept close to the Bootstrap subtle-bg/border tokens they correspond to.
+TOPIC_COLOUR_EMAIL: dict[str, tuple[str, str]] = {
+    "red":       ("#ffe0e0", "#f4a8a8"),
+    "orange":    ("#ffe8dc", "#f4b89a"),
+    "yellow":    ("#fff8dc", "#f5e87a"),
+    "green":     ("#ccf4ea", "#80d8b8"),
+    "teal":      ("#ccf4f0", "#80d8d0"),
+    "cyan":      ("#ccf0f8", "#80d0e8"),
+    "blue":      ("#dce8ff", "#a8c0f5"),
+    "indigo":    ("#e4d8ff", "#b89cf5"),
+    "purple":    ("#ede0ff", "#c4a8f8"),
+    "pink":      ("#ffe0ef", "#f4a8cc"),
+    # Semantic — mapped to Bootstrap 5 default hex; won't change with Bootswatch themes
+    # in email clients since CSS variables are not supported there.
+    "primary":   ("#dce8ff", "#a8c0f5"),   # default primary ≈ blue
+    "secondary": ("#e9ecef", "#ced4da"),
+    "success":   ("#d1e7dd", "#a3cfbb"),
+    "danger":    ("#f8d7da", "#f1aeb5"),
+    "warning":   ("#fff3cd", "#ffecb5"),
+    "info":      ("#cff4fc", "#9eeaf9"),
+}
+
+_TOPIC_COLOUR_FALLBACK = list(TOPIC_COLOUR_EMAIL.values())
 
 
-def _topic_color(topic: str) -> tuple[str, str]:
-    idx = sum(ord(c) for c in topic) % len(TOPIC_COLORS)
-    return TOPIC_COLORS[idx]
+def _topic_colour(topic: str, mesh_topic_colours: dict) -> tuple[str, str]:
+    colour_name = mesh_topic_colours.get(topic)
+    if colour_name and colour_name in TOPIC_COLOUR_EMAIL:
+        return TOPIC_COLOUR_EMAIL[colour_name]
+    # Fallback: cycle by hash of topic name for stable colour assignment
+    idx = sum(ord(c) for c in topic) % len(_TOPIC_COLOUR_FALLBACK)
+    return _TOPIC_COLOUR_FALLBACK[idx]
 
 
 def _badge(text: str, bg: str, border: str = "") -> str:
@@ -198,8 +216,8 @@ _BTN_STYLE = ("display:inline-block;padding:5px 13px;border-radius:6px;"
               "margin-right:8px;margin-bottom:4px")
 
 
-def _render_paper_card(p: dict, mesh_topic_map: dict, base_url: str,
-                       config: dict, app_name: str) -> str:
+def _render_paper_card(p: dict, mesh_topic_map: dict, mesh_topic_colours: dict,
+                       base_url: str, config: dict, app_name: str) -> str:
     pmid = p["pmid"]
     title = p["title"]
     authors_str = _author_summary(p["authors"])
@@ -231,7 +249,7 @@ def _render_paper_card(p: dict, mesh_topic_map: dict, base_url: str,
     else:
         access_badge = ""
 
-    topic_badges = " ".join(_badge(t, *_topic_color(t)) for t in topics)
+    topic_badges = " ".join(_badge(t, *_topic_colour(t, mesh_topic_colours)) for t in topics)
     proxy_link = _proxy_url(doi, config) if not oa_url else None
 
     meta_parts = [f"<em>{journal}</em>"]
@@ -274,9 +292,9 @@ def _render_paper_card(p: dict, mesh_topic_map: dict, base_url: str,
     )
 
 
-def build_html_digest(papers: list, mesh_topic_map: dict, base_url: str,
-                      username: str, today_str: str, config: dict | None = None,
-                      group_by_profile: bool = False) -> str:
+def build_html_digest(papers: list, mesh_topic_map: dict, mesh_topic_colours: dict,
+                      base_url: str, username: str, today_str: str,
+                      config: dict | None = None, group_by_profile: bool = False) -> str:
     app_name = (config or {}).get("app_name") or "MedPapers Daily"
     paper_word = "paper" if len(papers) == 1 else "papers"
     cfg = config or {}
@@ -294,10 +312,10 @@ def build_html_digest(papers: list, mesh_topic_map: dict, base_url: str,
                     f'<p style="margin:0;font-size:.75em;font-weight:700;color:#6c757d;'
                     f'text-transform:uppercase;letter-spacing:.06em">{prof or "Other"}</p></div>'
                 )
-            rows_html += _render_paper_card(p, mesh_topic_map, base_url, cfg, app_name)
+            rows_html += _render_paper_card(p, mesh_topic_map, mesh_topic_colours, base_url, cfg, app_name)
     else:
         for p in papers:
-            rows_html += _render_paper_card(p, mesh_topic_map, base_url, cfg, app_name)
+            rows_html += _render_paper_card(p, mesh_topic_map, mesh_topic_colours, base_url, cfg, app_name)
 
     return f"""<!DOCTYPE html>
 <html>
@@ -390,6 +408,7 @@ def main():
         suppress_empty = user_cfg.get("email_suppress_empty", True)
         email_only_new = user_cfg.get("email_only_new", True)
         mesh_topic_map = user_cfg.get("mesh_topic_map", {})
+        mesh_topic_colours = user_cfg.get("mesh_topic_colours", {})
         group_by_profile = user_cfg.get("email_group_by_profile", False)
         user_id = None
         display_name = username
@@ -448,7 +467,7 @@ def main():
                 print(f"[email] {username}: sent nothing-new notification.")
                 continue
 
-            html = build_html_digest(papers, mesh_topic_map, base_url, username, today_str, config, group_by_profile)
+            html = build_html_digest(papers, mesh_topic_map, mesh_topic_colours, base_url, username, today_str, config, group_by_profile)
             plain = build_plain_digest(papers, base_url, app_name)
             try:
                 subject = subject_template.format(

@@ -24,6 +24,12 @@ mesh_topic_map:
   antimicrobial resistance: AMR
   Machine Learning: AI
 
+# Colour assigned to each topic in the web UI.
+# Values: primary, success, danger, warning, info, secondary, purple, teal
+mesh_topic_colours:
+  AMR: primary
+  AI: success
+
 # Per-user UI overrides (optional; inherits from config.yaml if omitted)
 folders: []
 bootstrap_theme: yeti

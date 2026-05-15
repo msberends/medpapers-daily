@@ -9,6 +9,20 @@
   .handle { cursor: grab; color: #adb5bd; }
   .tip-box { background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle);
              color: var(--bs-primary-text-emphasis); border-radius: 6px; }
+  .topic-name-input { border-color: transparent !important; background: transparent !important; box-shadow: none !important; }
+  .topic-name-input:hover { border-color: var(--bs-border-color) !important; }
+  .topic-name-input:focus { border-color: var(--bs-primary) !important; background: var(--bs-body-bg) !important; box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb),.15) !important; }
+  .topic-chevron { flex-shrink: 0; transition: transform .15s ease; }
+  .chip-colour-blue  {background-color:rgba(13,110,253,.1); color:#0d6efd;border-color:rgba(13,110,253,.3)!important}
+  .chip-colour-indigo{background-color:rgba(102,16,242,.1);color:#6610f2;border-color:rgba(102,16,242,.3)!important}
+  .chip-colour-purple{background-color:rgba(111,66,193,.1); color:#6f42c1;border-color:rgba(111,66,193,.3)!important}
+  .chip-colour-pink  {background-color:rgba(214,51,132,.1); color:#d63384;border-color:rgba(214,51,132,.3)!important}
+  .chip-colour-red   {background-color:rgba(220,53,69,.1);  color:#dc3545;border-color:rgba(220,53,69,.3) !important}
+  .chip-colour-orange{background-color:rgba(253,126,20,.1); color:#fd7e14;border-color:rgba(253,126,20,.3)!important}
+  .chip-colour-yellow{background-color:rgba(255,193,7,.1);  color:#997404;border-color:rgba(255,193,7,.3) !important}
+  .chip-colour-green {background-color:rgba(25,135,84,.1);  color:#198754;border-color:rgba(25,135,84,.3) !important}
+  .chip-colour-teal  {background-color:rgba(32,201,151,.1); color:#20c997;border-color:rgba(32,201,151,.3)!important}
+  .chip-colour-cyan  {background-color:rgba(13,202,240,.1); color:#0aa2c0;border-color:rgba(13,202,240,.3)!important}
 </style>
 {% endblock %}
 
@@ -32,7 +46,7 @@
   <ul class="nav nav-tabs mb-4" id="settingsTabs">
     <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-general">General</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">Topic Map</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">Topics</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-relevance">Relevance</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-password">Password</a></li>
   </ul>
@@ -319,23 +333,23 @@
       </form>
     </div>
 
-    {# ── Topic Map ── #}
+    {# ── Topics ── #}
     <div class="tab-pane fade" id="tab-mesh">
       <form method="post" action="/settings/save" id="meshForm">
+        <input type="hidden" name="topics_tab" value="1">
+        <input type="hidden" name="mesh_topic_colours_json" value="">
 
         <div class="tip-box p-3 mb-4">
           <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How topic classification works</p>
-          <p class="small mb-2">Papers are classified using two term sources: <strong>MeSH headings</strong> (controlled vocabulary assigned by NLM indexers) and <strong>author keywords</strong> (free-text terms provided by the authors at submission). Both are matched against the map below to assign topic labels.</p>
-          <p class="small mb-2">Recent and ahead-of-print papers often have no MeSH terms yet — NLM indexing can take weeks to months. Author keywords are usually available immediately and fill this gap. Once MeSH terms are assigned on a future fetch, both sources are used.</p>
-          <p class="small mb-2">When a paper carries one or more matching terms, it receives the corresponding topic label. Multiple terms can map to the same label, and a paper can belong to more than one topic. Papers with no matching terms are shown as <em>Unclassified</em>.</p>
-          <p class="small mb-0">For MeSH terms, use the <a href="https://www.ncbi.nlm.nih.gov/mesh/" target="_blank" rel="noopener">NLM MeSH Browser</a> to find the exact heading. For author keywords, copy the string exactly as it appears on the paper detail page. Both match character-for-character, including capitalisation.</p>
+          <p class="small mb-2">Papers are classified by matching their <strong>MeSH headings</strong> and <strong>author keywords</strong> against the terms you assign to each topic. A paper can belong to more than one topic. Papers with no matching terms show as <em>Unclassified</em>. Changes take effect immediately without re-fetching.</p>
+          <p class="small mb-0">MeSH headings are controlled vocabulary assigned by NLM indexers — use the <a href="https://www.ncbi.nlm.nih.gov/mesh/" target="_blank" rel="noopener">NLM MeSH Browser</a> for exact headings. Author keywords are free-text from authors and match exactly as written. Recent papers may lack MeSH terms; author keywords fill this gap until indexing is complete.</p>
         </div>
 
-        {# ── Available terms from fetched papers ── #}
+        {# ── Library terms panel ── #}
         {% if all_mesh_terms or all_keywords %}
-        <details class="mb-4">
-          <summary class="small fw-semibold text-muted" style="cursor:pointer;">
-            <i class="bi bi-tags me-1"></i>Terms from your fetched papers — click any to add a mapping
+        <details class="mb-3">
+          <summary class="small fw-semibold text-muted" style="cursor:pointer">
+            <i class="bi bi-tags me-1"></i>Terms from your fetched papers — click any to add to a topic
           </summary>
           <div class="mt-3">
             <input type="text" id="termFilter" class="form-control form-control-sm mb-3"
@@ -344,13 +358,13 @@
             <p class="small fw-semibold text-muted mb-1">Author Keywords</p>
             <div class="d-flex flex-wrap gap-1 mb-3" id="kwBadges">
               {% for kw in all_keywords %}
-              {% set already_mapped = kw in cfg.get('mesh_topic_map', {}) %}
+              {% set already_mapped = kw in normalized_topic_map %}
               <button type="button"
                       class="badge border text-decoration-none term-badge {% if already_mapped %}bg-secondary-subtle text-secondary border-secondary-subtle{% else %}bg-light text-dark{% endif %}"
-                      style="cursor:pointer; font-size:.8em;"
+                      style="cursor:pointer;font-size:.8em"
                       data-term="{{ kw | e }}"
-                      onclick="addMesh(this.dataset.term)"
-                      title="{{ 'Already mapped to: ' + cfg.get('mesh_topic_map', {})[kw] if already_mapped else 'Click to add mapping' }}">{{ kw }}</button>
+                      onclick="stageTermForTopic(this.dataset.term)"
+                      title="{{ 'Mapped to: ' + normalized_topic_map[kw] if already_mapped else 'Click to add to a topic' }}">{{ kw }}</button>
               {% endfor %}
             </div>
             {% endif %}
@@ -358,13 +372,13 @@
             <p class="small fw-semibold text-muted mb-1">MeSH Terms</p>
             <div class="d-flex flex-wrap gap-1" id="meshBadges">
               {% for term in all_mesh_terms %}
-              {% set already_mapped = term in cfg.get('mesh_topic_map', {}) %}
+              {% set already_mapped = term in normalized_topic_map %}
               <button type="button"
                       class="badge border text-decoration-none term-badge {% if already_mapped %}bg-secondary-subtle text-secondary border-secondary-subtle{% else %}bg-light text-dark{% endif %}"
-                      style="cursor:pointer; font-size:.8em;"
+                      style="cursor:pointer;font-size:.8em"
                       data-term="{{ term | e }}"
-                      onclick="addMesh(this.dataset.term)"
-                      title="{{ 'Already mapped to: ' + cfg.get('mesh_topic_map', {})[term] if already_mapped else 'Click to add mapping' }}">{{ term }}</button>
+                      onclick="stageTermForTopic(this.dataset.term)"
+                      title="{{ 'Mapped to: ' + normalized_topic_map[term] if already_mapped else 'Click to add to a topic' }}">{{ term }}</button>
               {% endfor %}
             </div>
             {% endif %}
@@ -372,32 +386,117 @@
         </details>
         {% endif %}
 
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <p class="text-muted small mb-0">Topic labels are applied at display time, so changes take effect immediately without re-fetching.</p>
-          <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
-                  onclick="addMesh('')"><i class="bi bi-plus-lg me-1"></i>Add mapping</button>
+        {# Staging bar — appears when a library term is clicked #}
+        <div id="termStagingBar" class="d-none border rounded bg-body-secondary p-2 mb-3 d-flex align-items-center flex-wrap gap-2 small">
+          <span>Add <strong id="stagedTermLabel"></strong> to:</span>
+          <select id="stagingTopicSelect" class="form-select form-select-sm flex-shrink-0" style="max-width:200px"
+                  onkeydown="if(event.key==='Enter'){event.preventDefault();commitStagedTerm();}"></select>
+          <button type="button" class="btn btn-sm btn-primary" onclick="commitStagedTerm()">Add</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearStagingBar()"><i class="bi bi-x-lg"></i></button>
         </div>
 
-        <div class="row g-1 mb-2 px-2">
-          <div class="col-6 small fw-semibold text-muted">MeSH heading or author keyword (exact match)</div>
-          <div class="col-5 small fw-semibold text-muted">Your topic label</div>
+        {# ── Topics accordion ── #}
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <p class="text-muted small mb-0">Topic labels are applied at display time — changes take effect immediately without re-fetching.</p>
+          <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0 ms-3"
+                  onclick="addTopic()"><i class="bi bi-plus-lg me-1"></i>New topic</button>
         </div>
-        <div id="meshList">
-          {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
-          <div class="mesh-row d-flex gap-2 align-items-center p-2 mb-2 border">
-            <input type="text" name="mesh_term" class="form-control form-control-sm"
-                   value="{{ term }}" placeholder="e.g. Artificial Intelligence">
-            <input type="text" name="mesh_topic" class="form-control form-control-sm"
-                   value="{{ topic }}" placeholder="e.g. AI">
-            <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0"
-                    onclick="this.closest('.mesh-row').remove()">
-              <i class="bi bi-trash"></i>
-            </button>
+
+        <datalist id="allTermsDatalist">
+          {% for term in all_terms_combined %}
+          <option value="{{ term | e }}">
+          {% endfor %}
+        </datalist>
+
+        {# Colour helpers for Jinja rendering #}
+        {% set _std_colours = ['primary','secondary','success','danger','warning','info'] %}
+        {% set _colour_hex = {'blue':'#0d6efd','indigo':'#6610f2','purple':'#6f42c1','pink':'#d63384','red':'#dc3545','orange':'#fd7e14','yellow':'#ffc107','green':'#198754','teal':'#20c997','cyan':'#0dcaf0'} %}
+        {% set _all_swatches = [
+          ('red','Red'),('orange','Orange'),('yellow','Amber'),('green','Green'),
+          ('teal','Teal'),('cyan','Cyan'),('blue','Blue'),('indigo','Indigo'),
+          ('purple','Purple'),('pink','Pink'),('primary','Theme primary'),('secondary','Theme secondary'),
+          ('success','Theme success'),('danger','Theme danger'),('warning','Theme warning'),('info','Theme info')
+        ] %}
+
+        <div id="topicsContainer">
+          {% for topic_name, terms in topics_grouped.items() %}
+          {% set colour = effective_topic_colours.get(topic_name, 'primary') %}
+          {% if colour in _std_colours %}
+            {% set _dot_style = 'background-color:var(--bs-' ~ colour ~ ')' %}
+            {% set _chip_cls = 'bg-' ~ colour ~ '-subtle text-' ~ colour ~ '-emphasis border border-' ~ colour ~ '-subtle' %}
+          {% else %}
+            {% set _dot_style = 'background-color:' ~ _colour_hex.get(colour, '#6c757d') %}
+            {% set _chip_cls = 'chip-colour-' ~ colour ~ ' border' %}
+          {% endif %}
+          <div class="topic-card card mb-2" data-colour="{{ colour }}">
+            <div class="topic-header card-header d-flex align-items-center gap-2 py-2 px-3"
+                 style="cursor:pointer;user-select:none" onclick="topicToggle(event,this)">
+              <i class="bi bi-chevron-right topic-chevron"></i>
+              <div class="dropdown" onclick="event.stopPropagation()">
+                <button type="button" class="btn p-0 border-0 bg-transparent"
+                        data-bs-toggle="dropdown" aria-expanded="false"
+                        title="Change colour"
+                        style="width:22px;height:22px;display:flex;align-items:center;justify-content:center">
+                  <span class="rounded-circle topic-dot"
+                        style="width:14px;height:14px;display:inline-block;{{ _dot_style }}"></span>
+                </button>
+                <div class="dropdown-menu p-2" style="min-width:auto">
+                  <div class="d-flex flex-wrap gap-1" style="width:116px">
+                    {% for c_name, c_label in _all_swatches %}
+                    {% if c_name in _std_colours %}
+                      {% set _sw_bg = 'background-color:var(--bs-' ~ c_name ~ ')' %}
+                    {% else %}
+                      {% set _sw_bg = 'background-color:' ~ _colour_hex.get(c_name, '#6c757d') %}
+                    {% endif %}
+                    <button type="button" class="rounded-circle border-0 p-0 colour-swatch-btn"
+                            data-colour="{{ c_name }}" title="{{ c_label }}"
+                            style="width:20px;height:20px;{{ _sw_bg }};cursor:pointer;{% if c_name == colour %}outline:2px solid var(--bs-body-color);outline-offset:1px{% endif %}"
+                            onclick="setTopicColour(this,'{{ c_name }}')"></button>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <input type="text" class="topic-name-input form-control form-control-sm fw-semibold ms-1"
+                     value="{{ topic_name | e }}" placeholder="Topic name"
+                     onclick="event.stopPropagation()"
+                     onkeydown="if(event.key==='Enter')this.blur()">
+              <span class="badge text-bg-secondary term-count ms-1">{{ terms | length }}</span>
+              <button type="button" class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0"
+                      onclick="event.stopPropagation();this.closest('.topic-card').remove();checkEmptyState()">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+            <div class="topic-body" style="display:none">
+              <div class="px-3 py-2">
+                <div class="d-flex flex-wrap gap-1 mb-2 topic-chips">
+                  {% for term in terms %}
+                  <span class="badge d-inline-flex align-items-center gap-1 term-chip py-1 px-2 {{ _chip_cls }}"
+                        data-term="{{ term | e }}" style="font-size:.85em;font-weight:400">
+                    {{ term | e }}
+                    <button type="button" class="btn-close" style="font-size:.5em" aria-label="Remove"
+                            onclick="this.closest('.term-chip').remove();updateTermCount(this.closest('.topic-card'))"></button>
+                  </span>
+                  {% endfor %}
+                </div>
+                <div class="input-group input-group-sm" style="max-width:500px">
+                  <input type="text" class="form-control term-input" list="allTermsDatalist"
+                         placeholder="Type a term or pick from list…"
+                         onkeydown="if(event.key==='Enter'){event.preventDefault();addTermFromInput(this.nextElementSibling);}">
+                  <button class="btn btn-outline-secondary" type="button"
+                          onclick="addTermFromInput(this)">Add</button>
+                </div>
+              </div>
+            </div>
           </div>
           {% endfor %}
         </div>
 
-        {# Pass through #}
+        <div id="emptyTopicsMsg" class="text-center py-5 text-muted {% if topics_grouped %}d-none{% endif %}">
+          <i class="bi bi-tags fs-1 opacity-50 d-block mb-2"></i>
+          <p class="mb-0">No topics yet. Click <strong>New topic</strong> to get started.</p>
+        </div>
+
+        {# Pass-through: preserves all other settings when saving from this tab #}
         <input type="hidden" name="display_name" value="{{ user.display_name or '' }}">
         <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
         {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
@@ -419,8 +518,8 @@
         <input type="hidden" name="profile_enabled" value="{{ '1' if p.get('enabled', True) else '0' }}">
         {% endfor %}
 
-        <button type="submit" class="btn btn-primary mt-2">
-          <i class="bi bi-check-lg me-1"></i>Save topic map
+        <button type="submit" class="btn btn-primary mt-3">
+          <i class="bi bi-check-lg me-1"></i>Save topics
         </button>
       </form>
     </div>
@@ -644,19 +743,187 @@ function addProfile() {
   document.getElementById('profilesList').insertAdjacentHTML('beforeend', html);
 }
 
-function addMesh(term) {
-  const escaped = (term || '').replace(/"/g, '&quot;');
-  const html = `<div class="mesh-row d-flex gap-2 align-items-center p-2 mb-2 border">
-    <input type="text" name="mesh_term" class="form-control form-control-sm" value="${escaped}" placeholder="e.g. Artificial Intelligence">
-    <input type="text" name="mesh_topic" class="form-control form-control-sm" placeholder="e.g. AMR" ${term ? 'autofocus' : ''}>
-    <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="this.closest('.mesh-row').remove()">
-      <i class="bi bi-trash"></i>
-    </button>
-  </div>`;
-  const list = document.getElementById('meshList');
-  list.insertAdjacentHTML('afterbegin', html);
-  list.querySelector('.mesh-row [name="mesh_topic"]').focus();
+// ── Topics accordion ────────────────────────────────────────────────────
+
+const COLOUR_CYCLE  = ['red','purple','green','orange','teal','blue','indigo','yellow','pink','cyan','primary','success','danger','warning','info','secondary'];
+const STD_COLOURS   = new Set(['primary','secondary','success','danger','warning','info']);
+const COLOUR_HEX    = {blue:'#0d6efd',indigo:'#6610f2',purple:'#6f42c1',pink:'#d63384',red:'#dc3545',orange:'#fd7e14',yellow:'#ffc107',green:'#198754',teal:'#20c997',cyan:'#0dcaf0'};
+const COLOUR_LABELS = {red:'Red',orange:'Orange',yellow:'Amber',green:'Green',teal:'Teal',cyan:'Cyan',blue:'Blue',indigo:'Indigo',purple:'Purple',pink:'Pink',primary:'Theme primary',secondary:'Theme secondary',success:'Theme success',danger:'Theme danger',warning:'Theme warning',info:'Theme info'};
+let _nextColourIdx  = {{ topics_grouped | length }};
+
+function chipClasses(colour) {
+  return STD_COLOURS.has(colour)
+    ? ['bg-'+colour+'-subtle','text-'+colour+'-emphasis','border','border-'+colour+'-subtle']
+    : ['chip-colour-'+colour,'border'];
 }
+function dotBgStyle(colour) {
+  return COLOUR_HEX[colour] ? 'background-color:'+COLOUR_HEX[colour] : 'background-color:var(--bs-'+colour+')';
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function topicToggle(event, header) {
+  if (event.target.closest('input,button,.dropdown')) return;
+  const card = header.closest('.topic-card');
+  const body = card.querySelector('.topic-body');
+  const chevron = card.querySelector('.topic-chevron');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  chevron.style.transform = isOpen ? '' : 'rotate(90deg)';
+}
+
+function updateTermCount(card) {
+  card.querySelector('.term-count').textContent = card.querySelectorAll('.term-chip').length;
+}
+
+function checkEmptyState() {
+  const msg = document.getElementById('emptyTopicsMsg');
+  if (msg) msg.classList.toggle('d-none', document.querySelectorAll('.topic-card').length > 0);
+}
+
+function addTermChip(chipsDiv, term, colour) {
+  for (const chip of chipsDiv.querySelectorAll('.term-chip')) {
+    if (chip.dataset.term.toLowerCase() === term.toLowerCase()) return;
+  }
+  const chip = document.createElement('span');
+  chip.className = ['badge','d-inline-flex','align-items-center','gap-1','term-chip','py-1','px-2',...chipClasses(colour)].join(' ');
+  chip.dataset.term = term;
+  chip.style.cssText = 'font-size:.85em;font-weight:400';
+  chip.innerHTML = escapeHtml(term)+'<button type="button" class="btn-close" style="font-size:.5em" aria-label="Remove" onclick="this.closest(\'.term-chip\').remove();updateTermCount(this.closest(\'.topic-card\'))"></button>';
+  chipsDiv.appendChild(chip);
+}
+
+function addTermFromInput(btn) {
+  const input = btn.previousElementSibling;
+  const term = input.value.trim();
+  if (!term) return;
+  const card = btn.closest('.topic-card');
+  addTermChip(card.querySelector('.topic-chips'), term, card.dataset.colour || 'primary');
+  input.value = '';
+  updateTermCount(card);
+  input.focus();
+}
+
+function updateChipColours(card, newColour) {
+  const allChipCls = COLOUR_CYCLE.flatMap(c =>
+    STD_COLOURS.has(c)
+      ? ['bg-'+c+'-subtle','text-'+c+'-emphasis','border-'+c+'-subtle','chip-colour-'+c]
+      : ['chip-colour-'+c]
+  );
+  card.querySelectorAll('.term-chip').forEach(chip => {
+    chip.classList.remove(...allChipCls);
+    chipClasses(newColour).forEach(cls => chip.classList.add(cls));
+  });
+}
+
+function setTopicColour(swatchBtn, colour) {
+  const card = swatchBtn.closest('.topic-card');
+  card.dataset.colour = colour;
+  const dot = card.querySelector('.topic-dot');
+  dot.style.cssText = 'width:14px;height:14px;display:inline-block;'+dotBgStyle(colour);
+  updateChipColours(card, colour);
+  card.querySelectorAll('.colour-swatch-btn').forEach(btn => {
+    btn.style.outline = btn.dataset.colour === colour ? '2px solid var(--bs-body-color)' : 'none';
+    btn.style.outlineOffset = '1px';
+  });
+  const toggleBtn = swatchBtn.closest('.dropdown').querySelector('[data-bs-toggle="dropdown"]');
+  const dd = bootstrap.Dropdown.getInstance(toggleBtn);
+  if (dd) dd.hide();
+}
+
+function addTopic() {
+  const colour = COLOUR_CYCLE[_nextColourIdx % COLOUR_CYCLE.length];
+  _nextColourIdx++;
+  const swatchesHtml = COLOUR_CYCLE.map(c =>
+    '<button type="button" class="rounded-circle border-0 p-0 colour-swatch-btn" data-colour="'+c+'" title="'+COLOUR_LABELS[c]+'" style="width:20px;height:20px;'+dotBgStyle(c)+';cursor:pointer;'+(c===colour?'outline:2px solid var(--bs-body-color);outline-offset:1px':'')+'" onclick="setTopicColour(this,\''+c+'\')"></button>'
+  ).join('');
+  const html = `<div class="topic-card card mb-2" data-colour="${colour}">
+  <div class="topic-header card-header d-flex align-items-center gap-2 py-2 px-3" style="cursor:pointer;user-select:none" onclick="topicToggle(event,this)">
+    <i class="bi bi-chevron-right topic-chevron" style="transform:rotate(90deg)"></i>
+    <div class="dropdown" onclick="event.stopPropagation()">
+      <button type="button" class="btn p-0 border-0 bg-transparent" data-bs-toggle="dropdown" aria-expanded="false" title="Change colour" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center">
+        <span class="rounded-circle topic-dot" style="width:14px;height:14px;display:inline-block;${dotBgStyle(colour)}"></span>
+      </button>
+      <div class="dropdown-menu p-2" style="min-width:auto">
+        <div class="d-flex flex-wrap gap-1" style="width:116px">${swatchesHtml}</div>
+      </div>
+    </div>
+    <input type="text" class="topic-name-input form-control form-control-sm fw-semibold ms-1" value="" placeholder="Topic name" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter')this.blur()">
+    <span class="badge text-bg-secondary term-count ms-1">0</span>
+    <button type="button" class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0" onclick="event.stopPropagation();this.closest('.topic-card').remove();checkEmptyState()"><i class="bi bi-trash"></i></button>
+  </div>
+  <div class="topic-body">
+    <div class="px-3 py-2">
+      <div class="d-flex flex-wrap gap-1 mb-2 topic-chips"></div>
+      <div class="input-group input-group-sm" style="max-width:500px">
+        <input type="text" class="form-control term-input" list="allTermsDatalist" placeholder="Type a term or pick from list…" onkeydown="if(event.key==='Enter'){event.preventDefault();addTermFromInput(this.nextElementSibling);}">
+        <button class="btn btn-outline-secondary" type="button" onclick="addTermFromInput(this)">Add</button>
+      </div>
+    </div>
+  </div>
+</div>`;
+  const container = document.getElementById('topicsContainer');
+  container.insertAdjacentHTML('beforeend', html);
+  checkEmptyState();
+  container.lastElementChild.querySelector('.topic-name-input').focus();
+}
+
+function stageTermForTopic(term) {
+  document.getElementById('stagedTermLabel').textContent = term;
+  const sel = document.getElementById('stagingTopicSelect');
+  sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = ''; ph.textContent = '— select topic —'; ph.disabled = true; ph.selected = true;
+  sel.appendChild(ph);
+  document.querySelectorAll('.topic-card .topic-name-input').forEach(inp => {
+    const name = inp.value.trim();
+    if (name) { const opt = document.createElement('option'); opt.value = name; opt.textContent = name; sel.appendChild(opt); }
+  });
+  const bar = document.getElementById('termStagingBar');
+  bar.classList.remove('d-none');
+  bar.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function commitStagedTerm() {
+  const term = document.getElementById('stagedTermLabel').textContent.trim();
+  const topicName = document.getElementById('stagingTopicSelect').value;
+  if (!term || !topicName) return;
+  const card = [...document.querySelectorAll('.topic-card')].find(c =>
+    c.querySelector('.topic-name-input').value.trim() === topicName);
+  if (card) {
+    addTermChip(card.querySelector('.topic-chips'), term, card.dataset.colour || 'primary');
+    updateTermCount(card);
+    const body = card.querySelector('.topic-body');
+    if (body.style.display === 'none') { body.style.display=''; card.querySelector('.topic-chevron').style.transform='rotate(90deg)'; }
+    card.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+  clearStagingBar();
+}
+
+function clearStagingBar() {
+  document.getElementById('termStagingBar').classList.add('d-none');
+}
+
+document.getElementById('meshForm').addEventListener('submit', function() {
+  this.querySelectorAll('input[name="mesh_term"],input[name="mesh_topic"]').forEach(el => el.remove());
+  const colours = {};
+  document.querySelectorAll('.topic-card').forEach(card => {
+    const topic = card.querySelector('.topic-name-input').value.trim();
+    if (!topic) return;
+    colours[topic] = card.dataset.colour || 'primary';
+    card.querySelectorAll('.term-chip').forEach(chip => {
+      const term = (chip.dataset.term || '').trim();
+      if (!term) return;
+      const addH = (n, v) => { const i = document.createElement('input'); i.type='hidden'; i.name=n; i.value=v; this.appendChild(i); };
+      addH('mesh_term', term);
+      addH('mesh_topic', topic);
+    });
+  });
+  this.querySelector('[name="mesh_topic_colours_json"]').value = JSON.stringify(colours);
+});
+
+// ── End topics accordion ─────────────────────────────────────────────────
 
 function filterTerms(q) {
   q = q.toLowerCase();

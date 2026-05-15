@@ -211,6 +211,9 @@ def _migrate(conn: sqlite3.Connection):
     if "relevance" not in up_cols:
         conn.execute("ALTER TABLE user_papers ADD COLUMN relevance INTEGER")
 
+    if "affiliations" not in papers_cols:
+        conn.execute("ALTER TABLE papers ADD COLUMN affiliations TEXT")
+
     # Backfill user_paper_profiles from user_papers for existing installations.
     # Only runs once: when user_papers has profile-linked rows but user_paper_profiles is empty.
     up_has_profiles = conn.execute(

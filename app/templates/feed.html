@@ -71,7 +71,7 @@
             {% for topic in all_topics %}
             {% set t_pct = (topic_counts.get(topic, 0) / total * 100) | round(1) %}
             {% if t_pct > 0 %}
-            {% set seg_cls = 'bg-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ (topic_color_map.get(topic, loop.index0) % 8) %}
+            {% set seg_cls = 'bg-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ topic_color_map.get(topic, 'secondary') %}
             <div class="progress-bar {{ seg_cls }}" style="width:{{ t_pct }}%"
                  data-bs-toggle="tooltip" title="{{ topic }}: {{ topic_counts.get(topic, 0) }} papers"></div>
             {% endif %}
@@ -166,7 +166,7 @@
         <div class="card-header fw-semibold py-2">Topics</div>
         <div class="card-body py-2">
           {% for topic in all_topics %}
-          {% set dot_cls = 'bg-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ (topic_color_map.get(topic, loop.index0) % 8) %}
+          {% set dot_cls = 'bg-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ topic_color_map.get(topic, 'secondary') %}
           <div class="form-check">
             <input class="form-check-input" type="checkbox" name="topic_cb" value="{{ topic }}"
                    id="topic_{{ loop.index }}"
@@ -363,11 +363,15 @@
             </div>
             <div class="small text-muted">
               {% set authors = paper.authors | from_json %}
-              {% if authors | length > 2 %}
-                {{ authors[0] | dim_initials | safe }} &hellip; {{ authors[-1] | dim_initials | safe }}
+              {% if authors | length > 4 %}
+                {{ authors[0] | last_name }};
+                {{ authors[1] | last_name }};
+                &hellip;;
+                {{ authors[-2] | last_name }};
+                {{ authors[-1] | last_name }}
                 <span class="opacity-75">&middot; {{ authors | length }} authors</span>
               {% elif authors %}
-                {{ authors | map('dim_initials') | join('; ') | safe }}
+                {{ authors | map('last_name') | join('; ') }}
               {% endif %}
               &bull;
               <em>{{ paper.journal | clean_journal }}</em>
@@ -404,7 +408,7 @@
                 {% endif %}
               {% endif %}
               {% for topic in topics %}
-              <span class="badge badge-topic-{{ topic_color_map.get(topic, loop.index0 % 8) }}">{{ topic }}</span>
+              <span class="badge {% if topic == 'Unclassified' %}bg-secondary{% else %}badge-topic-{{ topic_color_map.get(topic, 'secondary') }}{% endif %}">{{ topic }}</span>
               {% endfor %}
               {% if paper.oa_url %}
               <span class="badge bg-success"><i class="bi bi-unlock me-1"></i>OA</span>

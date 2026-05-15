@@ -112,6 +112,10 @@ async def startup():
             last, _, first = author.partition(",")
             first = first.strip()
             if first:
+                parts = first.split()
+                split_at = next((i for i, p in enumerate(parts) if len(p) == 1 and p.isupper()), len(parts))
+                if split_at < len(parts):
+                    first = (" ".join(parts[:split_at]) + " " if split_at else "") + "".join(parts[split_at:])
                 return f'<span class="text-body">{last.strip()}</span><span class="text-body-tertiary">, {first}</span>'
             return f'<span class="text-body">{last.strip()}</span>'
         # fallback for "Last AB" initials format
@@ -122,6 +126,17 @@ async def startup():
         return author
 
     app.state.templates.env.filters["dim_initials"] = dim_initials
+
+    def last_name(author: str) -> str:
+        author = (author or "").strip()
+        if "," in author:
+            return author.partition(",")[0].strip()
+        m = re.match(r'^(.*?)(\s+[A-Z]+)$', author)
+        if m:
+            return m.group(1).strip()
+        return author
+
+    app.state.templates.env.filters["last_name"] = last_name
 
     def publisher_display(publisher: str, publisher_map: dict, predatory: list) -> str:
         if not publisher:

@@ -24,7 +24,7 @@ def _get_user_yaml(username: str) -> dict:
 def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict,
                     keywords_json: str = "[]") -> list[str]:
     terms = json.loads(mesh_terms_json or "[]") + json.loads(keywords_json or "[]")
-    topics = {mesh_topic_map[t] for t in terms if t in mesh_topic_map}
+    topics = {mesh_topic_map[t.lower()] for t in terms if t.lower() in mesh_topic_map}
     return sorted(topics)
 
 
@@ -32,7 +32,7 @@ def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict,
 async def paper_detail(pmid: str, request: Request, nomark: str = ""):
     user = require_auth(request)
     user_yaml = _get_user_yaml(user["username"])
-    mesh_topic_map = user_yaml.get("mesh_topic_map", {})
+    mesh_topic_map = {k.lower(): v for k, v in user_yaml.get("mesh_topic_map", {}).items()}
 
     with conn_ctx() as conn:
         paper = conn.execute("SELECT * FROM papers WHERE pmid = ?", (pmid,)).fetchone()
@@ -67,11 +67,19 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
     paper["authors_list"] = json.loads(paper["authors"] or "[]")
     paper["mesh_list"] = json.loads(paper["mesh_terms"] or "[]")
     paper["keyword_list"] = json.loads(paper.get("keywords") or "[]")
+    affil_raw = json.loads(paper.get("affiliations") or "null") or {}
+    paper["aff_list"] = affil_raw.get("aff_list", [])
+    paper["author_aff"] = affil_raw.get("author_aff", [])
     topics = _classify_paper(paper["mesh_terms"], mesh_topic_map, paper.get("keywords"))
     if not topics:
         topics = ["Unclassified"]
     all_topics = sorted(set(mesh_topic_map.values())) + ["Unclassified"]
-    topic_color_map = {t: i % 8 for i, t in enumerate(all_topics)}
+    _colour_cycle = ["blue","purple","green","orange","teal","red","indigo","yellow","pink","cyan","primary","success","danger","warning","info","secondary"]
+    _user_colours = user_yaml.get("mesh_topic_colours", {})
+    topic_color_map = {
+        t: _user_colours.get(t, _colour_cycle[i % len(_colour_cycle)])
+        for i, t in enumerate(all_topics)
+    }
 
     up_dict = dict(up) if up else None
     if up_dict and not nomark:

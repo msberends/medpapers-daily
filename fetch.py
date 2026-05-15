@@ -216,17 +216,36 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
     ]
     abstract = " ".join(p for p in abstract_parts if p)
 
-    # Authors
+    # Authors + affiliations
     authors = []
+    author_affil_raw = []  # per-author list of affiliation strings
     for auth in art.findall(".//Author"):
         ln = _text(auth, "LastName")
         fn = _text(auth, "ForeName") or _text(auth, "Initials")
+        affils = [
+            el.text.strip()
+            for el in auth.findall("AffiliationInfo/Affiliation")
+            if el.text
+        ]
         if ln:
             authors.append(f"{ln}, {fn}".strip(", "))
+            author_affil_raw.append(affils)
         else:
             cn = _text(auth, "CollectiveName")
             if cn:
                 authors.append(cn)
+                author_affil_raw.append(affils)
+
+    # Deduplicate affiliations, preserving order
+    aff_list: list[str] = []
+    aff_index: dict[str, int] = {}
+    for affils in author_affil_raw:
+        for a in affils:
+            if a not in aff_index:
+                aff_index[a] = len(aff_list)
+                aff_list.append(a)
+    author_aff = [[aff_index[a] for a in affils] for affils in author_affil_raw]
+    affiliations = json.dumps({"aff_list": aff_list, "author_aff": author_aff}) if aff_list else None
 
     # Journal
     journal_el = art.find("Journal")
@@ -291,6 +310,7 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
         "pmid": pmid,
         "title": title,
         "authors": json.dumps(authors),
+        "affiliations": affiliations,
         "journal": journal_name,
         "issn": issn,
         "pub_date": pub_date,
@@ -533,13 +553,13 @@ def main():
                                 record["first_seen_at"] = now_iso
                                 conn.execute(
                                     """INSERT INTO papers
-                                       (pmid, title, authors, journal, issn,
+                                       (pmid, title, authors, affiliations, journal, issn,
                                         pub_date, epub_date, abstract, doi,
                                         oa_url, mesh_terms, keywords,
                                         scopus_quartile, scopus_citescore,
                                         scopus_percentile, publisher, first_seen_at)
                                        VALUES
-                                       (:pmid,:title,:authors,:journal,:issn,
+                                       (:pmid,:title,:authors,:affiliations,:journal,:issn,
                                         :pub_date,:epub_date,:abstract,:doi,
                                         :oa_url,:mesh_terms,:keywords,
                                         :scopus_quartile,:scopus_citescore,
@@ -551,9 +571,10 @@ def main():
                                 # Refresh terms on existing papers: MeSH terms are
                                 # added by NLM weeks after first fetch; keywords may
                                 # also have been missing due to an earlier bug.
+                                # Affiliations are also refreshed (backfill for older records).
                                 conn.execute(
-                                    "UPDATE papers SET mesh_terms=?, keywords=? WHERE pmid=?",
-                                    (record["mesh_terms"], record["keywords"], record["pmid"]),
+                                    "UPDATE papers SET mesh_terms=?, keywords=?, affiliations=? WHERE pmid=?",
+                                    (record["mesh_terms"], record["keywords"], record["affiliations"], record["pmid"]),
                                 )
 
                             conn.execute(

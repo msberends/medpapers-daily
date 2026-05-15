@@ -142,8 +142,21 @@ async def settings_page(request: Request, saved: str = "", error: str = "", tab:
             (user["user_id"],),
         ).fetchall()
     for row in term_rows:
-        all_mesh.update(t for t in json.loads(row["mesh_terms"] or "[]") if t)
-        all_keywords.update(t for t in json.loads(row["keywords"] or "[]") if t)
+        all_mesh.update(t.lower() for t in json.loads(row["mesh_terms"] or "[]") if t)
+        all_keywords.update(t.lower() for t in json.loads(row["keywords"] or "[]") if t)
+
+    normalized_topic_map = {k.lower(): v for k, v in cfg.get("mesh_topic_map", {}).items()}
+
+    topics_grouped: dict[str, list[str]] = {}
+    for term, topic in cfg.get("mesh_topic_map", {}).items():
+        topics_grouped.setdefault(topic, []).append(term)
+    all_terms_combined = sorted(all_mesh | all_keywords)
+    mesh_topic_colours = cfg.get("mesh_topic_colours", {})
+    _colour_cycle = ["blue","purple","green","orange","teal","red","indigo","yellow","pink","cyan","primary","success","danger","warning","info","secondary"]
+    effective_topic_colours = {
+        name: mesh_topic_colours.get(name, _colour_cycle[i % len(_colour_cycle)])
+        for i, name in enumerate(topics_grouped)
+    }
 
     return request.app.state.templates.TemplateResponse(request, "settings.html", {
         "user": user,
@@ -156,6 +169,10 @@ async def settings_page(request: Request, saved: str = "", error: str = "", tab:
         "profile_relevance_stats": profile_relevance_stats,
         "all_mesh_terms": sorted(all_mesh),
         "all_keywords": sorted(all_keywords),
+        "normalized_topic_map": normalized_topic_map,
+        "topics_grouped": topics_grouped,
+        "all_terms_combined": all_terms_combined,
+        "effective_topic_colours": effective_topic_colours,
     })
 
 
@@ -255,8 +272,19 @@ async def save_settings(request: Request):
         except (ValueError, TypeError):
             data["relevance_alert_lookback_days"] = existing.get("relevance_alert_lookback_days", 30)
 
+    if "topics_tab" in form:
+        try:
+            data["mesh_topic_colours"] = json.loads(form.get("mesh_topic_colours_json", "{}"))
+        except (ValueError, TypeError):
+            data["mesh_topic_colours"] = existing.get("mesh_topic_colours", {})
+
     _save_user_cfg(user["username"], data)
-    redirect_tab = "relevance" if "relevance_tab" in form else ""
+    if "topics_tab" in form:
+        redirect_tab = "mesh"
+    elif "relevance_tab" in form:
+        redirect_tab = "relevance"
+    else:
+        redirect_tab = ""
     redirect_url = f"/settings?saved=1&tab={redirect_tab}" if redirect_tab else "/settings?saved=1"
     return RedirectResponse(redirect_url, status_code=303)
 

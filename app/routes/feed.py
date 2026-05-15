@@ -46,7 +46,7 @@ def _sort_clause(sort: str) -> str:
 def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict,
                     keywords_json: str = "[]") -> list[str]:
     terms = json.loads(mesh_terms_json or "[]") + json.loads(keywords_json or "[]")
-    topics = {mesh_topic_map[t] for t in terms if t in mesh_topic_map}
+    topics = {mesh_topic_map[t.lower()] for t in terms if t.lower() in mesh_topic_map}
     return sorted(topics)
 
 
@@ -148,7 +148,7 @@ async def feed(
 ):
     user = require_auth(request)
     user_yaml = _get_user_yaml(user["username"])
-    mesh_topic_map = user_yaml.get("mesh_topic_map", {})
+    mesh_topic_map = {k.lower(): v for k, v in user_yaml.get("mesh_topic_map", {}).items()}
     q2_hard = user_yaml.get("q2_hard", True)
     show_quartile = user_yaml.get("show_quartile", True)
     feed_group_by_profile = user_yaml.get("feed_group_by_profile", False)
@@ -254,7 +254,12 @@ async def feed(
         papers_with_topics.append((dict(row), paper_topics))
 
     all_topics = sorted(all_topic_set) + ["Unclassified"]
-    topic_color_map = {topic: i % 8 for i, topic in enumerate(all_topics)}
+    _colour_cycle = ["blue","purple","green","orange","teal","red","indigo","yellow","pink","cyan","primary","success","danger","warning","info","secondary"]
+    _user_colours = user_yaml.get("mesh_topic_colours", {})
+    topic_color_map = {
+        topic: _user_colours.get(topic, _colour_cycle[i % len(_colour_cycle)])
+        for i, topic in enumerate(all_topics)
+    }
 
     # Derived analytics computed from the full filtered set (before pagination)
     today_date = datetime.now(timezone.utc).date()

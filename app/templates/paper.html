@@ -12,12 +12,49 @@
     </ol>
   </nav>
 
+  {# Badges #}
+  <div class="d-flex flex-wrap gap-2 mb-2">
+    {% if show_quartile %}
+      {% set q   = paper.scopus_quartile %}
+      {% set cs  = paper.scopus_citescore %}
+      {% set pct = paper.scopus_percentile %}
+      {% if q in ('Q1','Q2','Q3','Q4') %}
+        <span class="badge badge-{{ q | lower }} fs-6">{{ q -}}
+          {%- if cs %} (CiteScore {{ '%.1f' | format(cs) -}}
+            {%- if pct is not none %}, {{ pct | int }}<sup>{{ pct | int | ordinal_suffix }}</sup> percentile{%- endif -%}
+          ){%- endif %}
+        </span>
+      {% else %}
+        <span class="badge badge-unranked fs-6">Unranked</span>
+      {% endif %}
+    {% endif %}
+    {% for topic in topics %}
+      <span class="badge {% if topic == 'Unclassified' %}bg-secondary{% else %}badge-topic-{{ topic_color_map.get(topic, 'secondary') }}{% endif %} fs-6">{{ topic }}</span>
+    {% endfor %}
+    {% if paper.oa_url %}
+      <span class="badge bg-success fs-6"><i class="bi bi-unlock me-1"></i>Open Access</span>
+    {% elif paper.doi %}
+      <span class="badge bg-danger fs-6"><i class="bi bi-lock me-1"></i>Paywall</span>
+    {% endif %}
+  </div>
+
   <h1 class="h3 mb-2">{{ paper.title | safe }}</h1>
 
   {# Authors #}
-  <p class="text-muted mb-1">
-    {% for author in paper.authors_list %}{{ author | dim_initials | safe }}{% if not loop.last %}; {% endif %}{% endfor %}
-  </p>
+  <div class="text-muted mb-1" style="line-height:1.6">
+    {% for author in paper.authors_list %}
+      {% set aff_indices = paper.author_aff[loop.index0] if paper.author_aff and loop.index0 < paper.author_aff|length else [] %}
+      <span class="d-block">{{ author | dim_initials | safe }}{% if aff_indices %}{% for idx in aff_indices %}<sup>{{ idx + 1 }}</sup>{% if not loop.last %}<sup>,</sup>{% endif %}{% endfor %}{% endif %}</span>
+    {% endfor %}
+  </div>
+  {# Affiliations #}
+  {% if paper.aff_list %}
+  <ol class="small text-muted mb-2 ps-3" style="font-size:.8em; line-height:1.4">
+    {% for aff in paper.aff_list %}
+    <li>{{ aff }}</li>
+    {% endfor %}
+  </ol>
+  {% endif %}
 
   {# Journal metadata #}
   <p class="mb-2">
@@ -40,32 +77,6 @@
        target="_blank" rel="noopener">{{ paper.doi }}</a>
     {% endif %}
   </p>
-
-  {# Badges #}
-  <div class="d-flex flex-wrap gap-2 mb-3">
-    {% if show_quartile %}
-      {% set q   = paper.scopus_quartile %}
-      {% set cs  = paper.scopus_citescore %}
-      {% set pct = paper.scopus_percentile %}
-      {% if q in ('Q1','Q2','Q3','Q4') %}
-        <span class="badge badge-{{ q | lower }} fs-6">{{ q -}}
-          {%- if cs %} (CiteScore {{ '%.1f' | format(cs) -}}
-            {%- if pct is not none %}, {{ pct | int }}<sup>{{ pct | int | ordinal_suffix }}</sup> percentile{%- endif -%}
-          ){%- endif %}
-        </span>
-      {% else %}
-        <span class="badge badge-unranked fs-6">Unranked</span>
-      {% endif %}
-    {% endif %}
-    {% for topic in topics %}
-      <span class="badge badge-topic-{{ topic_color_map.get(topic, loop.index0 % 8) }} fs-6">{{ topic }}</span>
-    {% endfor %}
-    {% if paper.oa_url %}
-      <span class="badge bg-success fs-6"><i class="bi bi-unlock me-1"></i>Open Access</span>
-    {% elif paper.doi %}
-      <span class="badge bg-danger fs-6"><i class="bi bi-lock me-1"></i>Paywall</span>
-    {% endif %}
-  </div>
 
   {# Action buttons #}
   {% set pu = proxy_url(paper.doi, config) if paper.doi else none %}
@@ -134,11 +145,11 @@
     <summary class="text-muted small">Author Keywords ({{ paper.keyword_list | length }})</summary>
     <div class="mt-2 d-flex flex-wrap gap-1">
       {% for kw in paper.keyword_list %}
-      {% set mapped_topic = mesh_topic_map.get(kw) %}
+      {% set mapped_topic = mesh_topic_map.get(kw|lower) %}
       <span class="d-inline-flex align-items-center">
         <span class="badge bg-light text-dark border{% if mapped_topic %} rounded-end-0 border-end-0{% endif %}">{{ kw }}</span>
         {% if mapped_topic %}
-        <span class="badge badge-topic-{{ topic_color_map.get(mapped_topic, 0) }} rounded-start-0">{{ mapped_topic }}</span>
+        <span class="badge badge-topic-{{ topic_color_map.get(mapped_topic, 'secondary') }} rounded-start-0">{{ mapped_topic }}</span>
         {% endif %}
       </span>
       {% endfor %}
@@ -152,13 +163,13 @@
     <summary class="text-muted small">MeSH Terms ({{ paper.mesh_list | length }})</summary>
     <div class="mt-2 d-flex flex-wrap gap-1">
       {% for term in paper.mesh_list %}
-      {% set mapped_topic = mesh_topic_map.get(term) %}
+      {% set mapped_topic = mesh_topic_map.get(term|lower) %}
       <span class="d-inline-flex align-items-center">
         <a href="https://www.ncbi.nlm.nih.gov/mesh/?term=%22{{ term | urlenc }}%22[MeSH+Terms]"
            target="_blank" rel="noopener"
            class="badge bg-light text-dark border text-decoration-none{% if mapped_topic %} rounded-end-0 border-end-0{% endif %}">{{ term }}</a>
         {% if mapped_topic %}
-        <span class="badge badge-topic-{{ topic_color_map.get(mapped_topic, 0) }} rounded-start-0">{{ mapped_topic }}</span>
+        <span class="badge badge-topic-{{ topic_color_map.get(mapped_topic, 'secondary') }} rounded-start-0">{{ mapped_topic }}</span>
         {% endif %}
       </span>
       {% endfor %}
