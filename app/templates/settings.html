@@ -69,6 +69,61 @@
         </div>
 
         <div class="card mb-3">
+          <div class="card-header fw-semibold"><i class="bi bi-palette me-1"></i>Appearance</div>
+          <div class="card-body row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Colour theme</label>
+              {% set admin_theme = config.get('bootstrap_theme', 'flatly') %}
+              {% set admin_theme_label = 'Bootstrap (plain)' if admin_theme == 'default' else admin_theme | capitalize %}
+              <select name="bootstrap_theme" class="form-select" style="max-width:220px">
+                <option value="" {% if not cfg.get('bootstrap_theme') %}selected{% endif %}>
+                  Default ({{ admin_theme_label }})
+                </option>
+                {% for t in valid_themes | sort %}
+                <option value="{{ t }}" {% if cfg.get('bootstrap_theme') == t %}selected{% endif %}>
+                  {% if t == 'default' %}Bootstrap (plain){% else %}{{ t | capitalize }}{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Applies across the whole application after the next page load. Choosing <em>Default</em> follows the administrator's theme setting.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Papers per page</label>
+              <select name="page_size" class="form-select" style="max-width:120px">
+                {% for n in [10, 25, 50, 100, 150, 200, 500] %}
+                <option value="{{ n }}" {% if cfg.get('page_size', 50) == n %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text">How many papers are shown per page in your feed. Larger values load more at once but may feel slower on long lists.</div>
+            </div>
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="feed_group_by_profile"
+                       id="feedGroupByProfile" {% if cfg.get('feed_group_by_profile', False) %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="feedGroupByProfile">Group feed by search profile</label>
+              </div>
+              <div class="form-text ms-4 ps-1">Papers are sorted and grouped by search profile with a section header between them. Has no effect when a specific profile is already selected in the sidebar.</div>
+            </div>
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_flags"
+                       id="showFlags" {% if cfg.get('show_flags', True) %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="showFlags">Show country flags on paper pages</label>
+              </div>
+              <div class="form-text ms-4 ps-1">Displays a small flag next to each author on the paper detail page, based on their first listed affiliation.</div>
+            </div>
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_flags_feed"
+                       id="showFlagsFeed" {% if cfg.get('show_flags_feed', True) %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="showFlagsFeed">Show country flags in feed</label>
+              </div>
+              <div class="form-text ms-4 ps-1">Displays a small flag before each author's name in the feed cards.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
           <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email</div>
           <div class="card-body">
             <div class="row g-3">
@@ -186,45 +241,6 @@
               <div class="col-12 mt-2">
                 <div class="form-text">When the quartile badge is shown, it displays the journal's <strong>CiteScore</strong> from Elsevier Scopus — citations received over a 4-year window divided by documents published in those years.</div>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card mb-3">
-          <div class="card-header fw-semibold"><i class="bi bi-palette me-1"></i>Appearance</div>
-          <div class="card-body row g-3">
-            <div class="col-md-6">
-              <label class="form-label">Colour theme</label>
-              {% set admin_theme = config.get('bootstrap_theme', 'flatly') %}
-              {% set admin_theme_label = 'Bootstrap (plain)' if admin_theme == 'default' else admin_theme | capitalize %}
-              <select name="bootstrap_theme" class="form-select" style="max-width:220px">
-                <option value="" {% if not cfg.get('bootstrap_theme') %}selected{% endif %}>
-                  Default ({{ admin_theme_label }})
-                </option>
-                {% for t in valid_themes | sort %}
-                <option value="{{ t }}" {% if cfg.get('bootstrap_theme') == t %}selected{% endif %}>
-                  {% if t == 'default' %}Bootstrap (plain){% else %}{{ t | capitalize }}{% endif %}
-                </option>
-                {% endfor %}
-              </select>
-              <div class="form-text">Applies across the whole application after the next page load. Choosing <em>Default</em> follows the administrator's theme setting.</div>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Papers per page</label>
-              <select name="page_size" class="form-select" style="max-width:120px">
-                {% for n in [10, 25, 50, 100, 150, 200, 500] %}
-                <option value="{{ n }}" {% if cfg.get('page_size', 50) == n %}selected{% endif %}>{{ n }}</option>
-                {% endfor %}
-              </select>
-              <div class="form-text">How many papers are shown per page in your feed. Larger values load more at once but may feel slower on long lists.</div>
-            </div>
-            <div class="col-12">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="feed_group_by_profile"
-                       id="feedGroupByProfile" {% if cfg.get('feed_group_by_profile', False) %}checked{% endif %}>
-                <label class="form-check-label fw-medium" for="feedGroupByProfile">Group feed by search profile</label>
-              </div>
-              <div class="form-text ms-4 ps-1">Papers are sorted and grouped by search profile with a section header between them. Has no effect when a specific profile is already selected in the sidebar.</div>
             </div>
           </div>
         </div>
@@ -412,8 +428,11 @@
         <input type="hidden" name="fetch_schedule_dom" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
         <input type="hidden" name="page_size" value="{{ cfg.get('page_size', 50) }}">
         <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
+        <input type="hidden" name="bootstrap_theme" value="{{ cfg.get('bootstrap_theme', '') }}">
         {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
         {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
+        {% if cfg.get('show_flags', True) %}<input type="hidden" name="show_flags" value="1">{% endif %}
+        {% if cfg.get('show_flags_feed', True) %}<input type="hidden" name="show_flags_feed" value="1">{% endif %}
         {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
         {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
         <input type="hidden" name="mesh_term" value="{{ term }}">
@@ -616,8 +635,11 @@
         <input type="hidden" name="fetch_schedule_dom" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
         <input type="hidden" name="page_size" value="{{ cfg.get('page_size', 50) }}">
         <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
+        <input type="hidden" name="bootstrap_theme" value="{{ cfg.get('bootstrap_theme', '') }}">
         {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
         {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
+        {% if cfg.get('show_flags', True) %}<input type="hidden" name="show_flags" value="1">{% endif %}
+        {% if cfg.get('show_flags_feed', True) %}<input type="hidden" name="show_flags_feed" value="1">{% endif %}
         {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
         {% for p in cfg.get('search_profiles', []) %}
         <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">

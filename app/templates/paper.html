@@ -45,7 +45,7 @@
     {% for author in paper.authors_list %}
       {% set aff_indices = paper.author_aff[loop.index0] if paper.author_aff and loop.index0 < paper.author_aff|length else [] %}
       {% set first_aff = paper.aff_list[aff_indices[0]] if aff_indices and paper.aff_list else '' %}
-      <span class="d-block">{{ first_aff | affil_flag_html | safe }}{{ author | dim_initials | safe }}{% if aff_indices %}{% for idx in aff_indices %}<sup>{{ idx + 1 }}</sup>{% if not loop.last %}<sup>,</sup>{% endif %}{% endfor %}{% endif %}</span>
+      <span class="d-block">{% if show_flags %}{{ first_aff | affil_flag_html | safe }}{% endif %}{{ author | dim_initials | safe }}{% if aff_indices %}{% for idx in aff_indices %}<sup>{{ idx + 1 }}</sup>{% if not loop.last %}<sup>,</sup>{% endif %}{% endfor %}{% endif %}</span>
     {% endfor %}
   </div>
   {# Affiliations #}
@@ -135,16 +135,21 @@
   {# LLM highlights #}
   {% if paper.highlights %}
   <div class="card mb-3 border-0 bg-body-tertiary">
-    <div class="card-header fw-semibold border-0 bg-body-tertiary">
-      <i class="bi bi-stars me-1"></i>Key Highlights
+    <div class="card-header fw-semibold border-0 bg-body-tertiary pb-1">
+      <div class="d-flex align-items-start">
+        <i class="bi bi-stars me-1"></i>
+        <div>
+          Key Highlights
+          <div class="text-muted fw-normal" style="font-size:.72em">LLM-generated based on the abstract</div>
+        </div>
+      </div>
     </div>
-    <ul class="list-group list-group-flush">
-      {% for h in paper.highlights %}
-      <li class="list-group-item bg-transparent" style="font-size:1rem">{{ h | inline_md }}</li>
-      {% endfor %}
-    </ul>
-    <div class="card-footer border-0 bg-transparent pt-0">
-      <span class="text-muted" style="font-size:.72em"><i class="bi bi-robot me-1"></i>LLM-generated highlights based on the abstract.</span>
+    <div class="card-body pt-2 pb-2">
+      <ul class="mb-0" style="font-size:1rem">
+        {% for h in paper.highlights %}
+        <li>{{ h | inline_md }}</li>
+        {% endfor %}
+      </ul>
     </div>
   </div>
   {% endif %}
@@ -209,21 +214,23 @@
       </p>
       {% if up %}
       <p class="small text-muted mb-2">Rate how well this paper matches what you are looking for. Your rating contributes to the relevance score for {{ 'each of these profiles' if matched_profiles | length > 1 else 'this profile' }} and helps you spot searches that need tweaking.</p>
-      <div class="d-flex align-items-center gap-2">
-        <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
-          <input type="hidden" name="relevance" value="{{ 0 if up.relevance == 1 else 1 }}">
-          <button type="submit"
-                  class="btn btn-sm {% if up.relevance == 1 %}btn-success{% else %}btn-outline-success{% endif %}">
-            <i class="bi {% if up.relevance == 1 %}bi-hand-thumbs-up-fill{% else %}bi-hand-thumbs-up{% endif %} me-1"></i>Relevant
-          </button>
-        </form>
-        <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
-          <input type="hidden" name="relevance" value="{{ 0 if up.relevance == -1 else -1 }}">
-          <button type="submit"
-                  class="btn btn-sm {% if up.relevance == -1 %}btn-danger{% else %}btn-outline-danger{% endif %}">
-            <i class="bi {% if up.relevance == -1 %}bi-hand-thumbs-down-fill{% else %}bi-hand-thumbs-down{% endif %} me-1"></i>Not relevant
-          </button>
-        </form>
+      <div class="d-flex flex-column align-items-start gap-1">
+        <div class="d-flex gap-2">
+          <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
+            <input type="hidden" name="relevance" value="{{ 0 if up.relevance == 1 else 1 }}">
+            <button type="submit"
+                    class="btn btn-sm {% if up.relevance == 1 %}btn-success{% else %}btn-outline-success{% endif %}">
+              <i class="bi {% if up.relevance == 1 %}bi-hand-thumbs-up-fill{% else %}bi-hand-thumbs-up{% endif %} me-1"></i>Relevant
+            </button>
+          </form>
+          <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
+            <input type="hidden" name="relevance" value="{{ 0 if up.relevance == -1 else -1 }}">
+            <button type="submit"
+                    class="btn btn-sm {% if up.relevance == -1 %}btn-danger{% else %}btn-outline-danger{% endif %}">
+              <i class="bi {% if up.relevance == -1 %}bi-hand-thumbs-down-fill{% else %}bi-hand-thumbs-down{% endif %} me-1"></i>Not relevant
+            </button>
+          </form>
+        </div>
         {% if up.relevance is not none %}
         <span class="small text-muted">Click again to clear</span>
         {% endif %}

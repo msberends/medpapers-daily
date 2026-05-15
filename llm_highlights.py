@@ -67,6 +67,8 @@ def _conn_ctx(db_path: str):
 
 
 def main():
+    force = "--force" in sys.argv
+
     config_path = BASE_DIR / "config.yaml"
     with open(config_path) as f:
         config = yaml.safe_load(f) or {}
@@ -97,14 +99,21 @@ def main():
 
     try:
         with _conn_ctx(db_path) as conn:
-            papers = conn.execute(
-                "SELECT pmid, abstract FROM papers "
-                "WHERE highlights IS NULL AND abstract IS NOT NULL AND abstract != '' "
-                "ORDER BY first_seen_at DESC"
-            ).fetchall()
+            if force:
+                papers = conn.execute(
+                    "SELECT pmid, abstract FROM papers "
+                    "WHERE abstract IS NOT NULL AND abstract != '' "
+                    "ORDER BY first_seen_at DESC"
+                ).fetchall()
+            else:
+                papers = conn.execute(
+                    "SELECT pmid, abstract FROM papers "
+                    "WHERE highlights IS NULL AND abstract IS NOT NULL AND abstract != '' "
+                    "ORDER BY first_seen_at DESC"
+                ).fetchall()
 
         total = len(papers)
-        print(f"[llm] {total} paper(s) need highlights.", flush=True)
+        print(f"[llm] {total} paper(s) to process (force={force}).", flush=True)
         _write_status({
             "status": "running",
             "started_at": datetime.now(timezone.utc).isoformat(),
@@ -117,7 +126,12 @@ def main():
             pmid = row["pmid"]
             abstract = row["abstract"]
             try:
-                response = call_llm(config, system_prompt, f"Abstract:\n{abstract}")
+                try:
+                    response = call_llm(config, system_prompt, f"Abstract:\n{abstract}")
+                except Exception as first_err:
+                    print(f"[llm] {pmid}: retrying after error — {first_err}", file=sys.stderr, flush=True)
+                    time.sleep(2)
+                    response = call_llm(config, system_prompt, f"Abstract:\n{abstract}")
                 highlights = parse_highlights(response)
                 with _conn_ctx(db_path) as conn:
                     conn.execute(
@@ -126,7 +140,7 @@ def main():
                     )
                 processed += 1
                 print(f"[llm] {pmid}: {len(highlights)} highlight(s).", flush=True)
-                time.sleep(0.25)
+                time.sleep(1)
             except Exception as e:
                 errors += 1
                 last_error = str(e)

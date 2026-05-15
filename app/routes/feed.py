@@ -1,4 +1,5 @@
 import json
+import re
 from collections import Counter
 from datetime import date as _date, datetime, timedelta, timezone
 from typing import Optional
@@ -10,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from app.auth import require_auth, SESSION_COOKIE
 from app.db import conn_ctx
 from app.export import export_ris
+from app.flags import extract_country_iso
 
 router = APIRouter()
 
@@ -151,6 +153,7 @@ async def feed(
     mesh_topic_map = {k.lower(): v for k, v in user_yaml.get("mesh_topic_map", {}).items()}
     q2_hard = user_yaml.get("q2_hard", True)
     show_quartile = user_yaml.get("show_quartile", True)
+    show_flags_feed = user_yaml.get("show_flags_feed", True)
     feed_group_by_profile = user_yaml.get("feed_group_by_profile", False)
     page_size = user_yaml.get("page_size", 50)
     if page_size not in (10, 25, 50, 100, 150, 200, 500):
@@ -251,7 +254,22 @@ async def feed(
                    ("Unclassified" in selected_topics and paper_topics == ["Unclassified"])
             if not show:
                 continue
-        papers_with_topics.append((dict(row), paper_topics))
+        paper_dict = dict(row)
+        _raw_highlights = json.loads(paper_dict.get("highlights") or "null") or []
+        paper_dict["highlights"] = [re.sub(r"^[-•*]\s+", "", h) for h in _raw_highlights]
+        affil_raw = json.loads(paper_dict.get("affiliations") or "null") or {}
+        aff_list = affil_raw.get("aff_list", [])
+        author_aff_map = affil_raw.get("author_aff", [])
+        authors_list = json.loads(paper_dict.get("authors") or "[]")
+        author_isos: list = []
+        for i in range(len(authors_list)):
+            aff_indices = author_aff_map[i] if i < len(author_aff_map) else []
+            if aff_indices and aff_list and aff_indices[0] < len(aff_list):
+                author_isos.append(extract_country_iso(aff_list[aff_indices[0]]))
+            else:
+                author_isos.append(None)
+        paper_dict["author_isos"] = author_isos
+        papers_with_topics.append((paper_dict, paper_topics))
 
     all_topics = sorted(all_topic_set) + ["Unclassified"]
     _colour_cycle = ["blue","purple","green","orange","teal","red","indigo","yellow","pink","cyan","primary","success","danger","warning","info","secondary"]
@@ -336,6 +354,7 @@ async def feed(
         "date_to": date_to,
         "search": search,
         "show_quartile": show_quartile,
+        "show_flags_feed": show_flags_feed,
         "page": page,
         "page_size": page_size,
         "total": total,

@@ -5,6 +5,16 @@
 <div class="row justify-content-center">
 <div class="col-lg-11">
 
+  {% if llm_started %}
+  <div class="alert alert-info alert-dismissible py-2 mb-3" role="alert">
+    <i class="bi bi-stars me-1"></i> LLM highlights generation started in the background.
+    <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+  </div>
+  {% endif %}
+  {% if error %}
+  <div class="alert alert-danger py-2 mb-3"><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
+  {% endif %}
+
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="mb-0"><i class="bi bi-activity me-2"></i>Logs</h3>
     {% if user.is_admin and all_users %}
@@ -38,6 +48,11 @@
     <li class="nav-item">
       <a class="nav-link" data-bs-toggle="tab" href="#tab-scopus">
         <i class="bi bi-journal-text me-1"></i>Scopus harvest
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="tab" href="#tab-llm">
+        <i class="bi bi-stars me-1"></i>LLM highlights
       </a>
     </li>
     {% endif %}
@@ -188,6 +203,54 @@
       <p class="text-muted small py-3">No harvest log yet. Run the journal harvest from Admin &rsaquo; Journal Rankings to generate one.</p>
       {% endif %}
     </div>
+
+    {# ── LLM highlights tab (admin only) ── #}
+    <div class="tab-pane fade" id="tab-llm">
+      {% set ls = llm_status %}
+
+      {# Status banner #}
+      {% if ls.status == 'running' %}
+      <div class="alert alert-info py-2 mb-3">
+        <i class="bi bi-hourglass-split me-1"></i>
+        Generation in progress &mdash; {{ ls.processed | default(0) }} of {{ ls.total | default('?') }} processed.
+      </div>
+      {% elif ls.status == 'error' %}
+      <div class="alert alert-danger py-2 mb-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>Last run encountered an error: <code class="ms-1">{{ ls.last_error }}</code>
+      </div>
+      {% elif ls.status == 'done' and ls.finished_at %}
+      <div class="alert alert-success py-2 mb-3">
+        <i class="bi bi-check-circle me-1"></i>
+        Last run: {{ ls.finished_at | to_local }} &mdash; {{ ls.processed }} processed, {{ ls.errors }} error(s).
+        {% if ls.last_error %}<span class="text-muted small ms-2">Last error: {{ ls.last_error }}</span>{% endif %}
+      </div>
+      {% endif %}
+
+      <div class="d-flex align-items-center gap-3 mb-3">
+        <p class="text-muted small mb-0">
+          {% if llm_pending %}
+          <strong>{{ llm_pending }}</strong> paper{{ 's' if llm_pending != 1 else '' }} still need{{ '' if llm_pending != 1 else 's' }} highlights.
+          {% else %}
+          All papers with abstracts already have highlights.
+          {% endif %}
+        </p>
+        <form method="post" action="/logs/run-llm-highlights"
+              onsubmit="return confirm('Regenerate LLM highlights for all papers with abstracts? This will overwrite existing highlights and run in the background.')">
+          <button type="submit" class="btn btn-sm btn-outline-secondary"
+                  {% if not config.get('llm_provider') %}disabled title="Configure a provider in Admin &rsaquo; LLM first"{% endif %}
+                  {% if ls.status == 'running' %}disabled title="Generation is already running"{% endif %}>
+            <i class="bi bi-play-circle me-1"></i>Generate highlights now
+          </button>
+        </form>
+      </div>
+
+      {% if llm_log %}
+      <pre class="small font-monospace p-3 rounded" style="background:var(--bs-tertiary-bg);max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">{{ llm_log }}</pre>
+      <div class="text-muted small mt-1">Showing last {{ llm_log.splitlines()|length }} lines of <code>logs/llm.log</code>.</div>
+      {% else %}
+      <p class="text-muted small py-3">No LLM log yet. Run highlights generation to create one.</p>
+      {% endif %}
+    </div>
     {% endif %}
 
   </div>{# end tab-content #}
@@ -199,8 +262,10 @@
 {% block extra_scripts %}
 <script>
 const hash = window.location.hash;
-if (hash) {
-  const tab = document.querySelector(`[href="${hash}"]`);
+const llmStarted = {{ 'true' if llm_started else 'false' }};
+const activeTab = hash || (llmStarted ? '#tab-llm' : null);
+if (activeTab) {
+  const tab = document.querySelector(`[href="${activeTab}"]`);
   if (tab) tab.click();
 }
 </script>

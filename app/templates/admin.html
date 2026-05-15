@@ -578,12 +578,7 @@
       <h6 class="fw-semibold mb-3"><i class="bi bi-lightning me-1"></i>Highlights generation</h6>
 
       {% set ls = llm_status %}
-      {% if ls.status == 'running' %}
-      <div class="alert alert-info py-2 mb-3">
-        <i class="bi bi-hourglass-split me-1"></i>
-        Generation in progress &mdash; {{ ls.processed | default(0) }} of {{ ls.total | default('?') }} processed.
-      </div>
-      {% elif ls.status == 'error' %}
+      {% if ls.status == 'error' %}
       <div class="alert alert-danger py-2 mb-3">
         <i class="bi bi-exclamation-triangle me-1"></i>Last run encountered an error:
         <code class="ms-1">{{ ls.last_error }}</code>
@@ -599,6 +594,19 @@
       </div>
       {% endif %}
 
+      <div id="llmProgress" class="mb-3" style="display:{% if ls.status == 'running' %}block{% else %}none{% endif %}">
+        <div class="d-flex justify-content-between small mb-1">
+          <span id="llmLabel" class="text-muted">{% if ls.status == 'running' %}{{ ls.processed | default(0) }} / {{ ls.total | default('?') }} processed&hellip;{% else %}Generating highlights&hellip;{% endif %}</span>
+          <span id="llmPct" class="text-muted">{% if ls.status == 'running' and ls.total %}{{ (ls.processed | default(0) / ls.total * 100) | int }}%{% endif %}</span>
+        </div>
+        <div class="progress" style="height:18px">
+          <div id="llmBar" class="progress-bar progress-bar-striped progress-bar-animated"
+               role="progressbar"
+               style="width:{% if ls.status == 'running' and ls.total %}{{ (ls.processed | default(0) / ls.total * 100) | int }}%{% else %}0%{% endif %}"
+               aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+      </div>
+
       <p class="text-muted small mb-3">
         {% if llm_pending %}
         <strong>{{ llm_pending }}</strong> paper{{ 's' if llm_pending != 1 else '' }} in the database
@@ -610,14 +618,22 @@
       </p>
 
       <form method="post" action="/admin/run-llm-highlights" id="runLlmHighlightsForm"
-            onsubmit="return confirm('Generate LLM highlights for all {{ llm_pending }} paper(s) without them? This will run in the background.')">
-        <button type="submit" class="btn btn-outline-secondary"
+            onsubmit="return confirm('Regenerate LLM highlights for all papers with abstracts? This will overwrite existing highlights and run in the background.')">
+        <button type="submit" id="btnRunLlm" class="btn btn-outline-secondary"
                 {% if not config.get('llm_provider') %}disabled title="Configure a provider first"{% endif %}
-                {% if llm_pending == 0 %}disabled title="No papers need highlights"{% endif %}>
+                {% if ls.status == 'running' %}disabled title="Generation is already running"{% endif %}>
           <i class="bi bi-play-circle me-1"></i>Generate highlights now
         </button>
       </form>
-      <div class="form-text mt-2">Runs in the background. Check <a href="/logs">Logs</a> (<code>llm.log</code>) for progress. The status above updates automatically while this tab is open.</div>
+      <div class="form-text mt-2">Runs in the background. Check <a href="/logs">Logs</a> (<code>llm.log</code>) for progress. The progress bar above updates automatically while this tab is open.</div>
+      <hr class="my-3">
+      <p class="small text-muted mb-1"><i class="bi bi-question-circle me-1"></i><strong>Progress bar stuck?</strong> This can happen if the generation process crashed unexpectedly. Delete the status file to reset:</p>
+      <form method="post" action="/admin/reset-llm-status" class="d-inline"
+            onsubmit="return confirm('Clear the stuck status file? This will not stop any running process — only the progress indicator will be reset.')">
+        <button type="submit" class="btn btn-sm btn-outline-danger">
+          <i class="bi bi-x-circle me-1"></i>Reset stuck status
+        </button>
+      </form>
     </div>
 
   </div>
@@ -880,9 +896,11 @@ function escapeHtml(s) {
 // ── LLM highlights status polling ─────────────────────────────────────────
 
 let llmPollInterval = null;
+let llmSeenRunning = false;
 
 function startLlmPoll() {
   if (llmPollInterval) return;
+  llmSeenRunning = false;
   llmPollInterval = setInterval(pollLlmStatus, 3000);
   pollLlmStatus();
 }
@@ -895,13 +913,49 @@ function pollLlmStatus() {
   fetch('/admin/llm-status')
     .then(r => r.json())
     .then(data => {
+      const bar     = document.getElementById('llmBar');
+      const label   = document.getElementById('llmLabel');
+      const pct     = document.getElementById('llmPct');
+      const wrapper = document.getElementById('llmProgress');
+      const btn     = document.getElementById('btnRunLlm');
+      if (!bar) return;
+
       if (data.status === 'running') {
-        // Reload when done so counts update
-      } else if (data.status === 'done' && llmPollInterval) {
+        llmSeenRunning = true;
+        const processed = data.processed || 0;
+        const total = data.total || 0;
+        const pctVal = total > 0 ? Math.round(processed / total * 100) : 0;
+        wrapper.style.display = '';
+        bar.style.width = pctVal + '%';
+        bar.setAttribute('aria-valuenow', pctVal);
+        bar.classList.add('progress-bar-striped', 'progress-bar-animated');
+        bar.classList.remove('bg-success');
+        label.textContent = total > 0
+          ? `${processed} / ${total} papers processed…`
+          : 'Starting…';
+        pct.textContent = total > 0 ? pctVal + '%' : '';
+        if (btn) { btn.disabled = true; btn.title = 'Generation is already running'; }
+
+      } else if (data.status === 'done') {
         stopLlmPoll();
-        setTimeout(() => location.reload(), 2000);
+        // Only reload when we witnessed the running → done transition;
+        // avoids infinite reload loop when the page loads with status already done.
+        if (llmSeenRunning) {
+          wrapper.style.display = '';
+          bar.style.width = '100%';
+          bar.setAttribute('aria-valuenow', 100);
+          bar.classList.remove('progress-bar-striped', 'progress-bar-animated');
+          bar.classList.add('bg-success');
+          label.textContent = `Done — ${data.processed || 0} processed, ${data.errors || 0} error(s). Reloading…`;
+          pct.textContent = '100%';
+          if (btn) btn.disabled = true;
+          setTimeout(() => location.reload(), 2000);
+        } else {
+          wrapper.style.display = 'none';
+        }
       } else {
         stopLlmPoll();
+        wrapper.style.display = 'none';
       }
     })
     .catch(() => {});

@@ -3,9 +3,10 @@ import re
 import requests
 
 DEFAULT_HIGHLIGHTS_PROMPT = (
-    "You summarise scientific abstracts. When given an abstract, respond with "
-    "up to 5 concise bullet-point highlights capturing the key findings, methods, "
-    "and conclusions. Each highlight is one short sentence. "
+    "You summarise scientific abstracts into journal-style Highlights. "
+    "When given an abstract, respond with 3 to 5 bullet points that capture "
+    "the novel results of the research and any new methods used during the study. "
+    "Each bullet point must be at most 100 characters long (including spaces). "
     "Return only the bullet points, one per line, each starting with a dash (-). "
     "No introduction, no numbering, no trailing commentary. "
     "Use British English spelling throughout (e.g. -ise not -ize, colour not color)."

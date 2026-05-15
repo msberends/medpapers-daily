@@ -34,6 +34,8 @@ mesh_topic_colours:
 folders: []
 bootstrap_theme: yeti
 show_quartile: true
+show_flags: true                   # true = show country flag per author on paper detail page
+show_flags_feed: true              # true = show country flag per author in feed cards
 feed_group_by_profile: false       # true = group feed papers by search profile with section headers
 fetch_schedule: daily   # daily | weekly | monthly
 fetch_schedule_dow: 0   # 0=Mon … 6=Sun (weekly only)

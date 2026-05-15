@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -67,7 +68,8 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
     paper["authors_list"] = json.loads(paper["authors"] or "[]")
     paper["mesh_list"] = json.loads(paper["mesh_terms"] or "[]")
     paper["keyword_list"] = json.loads(paper.get("keywords") or "[]")
-    paper["highlights"] = json.loads(paper.get("highlights") or "null") or []
+    _raw_highlights = json.loads(paper.get("highlights") or "null") or []
+    paper["highlights"] = [re.sub(r"^[-•*]\s+", "", h) for h in _raw_highlights]
     affil_raw = json.loads(paper.get("affiliations") or "null") or {}
     paper["aff_list"] = affil_raw.get("aff_list", [])
     paper["author_aff"] = affil_raw.get("author_aff", [])
@@ -96,6 +98,7 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
         "mesh_topic_map": mesh_topic_map,
         "matched_profiles": matched_profiles,
         "show_quartile": user_yaml.get("show_quartile", True),
+        "show_flags": user_yaml.get("show_flags", True),
         "config": request.app.state.config,
     })
 

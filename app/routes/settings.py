@@ -253,6 +253,8 @@ async def save_settings(request: Request):
         "lookback_days": lookback_days,
         "show_quartile": "show_quartile" in form,
         "feed_group_by_profile": "feed_group_by_profile" in form,
+        "show_flags": "show_flags" in form,
+        "show_flags_feed": "show_flags_feed" in form,
         "q2_hard": "q2_hard" in form,
         "bootstrap_theme": theme if (theme == "" or theme in VALID_THEMES) else existing.get("bootstrap_theme", ""),
         "search_profiles": profiles,

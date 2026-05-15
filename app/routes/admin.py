@@ -643,7 +643,7 @@ async def run_llm_highlights(request: Request):
         log_path.parent.mkdir(exist_ok=True)
         with open(log_path, "ab") as log_f:
             subprocess.Popen(
-                [str(venv_python), "-u", str(llm_script)],
+                [str(venv_python), "-u", str(llm_script), "--force"],
                 stdout=log_f,
                 stderr=log_f,
                 cwd=str(BASE_DIR),
@@ -657,6 +657,17 @@ async def run_llm_highlights(request: Request):
 async def llm_status(request: Request):
     require_admin(request)
     return _load_llm_status(BASE_DIR)
+
+
+@router.post("/admin/reset-llm-status")
+async def reset_llm_status(request: Request):
+    require_admin(request)
+    status_path = BASE_DIR / "data" / "llm_status.json"
+    try:
+        status_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+    return RedirectResponse("/admin?saved=1#tab-llm", status_code=303)
 
 
 def _int(val, default: int) -> int:
