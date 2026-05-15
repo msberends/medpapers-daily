@@ -14,7 +14,7 @@ A self-hosted monitor for medical scientific literature. This webapp fetches pap
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12 (see `.python-version`; bcrypt 5.x is incompatible with Python 3.11)
 
 Preferred:
 - A free [NCBI API key](https://www.ncbi.nlm.nih.gov/account/) to increase the PubMed rate limit to 10 req/sec
@@ -25,7 +25,7 @@ Preferred:
 
 ```bash
 # 1. Create a virtual environment and install dependencies
-python3 -m venv venv
+python3.12 -m venv venv
 venv/bin/pip install -r requirements.txt
 
 # 2. Create initial admin user
