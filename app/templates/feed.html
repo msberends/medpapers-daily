@@ -407,14 +407,14 @@
                   <span class="badge badge-unranked">Unranked</span>
                 {% endif %}
               {% endif %}
-              {% for topic in topics %}
-              <span class="badge {% if topic == 'Unclassified' %}bg-secondary{% else %}badge-topic-{{ topic_color_map.get(topic, 'secondary') }}{% endif %}">{{ topic }}</span>
-              {% endfor %}
               {% if paper.oa_url %}
               <span class="badge bg-success"><i class="bi bi-unlock me-1"></i>OA</span>
               {% elif paper.doi and proxy_url(paper.doi, config) %}
               <span class="badge bg-danger"><i class="bi bi-lock me-1"></i>PW</span>
               {% endif %}
+              {% for topic in topics %}
+              <span class="badge {% if topic == 'Unclassified' %}bg-secondary{% else %}badge-topic-{{ topic_color_map.get(topic, 'secondary') }}{% endif %}">{{ topic }}</span>
+              {% endfor %}
             </div>
           </div>
         </div>
