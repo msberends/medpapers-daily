@@ -10,8 +10,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 
 from app.auth import require_auth, SESSION_COOKIE
 from app.db import conn_ctx
-from app.export import export_ris
-from app.flags import extract_country_iso, _BORDER_CODES
+from app.export import export_ris, export_nbib
+from app.flags import extract_country, _BORDER_CODES
 
 router = APIRouter()
 
@@ -156,6 +156,8 @@ async def feed(
     q2_hard = user_yaml.get("q2_hard", True)
     show_quartile = user_yaml.get("show_quartile", True)
     show_flags_feed = user_yaml.get("show_flags_feed", True)
+    show_export_ris = user_yaml.get("show_export_ris", True)
+    show_export_nbib = user_yaml.get("show_export_nbib", False)
     feed_group_by_profile = user_yaml.get("feed_group_by_profile", False)
     page_size = user_yaml.get("page_size", 50)
     if page_size not in (10, 25, 50, 100, 150, 200, 500):
@@ -268,13 +270,18 @@ async def feed(
         author_aff_map = affil_raw.get("author_aff", [])
         authors_list = json.loads(paper_dict.get("authors") or "[]")
         author_isos: list = []
+        author_iso_names: list = []
         for i in range(len(authors_list)):
             aff_indices = author_aff_map[i] if i < len(author_aff_map) else []
             if aff_indices and aff_list and aff_indices[0] < len(aff_list):
-                author_isos.append(extract_country_iso(aff_list[aff_indices[0]]))
+                result = extract_country(aff_list[aff_indices[0]])
+                author_isos.append(result[0] if result else None)
+                author_iso_names.append(result[1] if result else None)
             else:
                 author_isos.append(None)
+                author_iso_names.append(None)
         paper_dict["author_isos"] = author_isos
+        paper_dict["author_iso_names"] = author_iso_names
         papers_with_topics.append((paper_dict, paper_topics))
 
     all_topics = sorted(all_topic_set) + ["Unclassified"]
@@ -362,6 +369,8 @@ async def feed(
         "search": search,
         "show_quartile": show_quartile,
         "show_flags_feed": show_flags_feed,
+        "show_export_ris": show_export_ris,
+        "show_export_nbib": show_export_nbib,
         "border_codes": _BORDER_CODES,
         "page": page,
         "page_size": page_size,
@@ -434,6 +443,13 @@ async def bulk_action(
                 content=ris_content,
                 media_type="application/x-research-info-systems",
                 headers={"Content-Disposition": "attachment; filename=papers_daily_export.ris"},
+            )
+        elif action == "export_nbib":
+            nbib_content = export_nbib(user["user_id"], pmid_list)
+            return Response(
+                content=nbib_content,
+                media_type="application/nbib",
+                headers={"Content-Disposition": "inline; filename=papers_daily_export.nbib"},
             )
 
     referer = request.headers.get("referer", "/feed")

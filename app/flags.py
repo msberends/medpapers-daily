@@ -217,6 +217,77 @@ _US_STATES: frozenset[str] = frozenset({
     "n.y", "ind",
 })
 
+# ISO 3166-1 alpha-2 → canonical display name
+_ISO_TO_NAME: dict[str, str] = {
+    # Americas
+    "us": "United States", "ca": "Canada", "mx": "Mexico",
+    "br": "Brazil", "ar": "Argentina", "cl": "Chile",
+    "co": "Colombia", "pe": "Peru", "ve": "Venezuela",
+    "bo": "Bolivia", "ec": "Ecuador", "py": "Paraguay",
+    "uy": "Uruguay", "cu": "Cuba", "ht": "Haiti",
+    "do": "Dominican Republic", "jm": "Jamaica",
+    "tt": "Trinidad and Tobago", "bb": "Barbados",
+    "pa": "Panama", "cr": "Costa Rica", "gt": "Guatemala",
+    "hn": "Honduras", "sv": "El Salvador", "ni": "Nicaragua",
+    "bz": "Belize", "gy": "Guyana", "sr": "Suriname",
+    # Europe
+    "gb": "United Kingdom", "ie": "Ireland", "de": "Germany",
+    "fr": "France", "it": "Italy", "es": "Spain", "pt": "Portugal",
+    "nl": "Netherlands", "be": "Belgium", "ch": "Switzerland",
+    "at": "Austria", "se": "Sweden", "no": "Norway", "dk": "Denmark",
+    "fi": "Finland", "is": "Iceland", "lu": "Luxembourg",
+    "mt": "Malta", "cy": "Cyprus", "gr": "Greece", "pl": "Poland",
+    "cz": "Czech Republic", "sk": "Slovakia", "hu": "Hungary",
+    "ro": "Romania", "bg": "Bulgaria", "hr": "Croatia",
+    "rs": "Serbia", "si": "Slovenia", "ba": "Bosnia and Herzegovina",
+    "mk": "North Macedonia", "al": "Albania", "me": "Montenegro",
+    "md": "Moldova", "ua": "Ukraine", "by": "Belarus",
+    "ru": "Russia", "ee": "Estonia", "lv": "Latvia",
+    "lt": "Lithuania", "xk": "Kosovo",
+    # Asia
+    "cn": "China", "hk": "Hong Kong", "tw": "Taiwan",
+    "jp": "Japan", "kr": "South Korea", "kp": "North Korea",
+    "in": "India", "pk": "Pakistan", "bd": "Bangladesh",
+    "lk": "Sri Lanka", "np": "Nepal", "bt": "Bhutan",
+    "mv": "Maldives", "af": "Afghanistan", "ir": "Iran",
+    "iq": "Iraq", "sa": "Saudi Arabia",
+    "ae": "United Arab Emirates", "qa": "Qatar",
+    "kw": "Kuwait", "bh": "Bahrain", "om": "Oman",
+    "ye": "Yemen", "il": "Israel", "ps": "Palestine",
+    "jo": "Jordan", "lb": "Lebanon", "sy": "Syria",
+    "tr": "Turkey", "sg": "Singapore", "my": "Malaysia",
+    "id": "Indonesia", "ph": "Philippines", "th": "Thailand",
+    "vn": "Vietnam", "kh": "Cambodia", "mm": "Myanmar",
+    "la": "Laos", "mn": "Mongolia", "uz": "Uzbekistan",
+    "kz": "Kazakhstan", "kg": "Kyrgyzstan", "tj": "Tajikistan",
+    "tm": "Turkmenistan", "ge": "Georgia", "am": "Armenia",
+    "az": "Azerbaijan",
+    # Oceania
+    "au": "Australia", "nz": "New Zealand",
+    "pg": "Papua New Guinea", "fj": "Fiji",
+    # Africa
+    "za": "South Africa", "ng": "Nigeria", "ke": "Kenya",
+    "et": "Ethiopia", "gh": "Ghana", "tz": "Tanzania",
+    "ug": "Uganda", "rw": "Rwanda", "zm": "Zambia",
+    "zw": "Zimbabwe", "na": "Namibia", "bw": "Botswana",
+    "mz": "Mozambique", "mw": "Malawi", "mg": "Madagascar",
+    "ls": "Lesotho", "sz": "Eswatini", "ao": "Angola",
+    "cm": "Cameroon", "ci": "Ivory Coast", "sn": "Senegal",
+    "ml": "Mali", "bf": "Burkina Faso", "gn": "Guinea",
+    "sl": "Sierra Leone", "lr": "Liberia", "tg": "Togo",
+    "bj": "Benin", "td": "Chad", "ne": "Niger",
+    "mr": "Mauritania", "dj": "Djibouti", "er": "Eritrea",
+    "so": "Somalia", "sd": "Sudan", "ss": "South Sudan",
+    "eg": "Egypt", "ly": "Libya", "tn": "Tunisia",
+    "dz": "Algeria", "ma": "Morocco",
+    "cd": "DR Congo", "cg": "Republic of Congo",
+    "ga": "Gabon", "gq": "Equatorial Guinea",
+    "cf": "Central African Republic",
+    "cv": "Cape Verde", "mu": "Mauritius", "sc": "Seychelles",
+    "km": "Comoros", "st": "São Tomé and Príncipe",
+    "gm": "Gambia", "gw": "Guinea-Bissau",
+}
+
 _EMAIL_RE = re.compile(r'[\s.]+\S+@\S+\.[a-zA-Z]{2,}\.?\s*$')
 _ELEC_ADDR_RE = re.compile(r'[. ]*[Ee]lectronic\s+address:.*$')
 # Domain-like token: contains a dot but no space (e.g. "rsu.lv", "upc.edu.pe")
@@ -239,39 +310,53 @@ def _scan_parts(parts: list[str]) -> str | None:
     return None
 
 
-def extract_country_iso(aff_text: str) -> str | None:
-    """Return ISO 3166-1 alpha-2 code for the country in a PubMed affiliation string."""
+def _extract_country(aff_text: str) -> tuple[str, str] | None:
+    """Return (iso, display_name) for the country in a PubMed affiliation string."""
     if not aff_text:
         return None
     s = aff_text.strip()
-    # Strip "Electronic address: …" and bare email suffixes
     s = _ELEC_ADDR_RE.sub('', s)
     s = _EMAIL_RE.sub('', s)
 
-    # Some affiliation strings concatenate multiple sub-affiliations with "; ".
-    # Try each segment so the country in any sub-affiliation can be found.
+    iso = None
     for segment in s.split(';'):
         seg = segment.strip().rstrip('.')
         parts = [p.strip().rstrip('.') for p in seg.split(',')]
         parts = [p for p in parts if p]
         iso = _scan_parts(parts)
         if iso:
-            return iso
+            break
 
-    # Fallback: some affiliations (e.g. certain Brazilian institutions) use
-    # periods as the field separator instead of commas.
-    dot_parts = [p.strip() for p in s.rstrip('.').split('.')]
-    dot_parts = [p for p in dot_parts if p]
-    return _scan_parts(dot_parts)
+    if not iso:
+        dot_parts = [p.strip() for p in s.rstrip('.').split('.')]
+        dot_parts = [p for p in dot_parts if p]
+        iso = _scan_parts(dot_parts)
+
+    if not iso:
+        return None
+    return iso, _ISO_TO_NAME.get(iso, iso.upper())
+
+
+def extract_country(aff_text: str) -> tuple[str, str] | None:
+    """Return (iso, display_name) for the country in a PubMed affiliation string."""
+    return _extract_country(aff_text)
+
+
+def extract_country_iso(aff_text: str) -> str | None:
+    """Return ISO 3166-1 alpha-2 code for the country in a PubMed affiliation string."""
+    result = _extract_country(aff_text)
+    return result[0] if result else None
 
 
 def affil_flag_html(aff_text: str) -> str:
     """Return an <img> tag for the country flag, or a fixed-width placeholder."""
-    iso = extract_country_iso(aff_text or '')
-    if not iso:
+    result = _extract_country(aff_text or '')
+    if not result:
         return '<span style="display:inline-block;width:20px;height:14px;margin-right:.3em"></span>'
-    border = ";outline:0.5px solid rgba(0,0,0,.1)" if iso in _BORDER_CODES else ""
+    iso, name = result
+    border = ";outline:1px solid rgba(0,0,0,.1)" if iso in _BORDER_CODES else ""
     return (
         f'<img src="/static/flags/{iso}.svg" width="20" height="14" alt="{iso.upper()}" '
+        f'data-bs-toggle="tooltip" data-bs-placement="top" title="{name}" '
         f'style="vertical-align:baseline;margin-right:.3em;flex-shrink:0{border}">'
     )

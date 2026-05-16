@@ -133,6 +133,43 @@
           </div>
         </div>
 
+        <div class="card mb-4">
+          <div class="card-header fw-semibold"><i class="bi bi-download me-1"></i>Export Buttons</div>
+          <div class="card-body">
+            <p class="text-muted small mb-3">Choose which export buttons appear on the paper detail page and in the feed's bulk-action bar.</p>
+            <div class="d-flex flex-column gap-2">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_export_ris"
+                       id="showExportRis" {% if cfg.get('show_export_ris', True) %}checked{% endif %}>
+                <label class="form-check-label" for="showExportRis">Export RIS</label>
+                <div class="form-text ms-4 ps-1">Exports a <code>.ris</code> file compatible with most reference managers (Zotero, Mendeley, etc.).</div>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_export_nbib"
+                       id="showExportNbib" {% if cfg.get('show_export_nbib', False) %}checked{% endif %}>
+                <label class="form-check-label" for="showExportNbib">Open in EndNote</label>
+                <div class="form-text ms-4 ps-1">Downloads a <code>.nbib</code> (MEDLINE) file. On most systems, double-clicking it opens EndNote directly.</div>
+              </div>
+            </div>
+            <div class="mt-3">
+              <label class="form-label fw-medium mb-1">Structured abstract style</label>
+              <div class="d-flex gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="abstract_style" id="absAccentAdmin"
+                         value="accent" {% if cfg.get('abstract_style', 'accent') == 'accent' %}checked{% endif %}>
+                  <label class="form-check-label" for="absAccentAdmin">Accent stripe <span class="text-muted small">(default)</span></label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="abstract_style" id="absPillAdmin"
+                         value="pill" {% if cfg.get('abstract_style', 'accent') == 'pill' %}checked{% endif %}>
+                  <label class="form-check-label" for="absPillAdmin">Pill badge</label>
+                </div>
+              </div>
+              <div class="form-text ms-0">Controls how section headings (Background, Methods, etc.) are displayed in structured abstracts.</div>
+            </div>
+          </div>
+        </div>
+
         {% for p in cfg.get('search_profiles', []) %}
         <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
         <input type="hidden" name="profile_name" value="{{ p.name }}">
@@ -205,6 +242,9 @@
         {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
         {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
         <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
+        {% if cfg.get('show_export_ris', True) %}<input type="hidden" name="show_export_ris" value="1">{% endif %}
+        {% if cfg.get('show_export_nbib', False) %}<input type="hidden" name="show_export_nbib" value="1">{% endif %}
+        <input type="hidden" name="abstract_style" value="{{ cfg.get('abstract_style', 'accent') }}">
         {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
         <input type="hidden" name="mesh_term" value="{{ term }}">
         <input type="hidden" name="mesh_topic" value="{{ topic }}">
@@ -258,6 +298,9 @@
         {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
         {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
         <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
+        {% if cfg.get('show_export_ris', True) %}<input type="hidden" name="show_export_ris" value="1">{% endif %}
+        {% if cfg.get('show_export_nbib', False) %}<input type="hidden" name="show_export_nbib" value="1">{% endif %}
+        <input type="hidden" name="abstract_style" value="{{ cfg.get('abstract_style', 'accent') }}">
         {% for p in cfg.get('search_profiles', []) %}
         <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
         <input type="hidden" name="profile_name" value="{{ p.name }}">

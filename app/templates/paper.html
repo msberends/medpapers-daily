@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 {% block title %}{{ paper.title | striptags | truncate(80, killwords=True, end='') }} &mdash; {{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}
 
+{% block extra_head %}
+<style>
+  .abs-accent { border-left: 3px solid var(--bs-primary); padding-left: .75rem; }
+  .abs-accent-label { font-weight: 600; color: var(--bs-primary);
+    min-width: 105px; flex-shrink: 0; padding-top: .05rem; font-size: .9rem; }
+  .abs-pill-col { width: 105px; flex-shrink: 0; padding-top: .1rem; }
+  @media (max-width: 575px) {
+    .abs-accent-label { min-width: auto; }
+    .abs-pill-col { width: auto; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
 <div class="col-lg-9">
@@ -94,9 +107,16 @@
       <i class="bi bi-lock me-1"></i>Full Text via Proxy
     </a>
     {% endif %}
+    {% if show_export_ris %}
     <a href="/export/ris/{{ paper.pmid }}" class="btn btn-outline-primary btn-sm">
       <i class="bi bi-download me-1"></i>Export RIS
     </a>
+    {% endif %}
+    {% if show_export_nbib %}
+    <a href="/export/nbib/{{ paper.pmid }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-download me-1"></i>Open in EndNote
+    </a>
+    {% endif %}
 
     {% if up %}
     <form method="post" action="/paper/{{ paper.pmid }}/mark-read" class="d-inline" id="markReadForm">
@@ -158,7 +178,33 @@
   {% if paper.abstract %}
   <div class="card mb-3">
     <div class="card-header fw-semibold">Abstract <span class="text-muted fw-normal small">({{ paper.abstract.split() | length }} words)</span></div>
-    <div class="card-body" style="text-align: justify; hyphens: auto;">{{ paper.abstract }}</div>
+    <div class="card-body" style="text-align: justify; hyphens: auto;">
+      {% if paper.abstract_sections %}
+        {% if abstract_style == 'pill' %}
+          {% for section in paper.abstract_sections %}
+          <div class="d-flex flex-column flex-sm-row gap-2{% if not loop.first %} mt-3{% endif %}">
+            {% if section.label %}
+            <div class="abs-pill-col">
+              <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis fw-normal">{{ section.label }}</span>
+            </div>
+            {% endif %}
+            <div class="flex-grow-1">{{ section.text }}</div>
+          </div>
+          {% endfor %}
+        {% else %}
+          {% for section in paper.abstract_sections %}
+          <div class="abs-accent d-flex flex-column flex-sm-row gap-2{% if not loop.first %} mt-3{% endif %}">
+            {% if section.label %}
+            <div class="abs-accent-label">{{ section.label }}</div>
+            {% endif %}
+            <div>{{ section.text }}</div>
+          </div>
+          {% endfor %}
+        {% endif %}
+      {% else %}
+        {{ paper.abstract }}
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 
@@ -246,6 +292,12 @@
 
 {% block extra_scripts %}
 <script>
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+    new bootstrap.Tooltip(el, { trigger: 'hover' });
+  });
+});
+
 document.getElementById('markReadForm').addEventListener('submit', function (e) {
   e.preventDefault();
   const input = document.getElementById('markReadValue');

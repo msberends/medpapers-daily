@@ -155,7 +155,7 @@ async def startup():
             return ""
         short = (publisher_map or {}).get(publisher, publisher)
         if publisher in (predatory or []):
-            return f'<span class="text-danger opacity-75">{short}</span>'
+            return f'<span class="text-danger opacity-75" data-bs-toggle="tooltip" data-bs-placement="top" title="Marked as \'predatory\'">{short}</span>'
         return short
 
     app.state.templates.env.filters["publisher_display"] = publisher_display

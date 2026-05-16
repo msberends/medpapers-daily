@@ -210,11 +210,17 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
         return None
 
     title = _html_text(art.find("ArticleTitle"))
-    abstract_parts = [
-        "".join(node.itertext()).strip()
-        for node in art.findall(".//AbstractText")
-    ]
-    abstract = " ".join(p for p in abstract_parts if p)
+    abstract_sections = []
+    for node in art.findall(".//AbstractText"):
+        text = "".join(node.itertext()).strip()
+        if not text:
+            continue
+        raw_label = (node.get("Label") or "").strip()
+        label = raw_label.title() if raw_label else ""
+        abstract_sections.append({"label": label, "text": text})
+    abstract = " ".join(s["text"] for s in abstract_sections)
+    has_labels = any(s["label"] for s in abstract_sections)
+    abstract_structured = json.dumps(abstract_sections) if has_labels else None
 
     # Authors + affiliations
     authors = []
@@ -316,6 +322,7 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
         "pub_date": pub_date,
         "epub_date": epub_date,
         "abstract": abstract,
+        "abstract_structured": abstract_structured,
         "doi": doi,
         "mesh_terms": json.dumps(mesh_terms),
         "keywords": json.dumps(keywords),
@@ -554,13 +561,13 @@ def main():
                                 conn.execute(
                                     """INSERT INTO papers
                                        (pmid, title, authors, affiliations, journal, issn,
-                                        pub_date, epub_date, abstract, doi,
+                                        pub_date, epub_date, abstract, abstract_structured, doi,
                                         oa_url, mesh_terms, keywords,
                                         scopus_quartile, scopus_citescore,
                                         scopus_percentile, publisher, first_seen_at)
                                        VALUES
                                        (:pmid,:title,:authors,:affiliations,:journal,:issn,
-                                        :pub_date,:epub_date,:abstract,:doi,
+                                        :pub_date,:epub_date,:abstract,:abstract_structured,:doi,
                                         :oa_url,:mesh_terms,:keywords,
                                         :scopus_quartile,:scopus_citescore,
                                         :scopus_percentile,:publisher,:first_seen_at)""",
@@ -568,13 +575,16 @@ def main():
                                 )
                                 pf_new += 1
                             else:
-                                # Refresh terms on existing papers: MeSH terms are
-                                # added by NLM weeks after first fetch; keywords may
-                                # also have been missing due to an earlier bug.
-                                # Affiliations are also refreshed (backfill for older records).
+                                # Refresh metadata on existing papers: MeSH and keywords
+                                # are added by NLM weeks after first fetch; abstract_structured
+                                # is populated here for papers fetched before this feature existed.
                                 conn.execute(
-                                    "UPDATE papers SET mesh_terms=?, keywords=?, affiliations=? WHERE pmid=?",
-                                    (record["mesh_terms"], record["keywords"], record["affiliations"], record["pmid"]),
+                                    """UPDATE papers
+                                       SET mesh_terms=?, keywords=?, affiliations=?,
+                                           abstract=?, abstract_structured=?
+                                       WHERE pmid=?""",
+                                    (record["mesh_terms"], record["keywords"], record["affiliations"],
+                                     record["abstract"], record["abstract_structured"], record["pmid"]),
                                 )
 
                             conn.execute(

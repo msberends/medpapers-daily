@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from app.auth import require_auth
 from app.db import conn_ctx
-from app.export import export_ris
+from app.export import export_ris, export_nbib
 
 router = APIRouter()
 
@@ -68,6 +68,8 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
     paper["authors_list"] = json.loads(paper["authors"] or "[]")
     paper["mesh_list"] = json.loads(paper["mesh_terms"] or "[]")
     paper["keyword_list"] = json.loads(paper.get("keywords") or "[]")
+    _abs_struct = paper.get("abstract_structured")
+    paper["abstract_sections"] = json.loads(_abs_struct) if _abs_struct else None
     _raw_highlights = json.loads(paper.get("highlights") or "null") or []
     paper["highlights"] = [re.sub(r"^[-•*]\s+", "", h) for h in _raw_highlights]
     affil_raw = json.loads(paper.get("affiliations") or "null") or {}
@@ -99,6 +101,9 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
         "matched_profiles": matched_profiles,
         "show_quartile": user_yaml.get("show_quartile", True),
         "show_flags": user_yaml.get("show_flags", True),
+        "show_export_ris": user_yaml.get("show_export_ris", True),
+        "show_export_nbib": user_yaml.get("show_export_nbib", False),
+        "abstract_style": user_yaml.get("abstract_style", "accent"),
         "config": request.app.state.config,
     })
 
@@ -146,4 +151,15 @@ async def export_single_ris(pmid: str, request: Request):
         content=ris_content,
         media_type="application/x-research-info-systems",
         headers={"Content-Disposition": f"attachment; filename=paper_{pmid}.ris"},
+    )
+
+
+@router.get("/export/nbib/{pmid}")
+async def export_single_nbib(pmid: str, request: Request):
+    user = require_auth(request)
+    nbib_content = export_nbib(user["user_id"], [pmid])
+    return Response(
+        content=nbib_content,
+        media_type="application/nbib",
+        headers={"Content-Disposition": f"inline; filename=paper_{pmid}.nbib"},
     )

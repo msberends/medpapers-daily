@@ -105,20 +105,52 @@
               <div class="form-text ms-4 ps-1">Papers are sorted and grouped by search profile with a section header between them. Has no effect when a specific profile is already selected in the sidebar.</div>
             </div>
             <div class="col-12">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="show_flags"
-                       id="showFlags" {% if cfg.get('show_flags', True) %}checked{% endif %}>
-                <label class="form-check-label fw-medium" for="showFlags">Show country flags on paper pages</label>
+              <p class="fw-medium mb-2">Country flags</p>
+              <div class="d-flex flex-wrap gap-4">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="show_flags"
+                         id="showFlags" {% if cfg.get('show_flags', True) %}checked{% endif %}>
+                  <label class="form-check-label" for="showFlags">Paper pages</label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="show_flags_feed"
+                         id="showFlagsFeed" {% if cfg.get('show_flags_feed', True) %}checked{% endif %}>
+                  <label class="form-check-label" for="showFlagsFeed">Feed cards</label>
+                </div>
               </div>
-              <div class="form-text ms-4 ps-1">Displays a small flag next to each author on the paper detail page, based on their first listed affiliation.</div>
+              <div class="form-text">Small flag per author derived from their first listed affiliation.</div>
             </div>
             <div class="col-12">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="show_flags_feed"
-                       id="showFlagsFeed" {% if cfg.get('show_flags_feed', True) %}checked{% endif %}>
-                <label class="form-check-label fw-medium" for="showFlagsFeed">Show country flags in feed</label>
+              <p class="fw-medium mb-2">Export buttons</p>
+              <div class="d-flex flex-wrap gap-4">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="show_export_ris"
+                         id="showExportRis" {% if cfg.get('show_export_ris', True) %}checked{% endif %}>
+                  <label class="form-check-label" for="showExportRis">Export RIS <span class="text-muted small">(Zotero, Mendeley, …)</span></label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="show_export_nbib"
+                         id="showExportNbib" {% if cfg.get('show_export_nbib', False) %}checked{% endif %}>
+                  <label class="form-check-label" for="showExportNbib">Open in EndNote <span class="text-muted small">(<code>.nbib</code>)</span></label>
+                </div>
               </div>
-              <div class="form-text ms-4 ps-1">Displays a small flag before each author's name in the feed cards.</div>
+              <div class="form-text">Shown on paper pages and in the feed bulk-action bar.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-medium mb-1">Structured abstract style</label>
+              <div class="d-flex gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="abstract_style" id="absAccent"
+                         value="accent" {% if cfg.get('abstract_style', 'accent') == 'accent' %}checked{% endif %}>
+                  <label class="form-check-label" for="absAccent">Accent stripe <span class="text-muted small">(default)</span></label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="abstract_style" id="absPill"
+                         value="pill" {% if cfg.get('abstract_style', 'accent') == 'pill' %}checked{% endif %}>
+                  <label class="form-check-label" for="absPill">Pill badge</label>
+                </div>
+              </div>
+              <div class="form-text">Controls how section headings (Background, Methods, etc.) are displayed in structured abstracts.</div>
             </div>
           </div>
         </div>
@@ -433,6 +465,9 @@
         {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
         {% if cfg.get('show_flags', True) %}<input type="hidden" name="show_flags" value="1">{% endif %}
         {% if cfg.get('show_flags_feed', True) %}<input type="hidden" name="show_flags_feed" value="1">{% endif %}
+        {% if cfg.get('show_export_ris', True) %}<input type="hidden" name="show_export_ris" value="1">{% endif %}
+        {% if cfg.get('show_export_nbib', False) %}<input type="hidden" name="show_export_nbib" value="1">{% endif %}
+        <input type="hidden" name="abstract_style" value="{{ cfg.get('abstract_style', 'accent') }}">
         {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
         {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
         <input type="hidden" name="mesh_term" value="{{ term }}">
@@ -640,6 +675,9 @@
         {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
         {% if cfg.get('show_flags', True) %}<input type="hidden" name="show_flags" value="1">{% endif %}
         {% if cfg.get('show_flags_feed', True) %}<input type="hidden" name="show_flags_feed" value="1">{% endif %}
+        {% if cfg.get('show_export_ris', True) %}<input type="hidden" name="show_export_ris" value="1">{% endif %}
+        {% if cfg.get('show_export_nbib', False) %}<input type="hidden" name="show_export_nbib" value="1">{% endif %}
+        <input type="hidden" name="abstract_style" value="{{ cfg.get('abstract_style', 'accent') }}">
         {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
         {% for p in cfg.get('search_profiles', []) %}
         <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
