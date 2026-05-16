@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from app.auth import require_auth, SESSION_COOKIE
 from app.db import conn_ctx
 from app.export import export_ris
-from app.flags import extract_country_iso
+from app.flags import extract_country_iso, _BORDER_CODES
 
 router = APIRouter()
 
@@ -362,6 +362,7 @@ async def feed(
         "search": search,
         "show_quartile": show_quartile,
         "show_flags_feed": show_flags_feed,
+        "border_codes": _BORDER_CODES,
         "page": page,
         "page_size": page_size,
         "total": total,

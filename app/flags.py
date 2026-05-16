@@ -1,5 +1,11 @@
 """Country flag utilities: extract country from PubMed affiliation text → ISO code → SVG img tag."""
 import re
+from pathlib import Path
+
+_BORDER_CODES: frozenset[str] = frozenset(
+    (Path(__file__).parent.parent / "static" / "flags" / "border-requirement.txt")
+    .read_text().split()
+)
 
 # Normalised (lowercase) country name / abbreviation → ISO 3166-1 alpha-2
 _COUNTRY_MAP: dict[str, str] = {
@@ -264,7 +270,8 @@ def affil_flag_html(aff_text: str) -> str:
     iso = extract_country_iso(aff_text or '')
     if not iso:
         return '<span style="display:inline-block;width:20px;height:14px;margin-right:.3em"></span>'
+    border = ";outline:0.5px solid rgba(0,0,0,.1)" if iso in _BORDER_CODES else ""
     return (
         f'<img src="/static/flags/{iso}.svg" width="20" height="14" alt="{iso.upper()}" '
-        f'style="vertical-align:baseline;margin-right:.3em;flex-shrink:0;outline:1px solid rgba(0,0,0,.12)">'
+        f'style="vertical-align:baseline;margin-right:.3em;flex-shrink:0{border}">'
     )

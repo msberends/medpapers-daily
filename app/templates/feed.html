@@ -337,17 +337,17 @@
               {% set isos = paper.author_isos if show_flags_feed else [] %}
               {% if authors | length > 4 %}
                 {% set n = authors | length %}{% set n2 = n - 2 %}{% set n1 = n - 1 %}
-                {%- if isos and isos[0] %}<img src="/static/flags/{{ isos[0] }}.svg" width="14" height="10" alt="{{ isos[0].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{% endif %}{{ authors[0] | last_name }};
-                {% if isos and 1 < (isos|length) and isos[1] %}<img src="/static/flags/{{ isos[1] }}.svg" width="14" height="10" alt="{{ isos[1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{% endif %}{{ authors[1] | last_name }};
+                {%- if isos and isos[0] %}<img src="/static/flags/{{ isos[0] }}.svg" width="14" height="10" alt="{{ isos[0].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[0] in border_codes %};outline:0.5px solid rgba(0,0,0,.1){% endif %}">{% endif %}{{ authors[0] | last_name }};
+                {% if isos and 1 < (isos|length) and isos[1] %}<img src="/static/flags/{{ isos[1] }}.svg" width="14" height="10" alt="{{ isos[1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[1] in border_codes %};outline:0.5px solid rgba(0,0,0,.1){% endif %}">{% endif %}{{ authors[1] | last_name }};
                 &hellip;;
-                {% if isos and n2 < (isos|length) and isos[n2] %}<img src="/static/flags/{{ isos[n2] }}.svg" width="14" height="10" alt="{{ isos[n2].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{% endif %}{{ authors[n2] | last_name }};
-                {% if isos and n1 < (isos|length) and isos[n1] %}<img src="/static/flags/{{ isos[n1] }}.svg" width="14" height="10" alt="{{ isos[n1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{% endif %}{{ authors[n1] | last_name }}
+                {% if isos and n2 < (isos|length) and isos[n2] %}<img src="/static/flags/{{ isos[n2] }}.svg" width="14" height="10" alt="{{ isos[n2].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[n2] in border_codes %};outline:0.5px solid rgba(0,0,0,.1){% endif %}">{% endif %}{{ authors[n2] | last_name }};
+                {% if isos and n1 < (isos|length) and isos[n1] %}<img src="/static/flags/{{ isos[n1] }}.svg" width="14" height="10" alt="{{ isos[n1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[n1] in border_codes %};outline:0.5px solid rgba(0,0,0,.1){% endif %}">{% endif %}{{ authors[n1] | last_name }}
                 <span class="opacity-75">&middot; {{ authors | length }} authors</span>
               {% elif authors %}
                 {% for author in authors %}
                   {%- set i = loop.index0 -%}
                   {%- if not loop.first %}; {% endif -%}
-                  {%- if isos and i < (isos|length) and isos[i] -%}<img src="/static/flags/{{ isos[i] }}.svg" width="14" height="10" alt="{{ isos[i].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{%- endif -%}
+                  {%- if isos and i < (isos|length) and isos[i] -%}<img src="/static/flags/{{ isos[i] }}.svg" width="14" height="10" alt="{{ isos[i].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[i] in border_codes %};outline:0.5px solid rgba(0,0,0,.1){% endif %}">{%- endif -%}
                   {{- author | last_name -}}
                 {% endfor %}
               {% endif %}
