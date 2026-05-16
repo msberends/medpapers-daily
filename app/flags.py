@@ -266,5 +266,5 @@ def affil_flag_html(aff_text: str) -> str:
         return '<span style="display:inline-block;width:20px;height:14px;margin-right:.3em"></span>'
     return (
         f'<img src="/static/flags/{iso}.svg" width="20" height="14" alt="{iso.upper()}" '
-        f'style="vertical-align:baseline;margin-right:.3em;flex-shrink:0">'
+        f'style="vertical-align:baseline;margin-right:.3em;flex-shrink:0;outline:1px solid rgba(0,0,0,.12)">'
     )

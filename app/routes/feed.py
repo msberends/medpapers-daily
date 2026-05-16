@@ -64,6 +64,8 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
 
     if view == "unread":
         conditions.append("up.is_read = 0")
+    elif view == "unrated":
+        conditions.append("up.relevance IS NULL")
     elif view == "starred":
         conditions.append("up.is_starred = 1")
     elif view == "folder" and folder_id is not None:
@@ -207,6 +209,10 @@ async def feed(
             "SELECT COUNT(*) FROM user_papers WHERE user_id = ? AND is_starred = 1",
             (user["user_id"],),
         ).fetchone()[0]
+        unrated_count = conn.execute(
+            "SELECT COUNT(*) FROM user_papers WHERE user_id = ? AND relevance IS NULL",
+            (user["user_id"],),
+        ).fetchone()[0]
         total_user_papers = conn.execute(
             "SELECT COUNT(*) FROM user_papers WHERE user_id = ?",
             (user["user_id"],),
@@ -340,6 +346,7 @@ async def feed(
         "folder_counts": folder_counts,
         "unread_count": unread_count,
         "starred_count": starred_count,
+        "unrated_count": unrated_count,
         "all_topics": all_topics,
         "topic_color_map": topic_color_map,
         "selected_topics": selected_topics,
@@ -453,6 +460,7 @@ async def toggle_star(pmid: str, request: Request):
 @router.post("/feed/toggle-read/{pmid}")
 async def toggle_read(pmid: str, request: Request):
     user = require_auth(request)
+    new_val = 0
     with conn_ctx() as conn:
         row = conn.execute(
             "SELECT is_read FROM user_papers WHERE user_id = ? AND pmid = ?",
@@ -464,6 +472,8 @@ async def toggle_read(pmid: str, request: Request):
                 "UPDATE user_papers SET is_read = ? WHERE user_id = ? AND pmid = ?",
                 (new_val, user["user_id"], pmid),
             )
+    if request.headers.get("accept", "").find("application/json") != -1:
+        return JSONResponse({"is_read": new_val})
     referer = request.headers.get("referer", "/feed")
     return RedirectResponse(referer, status_code=303)
 

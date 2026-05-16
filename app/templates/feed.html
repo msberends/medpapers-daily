@@ -106,7 +106,12 @@
           <a href="/feed?view=unread&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'unread' %}active{% endif %}">
             <i class="bi bi-envelope me-1"></i> Unread
-            {% if unread_count %}<span class="badge bg-secondary float-end">{{ unread_count }}</span>{% endif %}
+            <span id="unreadBadge" class="badge bg-secondary float-end{% if not unread_count %} d-none{% endif %}">{{ unread_count }}</span>
+          </a>
+          <a href="/feed?view=unrated&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
+             class="list-group-item list-group-item-action py-2 {% if view == 'unrated' %}active{% endif %}">
+            <i class="bi bi-question-circle me-1"></i> Unrated
+            <span id="unratedBadge" class="badge bg-secondary float-end{% if not unrated_count %} d-none{% endif %}">{{ unrated_count }}</span>
           </a>
           <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'all' %}active{% endif %}">
@@ -332,17 +337,17 @@
               {% set isos = paper.author_isos if show_flags_feed else [] %}
               {% if authors | length > 4 %}
                 {% set n = authors | length %}{% set n2 = n - 2 %}{% set n1 = n - 1 %}
-                {%- if isos and isos[0] %}<img src="/static/flags/{{ isos[0] }}.svg" width="14" height="10" alt="{{ isos[0].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em">{% endif %}{{ authors[0] | last_name }};
-                {% if isos and 1 < (isos|length) and isos[1] %}<img src="/static/flags/{{ isos[1] }}.svg" width="14" height="10" alt="{{ isos[1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em">{% endif %}{{ authors[1] | last_name }};
+                {%- if isos and isos[0] %}<img src="/static/flags/{{ isos[0] }}.svg" width="14" height="10" alt="{{ isos[0].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{% endif %}{{ authors[0] | last_name }};
+                {% if isos and 1 < (isos|length) and isos[1] %}<img src="/static/flags/{{ isos[1] }}.svg" width="14" height="10" alt="{{ isos[1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{% endif %}{{ authors[1] | last_name }};
                 &hellip;;
-                {% if isos and n2 < (isos|length) and isos[n2] %}<img src="/static/flags/{{ isos[n2] }}.svg" width="14" height="10" alt="{{ isos[n2].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em">{% endif %}{{ authors[n2] | last_name }};
-                {% if isos and n1 < (isos|length) and isos[n1] %}<img src="/static/flags/{{ isos[n1] }}.svg" width="14" height="10" alt="{{ isos[n1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em">{% endif %}{{ authors[n1] | last_name }}
+                {% if isos and n2 < (isos|length) and isos[n2] %}<img src="/static/flags/{{ isos[n2] }}.svg" width="14" height="10" alt="{{ isos[n2].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{% endif %}{{ authors[n2] | last_name }};
+                {% if isos and n1 < (isos|length) and isos[n1] %}<img src="/static/flags/{{ isos[n1] }}.svg" width="14" height="10" alt="{{ isos[n1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{% endif %}{{ authors[n1] | last_name }}
                 <span class="opacity-75">&middot; {{ authors | length }} authors</span>
               {% elif authors %}
                 {% for author in authors %}
                   {%- set i = loop.index0 -%}
                   {%- if not loop.first %}; {% endif -%}
-                  {%- if isos and i < (isos|length) and isos[i] -%}<img src="/static/flags/{{ isos[i] }}.svg" width="14" height="10" alt="{{ isos[i].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em">{%- endif -%}
+                  {%- if isos and i < (isos|length) and isos[i] -%}<img src="/static/flags/{{ isos[i] }}.svg" width="14" height="10" alt="{{ isos[i].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em;outline:1px solid rgba(0,0,0,.12)">{%- endif -%}
                   {{- author | last_name -}}
                 {% endfor %}
               {% endif %}
@@ -412,7 +417,8 @@
                 <i class="bi {% if paper.is_starred %}bi-star-fill{% else %}bi-star{% endif %}"></i>
               </button>
             </form>
-            <form method="post" action="/feed/toggle-read/{{ paper.pmid }}">
+            <form method="post" action="/feed/toggle-read/{{ paper.pmid }}"
+                  class="toggle-read-form" data-pmid="{{ paper.pmid }}" data-is-read="{{ 1 if paper.is_read else 0 }}">
               <button type="submit" class="btn btn-sm btn-link p-0 text-muted" title="{% if paper.is_read %}Mark unread{% else %}Mark read{% endif %}" style="font-size:.8em">
                 <i class="bi {% if paper.is_read %}bi-envelope-open{% else %}bi-envelope{% endif %}"></i>
               </button>
@@ -484,6 +490,8 @@
 
 {% block extra_scripts %}
 <script>
+const VIEW = "{{ view }}";
+
 document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
     new bootstrap.Tooltip(el, { trigger: 'hover' });
@@ -554,6 +562,43 @@ function updateRatingButtons(pmid, relevance) {
 
 document.addEventListener('submit', function (e) {
   const form = e.target;
+  if (form.classList.contains('toggle-read-form')) {
+    e.preventDefault();
+    const pmid = form.dataset.pmid;
+    fetch(form.action, {
+      method: 'POST',
+      body: new FormData(form),
+      headers: { 'Accept': 'application/json' },
+    }).then(r => r.json()).then(data => {
+      if (VIEW === 'unread' && data.is_read === 1) {
+        const card = form.closest('.paper-card');
+        if (card) {
+          card.style.transition = 'opacity 0.3s';
+          card.style.opacity = '0';
+          setTimeout(() => card.remove(), 300);
+        }
+        const badge = document.getElementById('unreadBadge');
+        if (badge) {
+          const n = Math.max(0, parseInt(badge.textContent) - 1);
+          badge.textContent = n;
+          badge.classList.toggle('d-none', n === 0);
+        }
+      } else {
+        const btn = form.querySelector('button');
+        const icon = form.querySelector('i');
+        const isRead = data.is_read === 1;
+        form.dataset.isRead = isRead ? '1' : '0';
+        btn.title = isRead ? 'Mark unread' : 'Mark read';
+        icon.className = `bi ${isRead ? 'bi-envelope-open' : 'bi-envelope'}`;
+        const card = form.closest('.paper-card');
+        if (card) {
+          card.classList.toggle('paper-read', isRead);
+          card.classList.toggle('paper-unread', !isRead);
+        }
+      }
+    }).catch(() => { form.submit(); });
+    return;
+  }
   if (!form.classList.contains('rating-form')) return;
   e.preventDefault();
   const pmid = form.querySelector('button[data-rating]').dataset.pmid;
@@ -563,6 +608,20 @@ document.addEventListener('submit', function (e) {
     headers: { 'Accept': 'application/json' },
   }).then(r => r.json()).then(data => {
     updateRatingButtons(pmid, data.relevance);
+    if (VIEW === 'unrated' && data.relevance !== null) {
+      const card = document.querySelector(`button[data-rating="up"][data-pmid="${pmid}"]`)?.closest('.paper-card');
+      if (card) {
+        card.style.transition = 'opacity 0.3s';
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 300);
+      }
+      const badge = document.getElementById('unratedBadge');
+      if (badge) {
+        const n = Math.max(0, parseInt(badge.textContent) - 1);
+        badge.textContent = n;
+        badge.classList.toggle('d-none', n === 0);
+      }
+    }
   }).catch(() => { form.submit(); });
 });
 </script>
