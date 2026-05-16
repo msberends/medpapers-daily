@@ -656,7 +656,12 @@ async def run_llm_highlights(request: Request):
 @router.get("/admin/llm-status")
 async def llm_status(request: Request):
     require_admin(request)
-    return _load_llm_status(BASE_DIR)
+    data = _load_llm_status(BASE_DIR)
+    with conn_ctx() as conn:
+        data["pending"] = conn.execute(
+            "SELECT COUNT(*) FROM papers WHERE highlights IS NULL AND abstract IS NOT NULL AND abstract != ''"
+        ).fetchone()[0]
+    return data
 
 
 @router.post("/admin/reset-llm-status")

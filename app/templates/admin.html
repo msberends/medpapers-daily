@@ -607,9 +607,9 @@
         </div>
       </div>
 
-      <p class="text-muted small mb-3">
+      <p id="llmPendingText" class="text-muted small mb-3">
         {% if llm_pending %}
-        <strong>{{ llm_pending }}</strong> paper{{ 's' if llm_pending != 1 else '' }} in the database
+        <strong id="llmPendingCount">{{ llm_pending }}</strong> paper{{ 's' if llm_pending != 1 else '' }} in the database
         {{ 'have' if llm_pending != 1 else 'has' }} no highlights yet.
         {% else %}
         All papers with abstracts already have highlights.
@@ -919,6 +919,17 @@ function pollLlmStatus() {
       const wrapper = document.getElementById('llmProgress');
       const btn     = document.getElementById('btnRunLlm');
       if (!bar) return;
+
+      if (typeof data.pending === 'number') {
+        const pendingEl = document.getElementById('llmPendingText');
+        if (pendingEl) {
+          if (data.pending > 0) {
+            pendingEl.innerHTML = `<strong id="llmPendingCount">${data.pending}</strong> paper${data.pending !== 1 ? 's' : ''} in the database ${data.pending !== 1 ? 'have' : 'has'} no highlights yet. Highlights are also generated automatically in the background after each fetch run.`;
+          } else {
+            pendingEl.textContent = 'All papers with abstracts already have highlights. Highlights are also generated automatically in the background after each fetch run.';
+          }
+        }
+      }
 
       if (data.status === 'running') {
         llmSeenRunning = true;
