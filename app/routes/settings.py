@@ -2,41 +2,22 @@ from datetime import datetime, timezone
 
 import json
 
-import yaml
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pathlib import Path
 
-from app.auth import require_auth, verify_password, hash_password
+from app.auth import (
+    require_auth, verify_password, hash_password,
+    invalidate_other_sessions, SESSION_COOKIE,
+)
 from app.db import conn_ctx
+from app.flash import flash_redirect
+from app.user_config import load_user_cfg as _load_user_cfg, save_user_cfg as _save_user_cfg
+from app.utils import get_relevance_cfg as _get_relevance_cfg
 
 router = APIRouter()
 
 BASE_DIR = Path(__file__).parent.parent.parent  # /var/www/papersdaily
-
-
-def _load_user_cfg(username: str) -> dict:
-    path = BASE_DIR / "users" / f"{username}.yaml"
-    if not path.exists():
-        return {}
-    with open(path) as f:
-        return yaml.safe_load(f) or {}
-
-
-def _save_user_cfg(username: str, data: dict):
-    path = BASE_DIR / "users" / f"{username}.yaml"
-    path.parent.mkdir(exist_ok=True)
-    with open(path, "w") as f:
-        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-
-
-def _get_relevance_cfg(user_yaml: dict) -> dict:
-    return {
-        "enabled": user_yaml.get("relevance_alert_enabled", True),
-        "threshold": user_yaml.get("relevance_alert_threshold", 0.30),
-        "min_rated": user_yaml.get("relevance_alert_min_rated", 10),
-        "lookback_days": user_yaml.get("relevance_alert_lookback_days", 30),
-    }
 
 
 def _enrich_profiles(user_id: int, profiles: list[dict]) -> list[dict]:
@@ -95,7 +76,7 @@ def _sync_profiles_to_db(user_id: int, profile_ids: list[str],
 
 
 @router.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request, saved: str = "", error: str = "", tab: str = ""):
+async def settings_page(request: Request, tab: str = ""):
     user = require_auth(request)
     cfg = _load_user_cfg(user["username"])
     if cfg.get("search_profiles"):
@@ -161,12 +142,13 @@ async def settings_page(request: Request, saved: str = "", error: str = "", tab:
     llm_available = bool(
         admin_config.get("llm_provider") and admin_config.get("llm_allow_profile_optimisation")
     )
+    llm_topic_available = bool(
+        admin_config.get("llm_provider") and admin_config.get("llm_allow_topic_suggestions")
+    )
 
     return request.app.state.templates.TemplateResponse(request, "settings.html", {
         "user": user,
         "cfg": cfg,
-        "saved": saved,
-        "error": error,
         "tab": tab,
         "config": admin_config,
         "rel_cfg": rel_cfg,
@@ -178,14 +160,15 @@ async def settings_page(request: Request, saved: str = "", error: str = "", tab:
         "all_terms_combined": all_terms_combined,
         "effective_topic_colours": effective_topic_colours,
         "llm_available": llm_available,
+        "llm_topic_available": llm_topic_available,
     })
 
 
-@router.post("/settings/save")
-async def save_settings(request: Request):
+@router.post("/settings/save/general")
+async def save_settings_general(request: Request):
+    """Save General tab settings only. Does not touch profiles or topic map."""
     user = require_auth(request)
     form = await request.form()
-
     existing = _load_user_cfg(user["username"])
 
     display_name = form.get("display_name", "").strip()
@@ -195,28 +178,8 @@ async def save_settings(request: Request):
             (display_name or None, user["user_id"]),
         )
 
-    profile_ids = form.getlist("profile_id")
-    profile_names = form.getlist("profile_name")
-    profile_queries = form.getlist("profile_query")
-    profile_enableds = form.getlist("profile_enabled")
-    profiles = [
-        {"name": n.strip(), "query": q.strip(), "enabled": e == "1"}
-        for n, q, e in zip(profile_names, profile_queries, profile_enableds)
-        if n.strip()
-    ]
-    _sync_profiles_to_db(user["user_id"], profile_ids, profile_names,
-                         profile_queries, profile_enableds)
-
-    mesh_terms = form.getlist("mesh_term")
-    mesh_topics = form.getlist("mesh_topic")
-    mesh_map = {}
-    for term, topic in zip(mesh_terms, mesh_topics):
-        if term.strip():
-            mesh_map[term.strip()] = topic.strip()
-
     from app.themes import VALID_THEMES
     theme = form.get("bootstrap_theme", "").strip()
-
     fetch_schedule = form.get("fetch_schedule", "daily").strip()
     if fetch_schedule not in ("daily", "weekly", "monthly"):
         fetch_schedule = "daily"
@@ -260,43 +223,85 @@ async def save_settings(request: Request):
         "abstract_style": form.get("abstract_style", "accent"),
         "q2_hard": "q2_hard" in form,
         "bootstrap_theme": theme if (theme == "" or theme in VALID_THEMES) else existing.get("bootstrap_theme", ""),
-        "search_profiles": profiles,
-        "mesh_topic_map": mesh_map,
-        "folders": existing.get("folders", []),
+        "theme_mode": form.get("theme_mode", "").strip() if form.get("theme_mode", "") in ("dark", "system") else "",
     }
+    _save_user_cfg(user["username"], data)
+    return flash_redirect("/settings", "General settings saved.")
 
-    # Relevance alert settings — only written when submitted from the Relevance tab
-    if "relevance_tab" in form:
-        data["relevance_alert_enabled"] = "relevance_alert_enabled" in form
-        try:
-            t = max(1, min(99, int(form.get("relevance_alert_threshold", "30"))))
-            data["relevance_alert_threshold"] = round(t / 100.0, 4)
-        except (ValueError, TypeError):
-            data["relevance_alert_threshold"] = existing.get("relevance_alert_threshold", 0.30)
-        try:
-            data["relevance_alert_min_rated"] = max(1, min(1000, int(form.get("relevance_alert_min_rated", "10"))))
-        except (ValueError, TypeError):
-            data["relevance_alert_min_rated"] = existing.get("relevance_alert_min_rated", 10)
-        try:
-            data["relevance_alert_lookback_days"] = max(7, min(365, int(form.get("relevance_alert_lookback_days", "30"))))
-        except (ValueError, TypeError):
-            data["relevance_alert_lookback_days"] = existing.get("relevance_alert_lookback_days", 30)
 
-    if "topics_tab" in form:
-        try:
-            data["mesh_topic_colours"] = json.loads(form.get("mesh_topic_colours_json", "{}"))
-        except (ValueError, TypeError):
-            data["mesh_topic_colours"] = existing.get("mesh_topic_colours", {})
+@router.post("/settings/save/profiles")
+async def save_settings_profiles(request: Request):
+    """Save Search Profiles tab (profiles + relevance alert settings) only."""
+    user = require_auth(request)
+    form = await request.form()
+    existing = _load_user_cfg(user["username"])
+
+    profile_ids = form.getlist("profile_id")
+    profile_names = form.getlist("profile_name")
+    profile_queries = form.getlist("profile_query")
+    profile_enableds = form.getlist("profile_enabled")
+    profiles = [
+        {"name": n.strip(), "query": q.strip(), "enabled": e == "1"}
+        for n, q, e in zip(profile_names, profile_queries, profile_enableds)
+        if n.strip()
+    ]
+    _sync_profiles_to_db(user["user_id"], profile_ids, profile_names,
+                         profile_queries, profile_enableds)
+
+    data = {**existing, "search_profiles": profiles}
+
+    try:
+        t = max(1, min(99, int(form.get("relevance_alert_threshold", "30"))))
+        data["relevance_alert_threshold"] = round(t / 100.0, 4)
+    except (ValueError, TypeError):
+        pass
+    try:
+        data["relevance_alert_min_rated"] = max(1, min(1000, int(form.get("relevance_alert_min_rated", "10"))))
+    except (ValueError, TypeError):
+        pass
+    try:
+        data["relevance_alert_lookback_days"] = max(7, min(365, int(form.get("relevance_alert_lookback_days", "30"))))
+    except (ValueError, TypeError):
+        pass
+    data["relevance_alert_enabled"] = "relevance_alert_enabled" in form
 
     _save_user_cfg(user["username"], data)
+    return flash_redirect("/settings?tab=profiles", "Search profiles saved.")
+
+
+@router.post("/settings/save/topics")
+async def save_settings_topics(request: Request):
+    """Save Topics tab (mesh_topic_map + colours) only."""
+    user = require_auth(request)
+    form = await request.form()
+    existing = _load_user_cfg(user["username"])
+
+    mesh_terms = form.getlist("mesh_term")
+    mesh_topics_list = form.getlist("mesh_topic")
+    mesh_map = {}
+    for term, topic in zip(mesh_terms, mesh_topics_list):
+        if term.strip():
+            mesh_map[term.strip()] = topic.strip()
+
+    try:
+        colours = json.loads(form.get("mesh_topic_colours_json", "{}"))
+    except (ValueError, TypeError):
+        colours = existing.get("mesh_topic_colours", {})
+
+    data = {**existing, "mesh_topic_map": mesh_map, "mesh_topic_colours": colours}
+    _save_user_cfg(user["username"], data)
+    return flash_redirect("/settings?tab=mesh", "Topics saved.")
+
+
+@router.post("/settings/save")
+async def save_settings_legacy(request: Request):
+    """Legacy single-endpoint shim — routes to the appropriate split endpoint."""
+    form = await request.form()
     if "topics_tab" in form:
-        redirect_tab = "mesh"
-    elif "relevance_tab" in form:
-        redirect_tab = "profiles"
-    else:
-        redirect_tab = ""
-    redirect_url = f"/settings?saved=1&tab={redirect_tab}" if redirect_tab else "/settings?saved=1"
-    return RedirectResponse(redirect_url, status_code=303)
+        return await save_settings_topics(request)
+    if "relevance_tab" in form:
+        return await save_settings_profiles(request)
+    return await save_settings_general(request)
 
 
 @router.post("/settings/reset-profile-relevance/{profile_id}")
@@ -312,7 +317,7 @@ async def reset_profile_relevance(profile_id: int, request: Request):
                 "UPDATE user_papers SET relevance = NULL WHERE user_id = ? AND search_profile_id = ?",
                 (user["user_id"], profile_id),
             )
-    return RedirectResponse("/settings?saved=1&tab=mesh", status_code=303)
+    return flash_redirect("/settings?tab=profiles", "Relevance ratings reset for this profile.")
 
 
 @router.post("/settings/reset-all-relevance")
@@ -323,7 +328,7 @@ async def reset_all_relevance(request: Request):
             "UPDATE user_papers SET relevance = NULL WHERE user_id = ?",
             (user["user_id"],),
         )
-    return RedirectResponse("/settings?saved=1&tab=mesh", status_code=303)
+    return flash_redirect("/settings?tab=profiles", "All relevance ratings reset.")
 
 
 
@@ -342,17 +347,33 @@ def _build_prompt(profile_name: str, query: str,
         "You are a PubMed search query expert. I use an automated literature monitoring tool "
         "that fetches papers from PubMed using the search profile described below. "
         "I have rated some of the retrieved papers as relevant or not relevant. "
-        "Based on the titles and MeSH terms of those papers, please suggest specific "
+        "Based on the titles and MeSH terms of those papers, suggest specific "
         "improvements to my PubMed query that would retrieve more of the relevant papers "
         "and fewer of the irrelevant ones.\n\n"
         f"SEARCH PROFILE NAME: {profile_name}\n\n"
         f"CURRENT PUBMED QUERY:\n{query}\n\n"
         f"RELEVANT PAPERS ({len(relevant)}):\n{_fmt(relevant)}\n"
         f"NOT RELEVANT PAPERS ({len(not_relevant)}):\n{_fmt(not_relevant)}\n"
-        "Please respond with only the following, without any additional explanation:\n\n"
-        "Here are the improved Search Profiles:\n"
-        f"{profile_name}: [revised query]"
+        "Respond with ONLY valid JSON — no prose, no markdown fences — in this exact format:\n"
+        '{"query": "<revised PubMed query here>", "rationale": "<one sentence explaining the key change>"}'
     )
+
+
+def _parse_llm_query_response(text: str) -> dict | None:
+    """Extract {"query": ..., "rationale": ...} from LLM response, tolerating minor formatting issues."""
+    import re as _re
+    text = _re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and isinstance(data.get("query"), str):
+            return {"query": data["query"].strip(), "rationale": str(data.get("rationale", "")).strip()}
+    except (json.JSONDecodeError, ValueError):
+        pass
+    # Fallback: try to extract a bare query from any {"query": ...} fragment
+    m = _re.search(r'"query"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+    if m:
+        return {"query": m.group(1).strip(), "rationale": ""}
+    return None
 
 
 @router.post("/settings/run-profile-llm/{profile_id}")
@@ -388,10 +409,17 @@ async def run_profile_llm(profile_id: int, request: Request):
         (relevant if row["relevance"] == 1 else not_relevant).append(entry)
     prompt = _build_prompt(profile["name"], profile["query"], relevant, not_relevant)
     try:
-        response = call_llm(config, "", prompt)
+        import asyncio
+        response = await asyncio.to_thread(call_llm, config, "", prompt)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
-    return JSONResponse({"response": response, "profile_name": profile["name"]})
+    parsed = _parse_llm_query_response(response)
+    return JSONResponse({
+        "response": response,
+        "profile_name": profile["name"],
+        "original_query": profile["query"],
+        "parsed": parsed,
+    })
 
 
 @router.get("/settings/profile-prompt/{profile_id}")
@@ -423,6 +451,139 @@ async def profile_prompt(profile_id: int, request: Request):
     return JSONResponse({"prompt": prompt, "profile_name": profile["name"]})
 
 
+def _build_topic_suggestions_prompt(topics: list[str], unassigned_terms: list[str]) -> str:
+    topics_str = "\n".join(f"- {t}" for t in topics)
+    terms_str = "\n".join(f"- {t}" for t in unassigned_terms)
+    return (
+        "Assign biomedical terms to topic categories.\n"
+        "Return ONLY a JSON array — no prose, no markdown fences.\n\n"
+        f"TOPICS:\n{topics_str}\n\n"
+        f"TERMS (MeSH headings and author keywords):\n{terms_str}\n\n"
+        "Rules:\n"
+        "- Assign each term to at most one topic.\n"
+        "- Only include confident assignments; omit uncertain ones.\n"
+        "- Copy strings exactly from the lists above.\n\n"
+        'Format: [{"term": "...", "topic": "..."}]\n'
+        "If nothing is confident: []"
+    )
+
+
+def _parse_topic_suggestions(text: str, valid_topics: set[str],
+                              valid_terms: set[str]) -> list[dict]:
+    import re
+    text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+    result = []
+    seen: set[str] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        term = (item.get("term") or "").strip().lower()
+        topic = (item.get("topic") or "").strip()
+        if not term or not topic:
+            continue
+        if term not in valid_terms:
+            continue
+        if topic not in valid_topics:
+            continue
+        if term in seen:
+            continue
+        seen.add(term)
+        result.append({"term": term, "topic": topic})
+    return result
+
+
+@router.post("/settings/suggest-topic-terms")
+async def suggest_topic_terms(request: Request):
+    user = require_auth(request)
+    config = request.app.state.config
+    if not (config.get("llm_provider") and config.get("llm_allow_topic_suggestions")):
+        return JSONResponse({"error": "LLM topic suggestions are not enabled."}, status_code=403)
+
+    from app.llm import call_llm
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid request body."}, status_code=400)
+
+    topics = [str(t).strip() for t in (body.get("topics") or []) if str(t).strip()]
+    assigned_raw = [str(t).strip().lower() for t in (body.get("assigned_terms") or []) if str(t).strip()]
+    assigned = set(assigned_raw)
+
+    if not topics:
+        return JSONResponse({"error": "No topics provided."}, status_code=400)
+
+    all_mesh: set[str] = set()
+    all_keywords: set[str] = set()
+    with conn_ctx() as conn:
+        term_rows = conn.execute(
+            """SELECT p.mesh_terms, p.keywords
+               FROM papers p
+               JOIN user_papers up ON up.pmid = p.pmid
+               WHERE up.user_id = ?""",
+            (user["user_id"],),
+        ).fetchall()
+    for row in term_rows:
+        all_mesh.update(t.lower() for t in json.loads(row["mesh_terms"] or "[]") if t)
+        all_keywords.update(t.lower() for t in json.loads(row["keywords"] or "[]") if t)
+
+    unassigned = sorted((all_mesh | all_keywords) - assigned)[:80]
+    if not unassigned:
+        return JSONResponse({"suggestions": []})
+
+    prompt = _build_topic_suggestions_prompt(topics, unassigned)
+    try:
+        import asyncio
+        response = await asyncio.to_thread(call_llm, config, "", prompt, 120)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    suggestions = _parse_topic_suggestions(response, set(topics), set(unassigned))
+    return JSONResponse({"suggestions": suggestions})
+
+
+@router.get("/settings/test-profile-query")
+async def test_profile_query(request: Request, query: str = ""):
+    require_auth(request)
+    query = query.strip()
+    if not query:
+        return JSONResponse({"error": "No query provided."}, status_code=400)
+    config = request.app.state.config
+    api_key = (config.get("ncbi_api_key") or "").strip()
+    import requests as _requests
+    params = {
+        "db": "pubmed",
+        "term": query,
+        "retmax": 0,
+        "retmode": "json",
+    }
+    if api_key:
+        params["api_key"] = api_key
+    try:
+        r = _requests.get(
+            "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+            params=params,
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+        esearch = data.get("esearchresult", {})
+        if esearch.get("errorlist"):
+            errs = esearch["errorlist"].get("phraseerrors") or esearch["errorlist"].get("fielderrors") or []
+            if errs:
+                return JSONResponse({"error": "; ".join(str(e) for e in errs)})
+        count = int(esearch.get("count", 0))
+        return JSONResponse({"count": count})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 @router.post("/settings/change-password")
 async def change_password(request: Request):
     user = require_auth(request)
@@ -436,13 +597,15 @@ async def change_password(request: Request):
             "SELECT password_hash FROM users WHERE id = ?", (user["user_id"],)
         ).fetchone()
         if not verify_password(current_password, row["password_hash"]):
-            return RedirectResponse("/settings?error=Wrong+current+password", status_code=303)
+            return flash_redirect("/settings?tab=password", "Wrong current password.", "danger")
         if new_password != confirm_password:
-            return RedirectResponse("/settings?error=Passwords+do+not+match", status_code=303)
+            return flash_redirect("/settings?tab=password", "Passwords do not match.", "danger")
         if len(new_password) < 8:
-            return RedirectResponse("/settings?error=Password+must+be+at+least+8+characters", status_code=303)
+            return flash_redirect("/settings?tab=password", "Password must be at least 8 characters.", "danger")
         conn.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
             (hash_password(new_password), user["user_id"]),
         )
-    return RedirectResponse("/settings?saved=1", status_code=303)
+    current_token = request.cookies.get(SESSION_COOKIE)
+    invalidate_other_sessions(user["user_id"], keep_token=current_token)
+    return flash_redirect("/settings?tab=password", "Password changed successfully.")

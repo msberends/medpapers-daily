@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from app.auth import require_auth
+from app.auth import get_current_user, require_auth
 
 router = APIRouter()
 BASE_DIR = Path(__file__).parent.parent.parent
@@ -21,7 +21,7 @@ async def journals_page(request: Request):
         mtime = csv_path.stat().st_mtime
         last_updated = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
     return request.app.state.templates.TemplateResponse(request, "journals.html", {
-        "user":         request.app.state.get_current_user(request),
+        "user":         get_current_user(request),
         "config":       request.app.state.config,
         "has_data":     has_data,
         "last_updated": last_updated,

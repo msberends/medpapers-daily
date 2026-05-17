@@ -9,24 +9,23 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from app.auth import require_auth
 from app.db import conn_ctx
 from app.export import export_ris, export_nbib
+from app.user_config import load_user_cfg as _get_user_yaml
+from app.utils import classify_paper as _classify_paper
 
 router = APIRouter()
 
 
-def _get_user_yaml(username: str) -> dict:
-    import yaml, os
-    path = os.path.join("users", f"{username}.yaml")
-    if not os.path.exists(path):
-        return {}
-    with open(path) as f:
-        return yaml.safe_load(f) or {}
-
-
-def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict,
-                    keywords_json: str = "[]") -> list[str]:
-    terms = json.loads(mesh_terms_json or "[]") + json.loads(keywords_json or "[]")
-    topics = {mesh_topic_map[t.lower()] for t in terms if t.lower() in mesh_topic_map}
-    return sorted(topics)
+def _safe_back_url(request: Request) -> str:
+    """Return a safe back URL from the Referer header (feed page only), else '/feed'."""
+    ref = request.headers.get("referer", "")
+    from urllib.parse import urlparse
+    parsed = urlparse(ref)
+    # Accept only same-origin relative paths starting with /feed
+    if parsed.path.startswith("/feed") and not parsed.netloc:
+        return ref
+    if parsed.path.startswith("/feed") and parsed.netloc == urlparse(str(request.url)).netloc:
+        return parsed.path + ("?" + parsed.query if parsed.query else "")
+    return "/feed"
 
 
 @router.get("/paper/{pmid}", response_class=HTMLResponse)
@@ -105,6 +104,7 @@ async def paper_detail(pmid: str, request: Request, nomark: str = ""):
         "show_export_nbib": user_yaml.get("show_export_nbib", False),
         "abstract_style": user_yaml.get("abstract_style", "accent"),
         "config": request.app.state.config,
+        "back_url": _safe_back_url(request),
     })
 
 

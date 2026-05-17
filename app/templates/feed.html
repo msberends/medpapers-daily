@@ -5,11 +5,22 @@
 <style>
   .paper-card { transition: background .15s; }
   .paper-card:hover { background: rgba(0,0,0,.03); }
+  .paper-card.kb-focus { outline: 2px solid var(--bs-primary); outline-offset: -2px; }
   .glance-bar { height: 40px; }
   .hl-toggle[aria-expanded="false"] .hl-arrow::after { content: " \00BB"; }
   .hl-toggle[aria-expanded="true"]  .hl-arrow::after { content: " \00AB"; }
+  /* Inline abstract structured rendering */
+  .inline-abs { max-height: 360px; overflow-y: auto; }
+  .inline-abs .abs-accent { border-left: 3px solid var(--bs-primary); padding-left: .6rem; }
+  .inline-abs .abs-accent-label { font-weight: 600; color: var(--bs-primary); min-width: 88px; flex-shrink: 0; font-size: .82em; padding-top: .1rem; }
 </style>
 {% endblock %}
+
+{% macro flag_img(iso, name, border_codes) %}
+{%- if iso %}<img src="/static/flags/{{ iso }}.svg" width="14" height="10" alt="{{ iso.upper() }}"
+     data-bs-toggle="tooltip" data-bs-placement="top" title="{{ name or iso.upper() }}"
+     style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if iso in border_codes %};outline:1px solid rgba(0,0,0,.1){% endif %}">{%- endif -%}
+{% endmacro %}
 
 {% block content %}
 <button class="d-sm-none btn btn-sm btn-outline-secondary w-100 mb-2"
@@ -90,11 +101,16 @@
       {# Search #}
       <div class="card mb-3">
         <div class="card-body py-2">
-          <div class="input-group input-group-sm">
+          <div class="input-group input-group-sm position-relative">
             <input type="text" name="search" id="searchInput" class="form-control"
                    placeholder="Search title &amp; abstract" value="{{ search }}"
-                   oninput="debounceSearch()">
-            <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
+                   oninput="debounceSearch(); toggleClearBtn(this)">
+            <button class="btn btn-link position-absolute end-0 top-0 h-100 pe-5 text-muted border-0{% if not search %} d-none{% endif %}"
+                    id="clearSearch" type="button" onclick="clearSearchInput()"
+                    title="Clear search" aria-label="Clear search" style="z-index:5">
+              <i class="bi bi-x-lg" style="font-size:.75em"></i>
+            </button>
+            <button class="btn btn-outline-secondary" type="submit" aria-label="Search"><i class="bi bi-search"></i></button>
           </div>
         </div>
       </div>
@@ -142,7 +158,7 @@
           <div class="form-check">
             <input class="form-check-input" type="radio" name="sort" value="{{ val }}"
                    id="sort_{{ val }}" {% if sort == val %}checked{% endif %}
-                   onchange="this.form.submit()">
+                   onchange="autoSubmit(this)">
             <label class="form-check-label small" for="sort_{{ val }}">{{ label }}</label>
           </div>
           {% endfor %}
@@ -157,7 +173,7 @@
           <div class="form-check">
             <input class="form-check-input" type="radio" name="date_filter" value="{{ val }}"
                    id="df_{{ val }}" {% if date_filter == val %}checked{% endif %}
-                   onchange="toggleCustomDate(); this.form.submit()">
+                   onchange="toggleCustomDate(); autoSubmit(this)">
             <label class="form-check-label small" for="df_{{ val }}">{{ label }}</label>
           </div>
           {% endfor %}
@@ -218,7 +234,7 @@
           <div class="form-check">
             <input class="form-check-input" type="radio" name="quartile" value="{{ val }}"
                    id="q_{{ val }}" {% if quartile == val %}checked{% endif %}
-                   onchange="this.form.submit()">
+                   onchange="autoSubmit(this)">
             <label class="form-check-label small" for="q_{{ val }}">{{ label }}</label>
           </div>
           {% endfor %}
@@ -272,6 +288,41 @@
       </form>
     </div>
 
+    {% if show_export_ris and total > 0 and total <= 1000 %}
+    <div class="d-flex justify-content-end mb-2" id="exportViewBar">
+      <form method="post" action="/feed/export-view">
+        <input type="hidden" name="view" value="{{ view }}">
+        <input type="hidden" name="quartile" value="{{ quartile }}">
+        <input type="hidden" name="date_filter" value="{{ date_filter }}">
+        <input type="hidden" name="date_from" value="{{ date_from }}">
+        <input type="hidden" name="date_to" value="{{ date_to }}">
+        {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+        {% if profile_id %}<input type="hidden" name="profile_id" value="{{ profile_id }}">{% endif %}
+        {% if folder_id %}<input type="hidden" name="folder_id" value="{{ folder_id }}">{% endif %}
+        {% if selected_topics %}<input type="hidden" name="topics" value="{{ selected_topics | join(',') }}">{% endif %}
+        <button type="submit" class="btn btn-sm btn-outline-success">
+          <i class="bi bi-download me-1"></i>Export all {{ total }} papers (RIS)
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if view == 'unread' and papers %}
+    <div class="d-flex justify-content-end mb-2">
+      <form method="post" action="/feed/mark-all-read">
+        <input type="hidden" name="view" value="{{ view }}">
+        <input type="hidden" name="quartile" value="{{ quartile }}">
+        <input type="hidden" name="date_filter" value="{{ date_filter }}">
+        {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
+        {% if profile_id %}<input type="hidden" name="profile_id" value="{{ profile_id }}">{% endif %}
+        <button type="submit" class="btn btn-sm btn-outline-secondary"
+                onclick="return confirm('Mark all {{ total }} paper(s) in this view as read?')">
+          <i class="bi bi-envelope-open me-1"></i>Mark all as read ({{ total }})
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
     {% for alert in profile_alerts %}
     <div class="alert alert-warning py-2 mb-2" role="alert">
       <i class="bi bi-exclamation-triangle-fill me-1"></i>
@@ -297,7 +348,10 @@
       <div class="card border-0 bg-light mb-3">
         <div class="card-body py-4 px-4">
           <h6 class="mb-3"><i class="bi bi-check2-all me-2"></i>You are all caught up</h6>
-          <p class="mb-0">All <strong>{{ total_user_papers }}</strong> paper(s) in your library have been read. Switch to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>All papers</strong></a> to browse your full library, or come back after the next fetch.</p>
+          <p class="mb-2">All <strong>{{ total_user_papers }}</strong> paper(s) in your library have been read. Switch to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>All papers</strong></a> to browse your full library, or come back after the next scheduled fetch.{% if unrated_count > 0 %} In the meantime, why not take a moment to <a href="/feed?view=unrated&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>rate the relevance</strong></a> of some papers?{% endif %}</p>
+          {% if config.get('fetch_schedule_time') %}
+          <p class="mb-0 text-muted small"><i class="bi bi-clock me-1"></i>Next fetch scheduled at {{ config.get('fetch_schedule_time') }}.</p>
+          {% endif %}
         </div>
       </div>
       {% else %}
@@ -305,8 +359,8 @@
       <div class="card border-0 bg-light mb-3">
         <div class="card-body py-4 px-4">
           <h6 class="mb-3"><i class="bi bi-funnel me-2"></i>No papers match the current filters</h6>
-          <p class="mb-2">Your library contains <strong>{{ total_user_papers }}</strong> paper(s), but none pass all the active filters at once. A few things to try:</p>
-          <ul class="mb-0 ps-3">
+          <p class="mb-2">Your library contains <strong>{{ total_user_papers }}</strong> paper(s), but none pass all the active filters at once.</p>
+          <ul class="mb-3 ps-3">
             <li>Switch the view to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>All papers</strong></a> — the Unread view only shows papers not yet marked as read.</li>
             <li>Clear any topic checkboxes selected in the sidebar.</li>
             <li>Widen the <strong>Date Range</strong> filter, or set it to <em>All time</em>.</li>
@@ -314,6 +368,9 @@
             {% if search %}<li>Remove the search term <em>"{{ search }}"</em> — it matches against title and abstract only.</li>{% endif %}
             {% if profile_id %}<li>Switch the <strong>Search Profile</strong> back to <em>All profiles</em>.</li>{% endif %}
           </ul>
+          <a href="/feed?view={{ view }}&sort={{ sort }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i>Reset all filters
+          </a>
         </div>
       </div>
       {% endif %}
@@ -337,7 +394,7 @@
                  data-pmid="{{ paper.pmid }}" onchange="updateBulkBar()">
           <div class="flex-grow-1">
             <a href="/paper/{{ paper.pmid }}" class="paper-title text-decoration-none">
-              {{ paper.title | safe }}
+              {{ paper.title | safe_title }}
             </a>
             <div class="small text-muted mt-1">
               {% set authors = paper.authors | from_json %}
@@ -345,25 +402,25 @@
               {% set names = paper.author_iso_names if show_flags_feed else [] %}
               {% if authors | length > 4 %}
                 {% set n = authors | length %}{% set n2 = n - 2 %}{% set n1 = n - 1 %}
-                {%- if isos and isos[0] %}<img src="/static/flags/{{ isos[0] }}.svg" width="14" height="10" alt="{{ isos[0].upper() }}" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ names[0] if names and names[0] else isos[0].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[0] in border_codes %};outline:1px solid rgba(0,0,0,.1){% endif %}">{% endif %}{{ authors[0] | last_name }};
-                {% if isos and 1 < (isos|length) and isos[1] %}<img src="/static/flags/{{ isos[1] }}.svg" width="14" height="10" alt="{{ isos[1].upper() }}" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ names[1] if names and 1 < (names|length) and names[1] else isos[1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[1] in border_codes %};outline:1px solid rgba(0,0,0,.1){% endif %}">{% endif %}{{ authors[1] | last_name }};
+                {{ flag_img(isos[0] if isos else '', names[0] if names else '', border_codes) }}{{ authors[0] | last_name }};
+                {{ flag_img(isos[1] if isos and isos|length > 1 else '', names[1] if names and names|length > 1 else '', border_codes) }}{{ authors[1] | last_name }};
                 &hellip;;
-                {% if isos and n2 < (isos|length) and isos[n2] %}<img src="/static/flags/{{ isos[n2] }}.svg" width="14" height="10" alt="{{ isos[n2].upper() }}" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ names[n2] if names and n2 < (names|length) and names[n2] else isos[n2].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[n2] in border_codes %};outline:1px solid rgba(0,0,0,.1){% endif %}">{% endif %}{{ authors[n2] | last_name }};
-                {% if isos and n1 < (isos|length) and isos[n1] %}<img src="/static/flags/{{ isos[n1] }}.svg" width="14" height="10" alt="{{ isos[n1].upper() }}" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ names[n1] if names and n1 < (names|length) and names[n1] else isos[n1].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[n1] in border_codes %};outline:1px solid rgba(0,0,0,.1){% endif %}">{% endif %}{{ authors[n1] | last_name }}
+                {{ flag_img(isos[n2] if isos and isos|length > n2 else '', names[n2] if names and names|length > n2 else '', border_codes) }}{{ authors[n2] | last_name }};
+                {{ flag_img(isos[n1] if isos and isos|length > n1 else '', names[n1] if names and names|length > n1 else '', border_codes) }}{{ authors[n1] | last_name }}
                 <span class="opacity-75">&middot; {{ authors | length }} authors</span>
               {% elif authors %}
                 {% for author in authors %}
                   {%- set i = loop.index0 -%}
                   {%- if not loop.first %}; {% endif -%}
-                  {%- if isos and i < (isos|length) and isos[i] -%}<img src="/static/flags/{{ isos[i] }}.svg" width="14" height="10" alt="{{ isos[i].upper() }}" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ names[i] if names and i < (names|length) and names[i] else isos[i].upper() }}" style="vertical-align:baseline;opacity:.7;margin-right:.1em{% if isos[i] in border_codes %};outline:1px solid rgba(0,0,0,.1){% endif %}">{%- endif -%}
-                  {{- author | last_name -}}
+                  {{- flag_img(isos[i] if isos and isos|length > i else '', names[i] if names and names|length > i else '', border_codes) -}}{{- author | last_name -}}
                 {% endfor %}
               {% endif %}
             </div>
             <div class="small text-muted">
               <em>{{ paper.journal | clean_journal }}</em>
-              {% if paper.publisher %}&bull; {{ paper.publisher | publisher_display(config.get('publisher_map', {}), config.get('predatory_publishers', [])) | safe }}{% endif %}
-              &bull; {{ paper.epub_date or paper.pub_date or '' }}
+              {% if paper.publisher %}&bull; {{ paper.publisher | publisher_display(config.get('publisher_map', {}), config.get('predatory_publishers', [])) }}{% endif %}
+              {% set _pub = (paper.epub_date or paper.pub_date or '') | norm_pub_date %}
+              {% if _pub %}&bull; {{ _pub }}{% endif %}
               {% if paper.days_ago is not none %}
               &bull; <span class="opacity-75">{% if paper.days_ago == 0 %}added today{% elif paper.days_ago == 1 %}added yesterday{% else %}added {{ paper.days_ago }}d ago{% endif %}</span>
               {% endif %}
@@ -383,15 +440,30 @@
                 </ul>
               </div>
             </div>
-            {% elif paper.abstract %}
+            {% endif %}
+            {% if paper.abstract %}
             <div class="mt-1">
               <a class="small text-muted text-decoration-none user-select-none"
                  data-bs-toggle="collapse" href="#abs-{{ paper.pmid }}"
                  role="button" aria-expanded="false">
-                <i class="bi bi-chevron-down" style="font-size:.7em"></i> Abstract <span class="fw-normal" style="font-size:.85em">({{ paper.abstract.split() | length }} words)</span>
+                <i class="bi bi-chevron-down" style="font-size:.7em"></i> Abstract <span class="fw-normal opacity-75" style="font-size:.85em">({{ paper.abstract.split() | length }} words)</span>
               </a>
               <div class="collapse" id="abs-{{ paper.pmid }}">
-                <p class="small text-muted mt-1 mb-0" style="line-height:1.5">{{ paper.abstract }}</p>
+                <div class="small text-muted mt-1 mb-1 inline-abs" style="line-height:1.55">
+                  {% if paper.abstract_sections %}
+                    {% for section in paper.abstract_sections %}
+                    <div class="abs-accent d-flex gap-2{% if not loop.first %} mt-2{% endif %}">
+                      {% if section.label %}
+                      <div class="abs-accent-label">{{ section.label }}</div>
+                      {% endif %}
+                      <div>{{ section.text }}</div>
+                    </div>
+                    {% endfor %}
+                  {% else %}
+                    <div style="white-space:pre-line">{{ paper.abstract }}</div>
+                  {% endif %}
+                </div>
+                <a href="/paper/{{ paper.pmid }}" class="small text-decoration-none opacity-75">Open full page &rarr;</a>
               </div>
             </div>
             {% endif %}
@@ -411,7 +483,7 @@
               {% endif %}
               {% if paper.oa_url %}
               <span class="badge bg-success"><i class="bi bi-unlock me-1"></i>OA</span>
-              {% elif paper.doi and proxy_url(paper.doi, config) %}
+              {% elif proxy_enabled and paper.doi and proxy_url(paper.doi, config) %}
               <span class="badge bg-danger"><i class="bi bi-lock me-1"></i>PW</span>
               {% endif %}
               {% for topic in topics %}
@@ -421,36 +493,41 @@
           </div>
           <div class="flex-shrink-0 d-flex flex-column align-items-center gap-1">
             <form method="post" action="/feed/toggle-star/{{ paper.pmid }}">
-              <button type="submit" class="btn btn-sm btn-link p-0 {% if paper.is_starred %}text-warning{% else %}text-muted{% endif %}" title="{% if paper.is_starred %}Unstar{% else %}Star{% endif %}">
+              {% set _star_label = 'Unstar this paper' if paper.is_starred else 'Star this paper' %}
+              <button type="submit" class="btn btn-sm btn-link p-0 {% if paper.is_starred %}text-warning{% else %}text-muted{% endif %}"
+                      title="{{ _star_label }}" aria-label="{{ _star_label }}">
                 <i class="bi {% if paper.is_starred %}bi-star-fill{% else %}bi-star{% endif %}"></i>
               </button>
             </form>
             <form method="post" action="/feed/toggle-read/{{ paper.pmid }}"
                   class="toggle-read-form" data-pmid="{{ paper.pmid }}" data-is-read="{{ 1 if paper.is_read else 0 }}">
-              <button type="submit" class="btn btn-sm btn-link p-0 text-muted" title="{% if paper.is_read %}Mark unread{% else %}Mark read{% endif %}" style="font-size:.8em">
+              {% set _read_label = 'Mark as unread' if paper.is_read else 'Mark as read' %}
+              <button type="submit" class="btn btn-sm btn-link p-0 text-muted"
+                      title="{{ _read_label }}" aria-label="{{ _read_label }}" style="font-size:.8em">
                 <i class="bi {% if paper.is_read %}bi-envelope-open{% else %}bi-envelope{% endif %}"></i>
               </button>
             </form>
             <a href="https://pubmed.ncbi.nlm.nih.gov/{{ paper.pmid }}" target="_blank" rel="noopener"
-               class="btn btn-sm btn-link p-0 text-muted" title="Open in PubMed" style="font-size:.8em">
+               class="btn btn-sm btn-link p-0 text-muted" title="Open in PubMed"
+               aria-label="Open in PubMed" style="font-size:.8em">
               <i class="bi bi-box-arrow-up-right"></i>
             </a>
             {% if paper.search_profile_id %}
             <form method="post" action="/feed/rate-paper/{{ paper.pmid }}" class="rating-form">
               <input type="hidden" name="relevance" value="{{ 0 if paper.relevance == 1 else 1 }}">
+              {% set _up_label = 'Clear relevance rating' if paper.relevance == 1 else 'Mark as relevant for this search profile' %}
               <button type="submit" data-pmid="{{ paper.pmid }}" data-rating="up"
                       class="btn btn-sm btn-link p-0 {% if paper.relevance == 1 %}text-success{% else %}text-muted opacity-50{% endif %}"
-                      title="{% if paper.relevance == 1 %}Clear: marked as relevant{% else %}Mark as relevant for this search profile{% endif %}"
-                      style="font-size:.8em">
+                      title="{{ _up_label }}" aria-label="{{ _up_label }}" style="font-size:.8em">
                 <i class="bi {% if paper.relevance == 1 %}bi-hand-thumbs-up-fill{% else %}bi-hand-thumbs-up{% endif %}"></i>
               </button>
             </form>
             <form method="post" action="/feed/rate-paper/{{ paper.pmid }}" class="rating-form">
               <input type="hidden" name="relevance" value="{{ 0 if paper.relevance == -1 else -1 }}">
+              {% set _down_label = 'Clear relevance rating' if paper.relevance == -1 else 'Mark as not relevant for this search profile' %}
               <button type="submit" data-pmid="{{ paper.pmid }}" data-rating="down"
                       class="btn btn-sm btn-link p-0 {% if paper.relevance == -1 %}text-danger{% else %}text-muted opacity-50{% endif %}"
-                      title="{% if paper.relevance == -1 %}Clear: marked as not relevant{% else %}Mark as not relevant for this search profile{% endif %}"
-                      style="font-size:.8em">
+                      title="{{ _down_label }}" aria-label="{{ _down_label }}" style="font-size:.8em">
                 <i class="bi {% if paper.relevance == -1 %}bi-hand-thumbs-down-fill{% else %}bi-hand-thumbs-down{% endif %}"></i>
               </button>
             </form>
@@ -499,6 +576,26 @@
 {% block extra_scripts %}
 <script>
 const VIEW = "{{ view }}";
+const _mobileMq = window.matchMedia('(max-width: 575px)');
+
+function autoSubmit(radio) {
+  if (_mobileMq.matches) {
+    // On mobile, defer: mark sidebar dirty and show Apply button
+    let btn = document.getElementById('sidebarApplyBtn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'sidebarApplyBtn';
+      btn.type = 'button';
+      btn.className = 'btn btn-sm btn-primary w-100 mt-2 d-sm-none';
+      btn.textContent = 'Apply filters';
+      btn.onclick = function () { document.getElementById('filterForm').submit(); };
+      const form = document.getElementById('filterForm');
+      if (form) form.appendChild(btn);
+    }
+  } else {
+    radio.form.submit();
+  }
+}
 
 document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
@@ -512,6 +609,17 @@ function debounceSearch() {
   _searchTimer = setTimeout(function () {
     document.getElementById('filterForm').submit();
   }, 350);
+}
+
+function toggleClearBtn(input) {
+  const btn = document.getElementById('clearSearch');
+  if (btn) btn.classList.toggle('d-none', !input.value);
+}
+
+function clearSearchInput() {
+  const inp = document.getElementById('searchInput');
+  if (inp) { inp.value = ''; }
+  document.getElementById('filterForm').submit();
 }
 
 function updateTopics() {
@@ -632,5 +740,82 @@ document.addEventListener('submit', function (e) {
     }
   }).catch(() => { form.submit(); });
 });
+
+// ── Keyboard shortcuts (I-18) ────────────────────────────────────────────────
+(function () {
+  let _focusIdx = -1;
+  const _cards = () => Array.from(document.querySelectorAll('.paper-card'));
+
+  function _setFocus(idx) {
+    const cards = _cards();
+    if (!cards.length) return;
+    _focusIdx = Math.max(0, Math.min(idx, cards.length - 1));
+    cards.forEach((c, i) => c.classList.toggle('kb-focus', i === _focusIdx));
+    cards[_focusIdx].scrollIntoView({ block: 'nearest' });
+  }
+
+  function _pmid() {
+    const cards = _cards();
+    if (_focusIdx < 0 || _focusIdx >= cards.length) return null;
+    const cb = cards[_focusIdx].querySelector('.paper-cb');
+    return cb ? cb.dataset.pmid : null;
+  }
+
+  function _submit(selector) {
+    const cards = _cards();
+    if (_focusIdx < 0 || _focusIdx >= cards.length) return;
+    const card = cards[_focusIdx];
+    const el = card.querySelector(selector);
+    if (el) el.closest('form').requestSubmit ? el.closest('form').requestSubmit() : el.click();
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target.matches('input, textarea, select')) return;
+    const key = e.key;
+    if (key === '?') {
+      const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('kbShortcutsModal'));
+      modal.toggle();
+      return;
+    }
+    if (key === 'j' || key === 'ArrowDown') { e.preventDefault(); _setFocus(_focusIdx + 1); return; }
+    if (key === 'k' || key === 'ArrowUp')   { e.preventDefault(); _setFocus(_focusIdx - 1); return; }
+    if (_focusIdx < 0) return;
+    if (key === 'Enter' || key === 'o') {
+      const pmid = _pmid();
+      if (pmid) window.location.href = '/paper/' + pmid;
+      return;
+    }
+    if (key === 's') { _submit('button[title*="Star"]'); return; }
+    if (key === 'r') { _submit('button[title*="read"], button[title*="unread"]'); return; }
+    if (key === 'u') { _submit('button[data-rating="up"]'); return; }
+    if (key === 'd') { _submit('button[data-rating="down"]'); return; }
+  });
+})();
 </script>
+
+{# Keyboard shortcuts help modal #}
+<div class="modal fade" id="kbShortcutsModal" tabindex="-1" aria-labelledby="kbShortcutsLabel" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="kbShortcutsLabel"><i class="bi bi-keyboard me-1"></i>Keyboard shortcuts</h6>
+        <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-2">
+        <table class="table table-sm table-borderless mb-0 small">
+          <tbody>
+            <tr><td><kbd>j</kbd> / <kbd>↓</kbd></td><td>Next paper</td></tr>
+            <tr><td><kbd>k</kbd> / <kbd>↑</kbd></td><td>Previous paper</td></tr>
+            <tr><td><kbd>Enter</kbd> / <kbd>o</kbd></td><td>Open paper page</td></tr>
+            <tr><td><kbd>s</kbd></td><td>Toggle star</td></tr>
+            <tr><td><kbd>r</kbd></td><td>Toggle read</td></tr>
+            <tr><td><kbd>u</kbd></td><td>Mark relevant</td></tr>
+            <tr><td><kbd>d</kbd></td><td>Mark not relevant</td></tr>
+            <tr><td><kbd>?</kbd></td><td>Show / hide this help</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

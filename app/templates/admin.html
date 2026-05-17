@@ -16,58 +16,6 @@
 <h3 class="mb-1"><i class="bi bi-gear-fill me-2"></i>Administration</h3>
 <p class="text-muted mb-4">Configure the application, manage users, and upload journal rankings. Settings on this page apply globally to all users unless noted otherwise.</p>
 
-{% if saved %}
-<div class="alert alert-success alert-dismissible py-2" role="alert">
-  <i class="bi bi-check-circle me-1"></i> Saved successfully.
-  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-{% if test_sent %}
-<div class="alert alert-success alert-dismissible py-2" role="alert">
-  <i class="bi bi-envelope-check me-1"></i> Test email sent to <strong>{{ test_sent }}</strong>.
-  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-{% if error %}
-<div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
-{% endif %}
-
-{% if fetch_started %}
-<div class="alert alert-info alert-dismissible py-2" role="alert">
-  <i class="bi bi-play-circle me-1"></i> Fetch started in the background. Check <a href="/logs">Logs</a> for progress.
-  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-{% if scopus_started %}
-<div class="alert alert-info alert-dismissible py-2" role="alert">
-  <i class="bi bi-arrow-repeat me-1"></i> Journal data refresh started in the background. The progress bar on the <strong>Journal Rankings</strong> tab will update automatically. Check <a href="/logs">Logs</a> for details.
-  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-{% if recategorised %}
-<div class="alert alert-success alert-dismissible py-2" role="alert">
-  <i class="bi bi-arrow-clockwise me-1"></i> Rankings re-applied to <strong>{{ recategorised }}</strong> paper(s).
-  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-{% if digest_started %}
-<div class="alert alert-info alert-dismissible py-2" role="alert">
-  <i class="bi bi-envelope-arrow-up me-1"></i> Email digest started in the background. Check <a href="/logs">Logs</a> for results.
-  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-{% if deleted %}
-<div class="alert alert-success alert-dismissible py-2" role="alert">
-  <i class="bi bi-trash me-1"></i> {{ deleted }} paper(s) permanently deleted.
-  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-{% if llm_started %}
-<div class="alert alert-info alert-dismissible py-2" role="alert">
-  <i class="bi bi-stars me-1"></i> LLM highlights generation started in the background. Check <a href="/logs">Logs</a> (<code>llm.log</code>) for progress.
-  <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
 
 <ul class="nav nav-tabs mb-4" id="adminTabs">
   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-app">Application</a></li>
@@ -78,7 +26,7 @@
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-llm">LLM</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-users">Users</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-papers">
-    Papers <span class="badge bg-secondary ms-1">{{ papers | length }}</span>
+    Papers <span class="badge bg-secondary ms-1">{{ papers_total }}</span>
   </a></li>
 </ul>
 
@@ -122,10 +70,12 @@
         </div>
         <div class="col-md-4">
           <label class="form-label">Timezone</label>
-          <input type="text" name="timezone" class="form-control font-monospace"
-                 value="{{ config.get('timezone', 'UTC') }}"
-                 placeholder="Europe/Amsterdam">
-          <div class="form-text">Used to display log timestamps in local time. Enter a valid IANA timezone name, for example <code>Europe/Amsterdam</code> or <code>America/New_York</code>.</div>
+          <select name="timezone" class="form-select font-monospace">
+            {% for tz in valid_timezones | sort %}
+            <option value="{{ tz }}" {% if config.get('timezone', 'UTC') == tz %}selected{% endif %}>{{ tz }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Used to display timestamps in local time. Type to search.</div>
         </div>
       </div>
     </div>
@@ -484,14 +434,24 @@
 
     <div class="tip-box p-3 mb-3" style="max-width:680px">
       <p class="fw-semibold small mb-1"><i class="bi bi-stars me-1"></i>LLM integration</p>
-      <p class="small mb-2">When an LLM provider is configured, the system automatically generates up to 5 concise highlights for each paper's abstract. Highlights appear on the paper page above the abstract. Papers without highlights are processed in the background after each fetch run, or you can trigger a batch run manually below.</p>
-      <p class="small mb-0">You can also allow users to send their Search Profile improvement prompts directly to the LLM, rather than copy-pasting them into an external tool.</p>
+      <p class="small mb-1">Configure one LLM provider and it powers three features:</p>
+      <ul class="small mb-0">
+        <li><strong>Abstract Highlights</strong> — up to 5 bullet-point highlights are generated automatically for each paper's abstract and shown on the paper page.</li>
+        <li><strong>Search Profile improvement</strong> — users can send a prompt built from their rated papers to the LLM to get query improvement suggestions (optional, enabled per feature below).</li>
+        <li><strong>Topic term suggestions</strong> — users can ask the LLM to suggest which of their unassigned MeSH terms and author keywords belong to which topics, then confirm before anything is applied (optional, enabled per feature below).</li>
+      </ul>
     </div>
+
+    {# Generate/reset use separate POST targets — buttons inside the save form link to these via form= #}
+    <form id="runHighlightsForm" method="post" action="/admin/run-llm-highlights"
+          onsubmit="return confirm('Regenerate LLM highlights for all papers with abstracts? This will overwrite existing highlights and run in the background.')"></form>
+    <form id="resetLlmStatusForm" method="post" action="/admin/reset-llm-status"
+          onsubmit="return confirm('Clear the stuck status file? This will not stop any running process — only the progress indicator will be reset.')"></form>
 
     <form method="post" action="/admin/save-llm-config" style="max-width:680px">
 
       <div class="card mb-3">
-        <div class="card-header fw-semibold"><i class="bi bi-cpu me-1"></i>Provider</div>
+        <div class="card-header fw-semibold"><i class="bi bi-cpu me-1"></i>Connection Settings</div>
         <div class="card-body row g-3">
           <div class="col-md-4">
             <label class="form-label">Provider</label>
@@ -543,13 +503,67 @@
       </div>
 
       <div class="card mb-3">
-        <div class="card-header fw-semibold"><i class="bi bi-chat-left-text me-1"></i>Highlights system prompt</div>
+        <div class="card-header fw-semibold"><i class="bi bi-file-text me-1"></i>Abstract Highlights</div>
         <div class="card-body">
-          <p class="text-muted small mb-2">This is sent as the <strong>system prompt</strong> on every highlights request. The paper's abstract is sent as the user message. Keep instructions clear and specific; the default below works well for most models.</p>
+          <p class="fw-semibold small mb-1">System prompt</p>
+          <p class="text-muted small mb-2">Sent as the <strong>system prompt</strong> on every highlights request. The paper's abstract is sent as the user message. Keep instructions clear and specific; the default works well for most models.</p>
           <textarea name="llm_prompt" class="form-control font-monospace" rows="7"
                     style="font-size:.85em"
                     placeholder="{{ llm_default_prompt }}">{{ config.get('llm_prompt', '') }}</textarea>
-          <div class="form-text">Leave blank to use the built-in default prompt.</div>
+          <div class="form-text mb-4">Leave blank to use the built-in default prompt.</div>
+
+          <p class="fw-semibold small mb-2">Generation</p>
+          {% set ls = llm_status %}
+          {% if ls.status == 'error' %}
+          <div class="alert alert-danger py-2 mb-3">
+            <i class="bi bi-exclamation-triangle me-1"></i>Last run encountered an error:
+            <code class="ms-1">{{ ls.last_error }}</code>
+          </div>
+          {% elif ls.status == 'done' and ls.finished_at %}
+          <div class="alert alert-success py-2 mb-3">
+            <i class="bi bi-check-circle me-1"></i>
+            Last run: {{ ls.finished_at | to_local }} &mdash;
+            {{ ls.processed }} processed, {{ ls.errors }} error(s).
+            {% if ls.last_error %}
+            <span class="text-muted small ms-2">Last error: {{ ls.last_error }}</span>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <div id="llmProgress" class="mb-3" style="display:{% if ls.status == 'running' %}block{% else %}none{% endif %}">
+            <div class="d-flex justify-content-between small mb-1">
+              <span id="llmLabel" class="text-muted">{% if ls.status == 'running' %}{{ ls.processed | default(0) }} / {{ ls.total | default('?') }} processed&hellip;{% else %}Generating highlights&hellip;{% endif %}</span>
+              <span id="llmPct" class="text-muted">{% if ls.status == 'running' and ls.total %}{{ (ls.processed | default(0) / ls.total * 100) | int }}%{% endif %}</span>
+            </div>
+            <div class="progress" style="height:18px">
+              <div id="llmBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                   role="progressbar"
+                   style="width:{% if ls.status == 'running' and ls.total %}{{ (ls.processed | default(0) / ls.total * 100) | int }}%{% else %}0%{% endif %}"
+                   aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+          </div>
+
+          <p id="llmPendingText" class="text-muted small mb-3">
+            {% if llm_pending %}
+            <strong id="llmPendingCount">{{ llm_pending }}</strong> paper{{ 's' if llm_pending != 1 else '' }} in the database
+            {{ 'have' if llm_pending != 1 else 'has' }} no highlights yet.
+            {% else %}
+            All papers with abstracts already have highlights.
+            {% endif %}
+            Highlights are also generated automatically in the background after each fetch run.
+          </p>
+
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button type="submit" form="runHighlightsForm" id="btnRunLlm" class="btn btn-outline-secondary"
+                    {% if not config.get('llm_provider') %}disabled title="Configure a provider first"{% endif %}
+                    {% if ls.status == 'running' %}disabled title="Generation is already running"{% endif %}>
+              <i class="bi bi-play-circle me-1"></i>Generate highlights now
+            </button>
+            <button type="submit" form="resetLlmStatusForm" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-x-circle me-1"></i>Reset stuck status
+            </button>
+          </div>
+          <div class="form-text mt-2">Generation runs in the background. Check <a href="/logs">Logs</a> (<code>llm.log</code>) for progress. The progress bar updates automatically while this tab is open. Use <em>Reset stuck status</em> if the bar is stuck after a crash.</div>
         </div>
       </div>
 
@@ -564,6 +578,14 @@
             </label>
           </div>
           <div class="form-text ms-4 ps-1">When enabled, a <strong>Run with LLM</strong> button appears in the Search Profile improvement modal (Settings &rsaquo; Search Profiles). Users can send their query-improvement prompt directly to the LLM rather than copying it to an external tool. The full prompt — including their rated paper titles and MeSH terms — is sent to the provider.</div>
+          <div class="form-check form-switch mt-3">
+            <input class="form-check-input" type="checkbox" name="llm_allow_topic_suggestions"
+                   id="llmAllowTopicSuggestions" {% if config.get('llm_allow_topic_suggestions') %}checked{% endif %}>
+            <label class="form-check-label fw-medium" for="llmAllowTopicSuggestions">
+              Allow users to auto-assign terms to topics using the configured LLM
+            </label>
+          </div>
+          <div class="form-text ms-4 ps-1">When enabled, a <strong>Suggest terms with LLM</strong> button appears in the Topics settings tab. The LLM is shown the user's topic names and their unassigned MeSH terms and author keywords, and suggests which terms belong to which topics. Suggestions are shown for the user to confirm before any changes are applied.</div>
         </div>
       </div>
 
@@ -571,70 +593,6 @@
         <i class="bi bi-check-lg me-1"></i>Save LLM settings
       </button>
     </form>
-
-    <hr class="my-4">
-
-    <div style="max-width:680px">
-      <h6 class="fw-semibold mb-3"><i class="bi bi-lightning me-1"></i>Highlights generation</h6>
-
-      {% set ls = llm_status %}
-      {% if ls.status == 'error' %}
-      <div class="alert alert-danger py-2 mb-3">
-        <i class="bi bi-exclamation-triangle me-1"></i>Last run encountered an error:
-        <code class="ms-1">{{ ls.last_error }}</code>
-      </div>
-      {% elif ls.status == 'done' and ls.finished_at %}
-      <div class="alert alert-success py-2 mb-3">
-        <i class="bi bi-check-circle me-1"></i>
-        Last run: {{ ls.finished_at | to_local }} &mdash;
-        {{ ls.processed }} processed, {{ ls.errors }} error(s).
-        {% if ls.last_error %}
-        <span class="text-muted small ms-2">Last error: {{ ls.last_error }}</span>
-        {% endif %}
-      </div>
-      {% endif %}
-
-      <div id="llmProgress" class="mb-3" style="display:{% if ls.status == 'running' %}block{% else %}none{% endif %}">
-        <div class="d-flex justify-content-between small mb-1">
-          <span id="llmLabel" class="text-muted">{% if ls.status == 'running' %}{{ ls.processed | default(0) }} / {{ ls.total | default('?') }} processed&hellip;{% else %}Generating highlights&hellip;{% endif %}</span>
-          <span id="llmPct" class="text-muted">{% if ls.status == 'running' and ls.total %}{{ (ls.processed | default(0) / ls.total * 100) | int }}%{% endif %}</span>
-        </div>
-        <div class="progress" style="height:18px">
-          <div id="llmBar" class="progress-bar progress-bar-striped progress-bar-animated"
-               role="progressbar"
-               style="width:{% if ls.status == 'running' and ls.total %}{{ (ls.processed | default(0) / ls.total * 100) | int }}%{% else %}0%{% endif %}"
-               aria-valuemin="0" aria-valuemax="100"></div>
-        </div>
-      </div>
-
-      <p id="llmPendingText" class="text-muted small mb-3">
-        {% if llm_pending %}
-        <strong id="llmPendingCount">{{ llm_pending }}</strong> paper{{ 's' if llm_pending != 1 else '' }} in the database
-        {{ 'have' if llm_pending != 1 else 'has' }} no highlights yet.
-        {% else %}
-        All papers with abstracts already have highlights.
-        {% endif %}
-        Highlights are also generated automatically in the background after each fetch run.
-      </p>
-
-      <form method="post" action="/admin/run-llm-highlights" id="runLlmHighlightsForm"
-            onsubmit="return confirm('Regenerate LLM highlights for all papers with abstracts? This will overwrite existing highlights and run in the background.')">
-        <button type="submit" id="btnRunLlm" class="btn btn-outline-secondary"
-                {% if not config.get('llm_provider') %}disabled title="Configure a provider first"{% endif %}
-                {% if ls.status == 'running' %}disabled title="Generation is already running"{% endif %}>
-          <i class="bi bi-play-circle me-1"></i>Generate highlights now
-        </button>
-      </form>
-      <div class="form-text mt-2">Runs in the background. Check <a href="/logs">Logs</a> (<code>llm.log</code>) for progress. The progress bar above updates automatically while this tab is open.</div>
-      <hr class="my-3">
-      <p class="small text-muted mb-1"><i class="bi bi-question-circle me-1"></i><strong>Progress bar stuck?</strong> This can happen if the generation process crashed unexpectedly. Delete the status file to reset:</p>
-      <form method="post" action="/admin/reset-llm-status" class="d-inline"
-            onsubmit="return confirm('Clear the stuck status file? This will not stop any running process — only the progress indicator will be reset.')">
-        <button type="submit" class="btn btn-sm btn-outline-danger">
-          <i class="bi bi-x-circle me-1"></i>Reset stuck status
-        </button>
-      </form>
-    </div>
 
   </div>
 
@@ -647,7 +605,7 @@
     <form method="post" action="/admin/delete-papers" id="papersForm"
           onsubmit="return confirmPaperDelete()">
       <div class="d-flex justify-content-between align-items-center mb-2">
-        <span class="text-muted small">{{ papers | length }} paper(s) in database across all users</span>
+        <span class="text-muted small">{{ papers_total }} paper(s) in database across all users (showing {{ papers | length }} on this page)</span>
         <div class="d-flex gap-2">
           <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleAllPapers()">
             Select all
@@ -659,14 +617,14 @@
       </div>
       <div class="card">
         <div class="table-responsive">
-          <table class="table table-sm table-hover mb-0 align-middle">
+          <table class="table table-sm table-hover mb-0 align-middle" id="papersTable">
             <thead class="table-light">
               <tr>
                 <th style="width:32px"></th>
-                <th>Title</th>
-                <th>Journal</th>
-                <th>Date</th>
-                <th>Q</th>
+                <th class="sortable-th" data-col="1" style="cursor:pointer" title="Sort by title">Title <i class="bi bi-arrow-down-up text-muted" style="font-size:.7em"></i></th>
+                <th class="sortable-th" data-col="2" style="cursor:pointer" title="Sort by journal">Journal <i class="bi bi-arrow-down-up text-muted" style="font-size:.7em"></i></th>
+                <th class="sortable-th" data-col="3" style="cursor:pointer" title="Sort by date">Date <i class="bi bi-arrow-down-up text-muted" style="font-size:.7em"></i></th>
+                <th class="sortable-th" data-col="4" style="cursor:pointer" title="Sort by quartile">Q <i class="bi bi-arrow-down-up text-muted" style="font-size:.7em"></i></th>
                 <th>Users</th>
               </tr>
             </thead>
@@ -680,7 +638,7 @@
                 </a>
               </td>
               <td class="small text-muted" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                {{ p.journal | clean_journal }}{% if p.publisher %} <span class="text-muted opacity-75">({{ p.publisher | publisher_display(config.get('publisher_map', {}), config.get('predatory_publishers', [])) | safe }})</span>{% endif %}
+                {{ p.journal | clean_journal }}{% if p.publisher %} <span class="text-muted opacity-75">({{ p.publisher | publisher_display(config.get('publisher_map', {}), config.get('predatory_publishers', [])) }})</span>{% endif %}
               </td>
               <td class="small text-muted text-nowrap">{{ p.epub_date or p.pub_date or '' }}</td>
               <td>
@@ -697,6 +655,27 @@
           </table>
         </div>
       </div>
+      {% if papers_total_pages > 1 %}
+      <nav class="mt-3">
+        <ul class="pagination pagination-sm mb-0">
+          {% if papers_page > 1 %}
+          <li class="page-item"><a class="page-link" href="/admin?tab=papers&papers_page={{ papers_page - 1 }}#tab-papers">‹</a></li>
+          {% else %}
+          <li class="page-item disabled"><span class="page-link">‹</span></li>
+          {% endif %}
+          {% for p in range(1, papers_total_pages + 1) %}
+          <li class="page-item {% if p == papers_page %}active{% endif %}">
+            <a class="page-link" href="/admin?tab=papers&papers_page={{ p }}#tab-papers">{{ p }}</a>
+          </li>
+          {% endfor %}
+          {% if papers_page < papers_total_pages %}
+          <li class="page-item"><a class="page-link" href="/admin?tab=papers&papers_page={{ papers_page + 1 }}#tab-papers">›</a></li>
+          {% else %}
+          <li class="page-item disabled"><span class="page-link">›</span></li>
+          {% endif %}
+        </ul>
+      </nav>
+      {% endif %}
     </form>
   </div>
 
@@ -760,12 +739,12 @@
                 <td class="small text-muted">{{ u.created_at[:10] }}</td>
                 <td>
                   <div class="d-flex gap-1">
-                    <a href="/admin/users/{{ u.username }}" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2">
+                    <a href="/admin/users/{{ u.username }}" class="btn btn-outline-secondary btn-sm py-0 px-2">
                       <i class="bi bi-pencil"></i>
                     </a>
                     <form method="post" action="/admin/delete-user/{{ u.id }}" class="d-inline"
                           onsubmit="return confirm('Delete {{ u.username }}? This cannot be undone.')">
-                      <button type="submit" class="btn btn-xs btn-outline-danger btn-sm py-0 px-2">
+                      <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2">
                         <i class="bi bi-trash"></i>
                       </button>
                     </form>
@@ -809,27 +788,10 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(el => {
 // Initialise SMTP toggle on load
 toggleSmtp();
 
-// Restore active tab: prefer URL hash, then server-side hints
+// Restore active tab from URL hash
 const hash = window.location.hash;
-const testSent       = {{ 'true' if test_sent       else 'false' }};
-const fetchStarted   = {{ 'true' if fetch_started   else 'false' }};
-const digestStarted  = {{ 'true' if digest_started  else 'false' }};
-const scopusStarted  = {{ 'true' if scopus_started  else 'false' }};
-const recategorised  = {{ 'true' if recategorised   else 'false' }};
-const deleted        = {{ 'true' if deleted         else 'false' }};
-const llmStarted     = {{ 'true' if llm_started     else 'false' }};
-const savedPublishers = window.location.hash === '#tab-publishers';
-const activeTab = hash
-  || (savedPublishers ? '#tab-publishers' : null)
-  || (testSent        ? '#tab-email'      : null)
-  || (fetchStarted    ? '#tab-fetch'      : null)
-  || (digestStarted   ? '#tab-email'      : null)
-  || (scopusStarted   ? '#tab-scopus'     : null)
-  || (recategorised   ? '#tab-scopus'     : null)
-  || (deleted         ? '#tab-papers'     : null)
-  || (llmStarted      ? '#tab-llm'        : null);
-if (activeTab) {
-  const tab = document.querySelector(`[href="${activeTab}"]`);
+if (hash) {
+  const tab = document.querySelector(`[href="${hash}"]`);
   if (tab) tab.click();
 }
 
@@ -982,6 +944,36 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(el => {
 document.addEventListener('DOMContentLoaded', () => {
   const active = document.querySelector('.tab-pane.show.active');
   if (active && active.id === 'tab-llm') startLlmPoll();
+});
+
+// ── Sortable papers table (I-24) ─────────────────────────────────────────────
+let _papersSortCol = -1, _papersSortAsc = true;
+function sortPapersTable(th) {
+  const col = parseInt(th.dataset.col);
+  if (_papersSortCol === col) { _papersSortAsc = !_papersSortAsc; } else { _papersSortCol = col; _papersSortAsc = true; }
+  const tbody = document.querySelector('#papersTable tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort(function (a, b) {
+    const av = (a.cells[col] ? a.cells[col].textContent : '').trim().toLowerCase();
+    const bv = (b.cells[col] ? b.cells[col].textContent : '').trim().toLowerCase();
+    return _papersSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+  document.querySelectorAll('.sortable-th').forEach(h => {
+    const icon = h.querySelector('i');
+    if (parseInt(h.dataset.col) === col) {
+      icon.className = 'bi ' + (_papersSortAsc ? 'bi-arrow-up' : 'bi-arrow-down') + ' text-primary';
+    } else {
+      icon.className = 'bi bi-arrow-down-up text-muted';
+    }
+    icon.style.fontSize = '.7em';
+  });
+}
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.sortable-th').forEach(function (th) {
+    th.addEventListener('click', function () { sortPapersTable(th); });
+  });
 });
 
 function toggleAllPapers() {

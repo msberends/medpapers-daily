@@ -14,9 +14,9 @@
       <i class="bi bi-journal-bookmark-fill me-1"></i>{{ config.get('app_name', 'MedPapers Daily') }}
     </h4>
     <p class="text-center text-muted small mb-4">Scientific literature monitoring</p>
-    {% if error %}
-    <div class="alert alert-danger py-2">{{ error }}</div>
-    {% endif %}
+    {% for msg in request.state.flash_messages %}
+    <div class="alert alert-{{ msg.category if msg.category in ('success','danger','warning','info') else 'secondary' }} py-2">{{ msg.message }}</div>
+    {% endfor %}
     <form method="post" action="/login">
       <div class="mb-3">
         <label class="form-label">Username</label>

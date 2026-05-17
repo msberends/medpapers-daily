@@ -1,8 +1,9 @@
 <!doctype html>
-<html lang="en" data-bs-theme="{{ config.get('theme', 'light') }}">
+<html lang="en" data-bs-theme="{{ 'dark' if get_user_theme_mode(user, config) == 'dark' else 'light' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if get_user_theme_mode(user, config) == 'system' %}<script>!function(){var m=matchMedia('(prefers-color-scheme: dark)');document.documentElement.setAttribute('data-bs-theme',m.matches?'dark':'light');m.addEventListener('change',function(e){document.documentElement.setAttribute('data-bs-theme',e.matches?'dark':'light')})}()</script>{% endif %}
   <title>{% block title %}{{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="{{ get_theme_url(get_user_theme(user, config)) }}">
@@ -53,7 +54,7 @@
     [data-bs-theme="dark"] .badge-topic-teal  {background:#002420;border:1px solid #308080;color:#80dcdc}
     [data-bs-theme="dark"] .badge-topic-cyan  {background:#001828;border:1px solid #207898;color:#80d8f0}
     .paper-unread .paper-title { font-weight: 700; }
-    .paper-read .paper-title { font-weight: 400; color: #555; }
+    .paper-read .paper-title { font-weight: 400; color: var(--bs-secondary-color); }
     @media (min-width: 576px) { .sidebar { min-width: 220px; max-width: 260px; } }
     .oa-badge { color: #f4a522; }
     .bulk-bar { position: sticky; top: 0; z-index: 100; }
@@ -100,6 +101,16 @@
 </nav>
 
 <main class="container-fluid py-3">
+  {# Session flash messages (cookie-based, cleared after first render) #}
+  {% for msg in request.state.flash_messages %}
+  <div class="alert alert-{{ msg.category if msg.category in ('success','danger','warning','info') else 'secondary' }} alert-dismissible py-2 mb-3" role="alert">
+    {% if msg.category == 'success' %}<i class="bi bi-check-circle me-1"></i>
+    {% elif msg.category == 'danger' %}<i class="bi bi-exclamation-triangle me-1"></i>
+    {% elif msg.category == 'warning' %}<i class="bi bi-exclamation-circle me-1"></i>
+    {% endif %}{{ msg.message }}
+    <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
   {% block content %}{% endblock %}
 </main>
 

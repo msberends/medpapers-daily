@@ -12,53 +12,33 @@ from app.auth import require_auth, SESSION_COOKIE
 from app.db import conn_ctx
 from app.export import export_ris, export_nbib
 from app.flags import extract_country, _BORDER_CODES
+from app.user_config import load_user_cfg as _get_user_yaml
+from app.utils import classify_paper as _classify_paper, get_relevance_cfg as _get_relevance_cfg
 
 router = APIRouter()
 
 
-def _get_user_yaml(username: str) -> dict:
-    import yaml, os
-    path = os.path.join("users", f"{username}.yaml")
-    if not os.path.exists(path):
-        return {}
-    with open(path) as f:
-        return yaml.safe_load(f) or {}
-
-
-def _get_relevance_cfg(user_yaml: dict) -> dict:
-    return {
-        "enabled": user_yaml.get("relevance_alert_enabled", True),
-        "threshold": user_yaml.get("relevance_alert_threshold", 0.30),
-        "min_rated": user_yaml.get("relevance_alert_min_rated", 10),
-        "lookback_days": user_yaml.get("relevance_alert_lookback_days", 30),
-    }
+_SORT_MAP: dict[str, str] = {
+    "newest":    "up.added_at DESC",
+    "oldest":    "up.added_at ASC",
+    "quartile":  ("CASE p.scopus_quartile WHEN 'Q1' THEN 1 WHEN 'Q2' THEN 2 "
+                  "WHEN 'Q3' THEN 3 WHEN 'Q4' THEN 4 ELSE 5 END, up.added_at DESC"),
+    "citescore": "p.scopus_citescore DESC NULLS LAST, up.added_at DESC",
+}
 
 
 def _sort_clause(sort: str) -> str:
-    if sort == "oldest":
-        return "up.added_at ASC"
-    if sort == "quartile":
-        return ("CASE p.scopus_quartile WHEN 'Q1' THEN 1 WHEN 'Q2' THEN 2 "
-                "WHEN 'Q3' THEN 3 WHEN 'Q4' THEN 4 ELSE 5 END, up.added_at DESC")
-    if sort == "citescore":
-        return "p.scopus_citescore DESC NULLS LAST, up.added_at DESC"
-    return "up.added_at DESC"
+    return _SORT_MAP.get(sort, _SORT_MAP["newest"])
 
 
-def _classify_paper(mesh_terms_json: str, mesh_topic_map: dict,
-                    keywords_json: str = "[]") -> list[str]:
-    terms = json.loads(mesh_terms_json or "[]") + json.loads(keywords_json or "[]")
-    topics = {mesh_topic_map[t.lower()] for t in terms if t.lower() in mesh_topic_map}
-    return sorted(topics)
-
-
-def _build_feed_query(user_id: int, view: str, topics: list[str],
+def _build_feed_where(user_id: int, view: str,
                       quartile: str, date_filter: str,
                       date_from: str, date_to: str, search: str,
-                      folder_id: Optional[int], mesh_topic_map: dict,
+                      folder_id: Optional[int],
                       profile_id: int = 0, q2_hard: bool = False,
                       group_by_profile: bool = False,
-                      sort: str = "newest") -> tuple[str, list]:
+                      sort: str = "newest") -> tuple[str, list, str]:
+    """Return (WHERE clause, params, ORDER BY clause) for feed queries."""
     conditions = ["up.user_id = ?"]
     params: list = [user_id]
 
@@ -73,7 +53,6 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
         params.append(folder_id)
 
     if q2_hard:
-        # Hard baseline: never show Q3/Q4/unranked regardless of the URL filter
         if quartile == "q1":
             conditions.append("p.scopus_quartile = 'Q1'")
         else:
@@ -112,9 +91,11 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
             params.append(date_to)
 
     if search:
-        conditions.append("(p.title LIKE ? OR p.abstract LIKE ?)")
-        like = f"%{search}%"
-        params.extend([like, like])
+        # Use FTS5 for fast full-text search; fall back to LIKE on error
+        conditions.append(
+            "p.pmid IN (SELECT pmid FROM papers_fts WHERE papers_fts MATCH ?)"
+        )
+        params.append(search)
 
     where = " AND ".join(conditions)
     order_by = (
@@ -122,17 +103,7 @@ def _build_feed_query(user_id: int, view: str, topics: list[str],
         if group_by_profile and not profile_id
         else _sort_clause(sort)
     )
-    sql = f"""
-        SELECT p.*, up.is_read, up.is_starred, up.folder_id, up.ris_exported_at,
-               up.added_at as user_added_at, up.search_profile_id, up.relevance,
-               sp.name as search_profile
-        FROM user_papers up
-        JOIN papers p ON p.pmid = up.pmid
-        LEFT JOIN search_profiles sp ON sp.id = up.search_profile_id
-        WHERE {where}
-        ORDER BY {order_by}
-    """
-    return sql, params
+    return where, params, order_by
 
 
 @router.get("/feed", response_class=HTMLResponse)
@@ -168,16 +139,29 @@ async def feed(
     if sort not in ("newest", "oldest", "quartile", "citescore"):
         sort = "newest"
 
-    sql, params = _build_feed_query(
-        user["user_id"], view, selected_topics, quartile,
-        date_filter, date_from, date_to, search, folder_id, mesh_topic_map,
+    where, params, order_by = _build_feed_where(
+        user["user_id"], view, quartile,
+        date_filter, date_from, date_to, search, folder_id,
         profile_id, q2_hard, feed_group_by_profile, sort,
     )
 
     rel_cfg = _get_relevance_cfg(user_yaml)
 
+    # Lightweight analytics query: fetch small columns for all matching rows.
+    # Full paper data (abstract, affiliations, highlights) is fetched only for the current page.
+    analytics_sql = f"""
+        SELECT up.pmid, p.mesh_terms, p.keywords, up.added_at AS user_added_at,
+               p.scopus_quartile, p.scopus_citescore, sp.name AS search_profile
+        FROM user_papers up
+        JOIN papers p ON p.pmid = up.pmid
+        LEFT JOIN search_profiles sp ON sp.id = up.search_profile_id
+        WHERE {where}
+        ORDER BY {order_by}
+    """
+
     with conn_ctx() as conn:
-        rows = conn.execute(sql, params).fetchall()
+        analytics_rows = conn.execute(analytics_sql, params).fetchall()
+
         all_profiles = [
             dict(r) for r in conn.execute(
                 "SELECT id, name FROM search_profiles WHERE user_id = ? ORDER BY name",
@@ -250,21 +234,70 @@ async def feed(
                         "pct": round(ar["relevant"] / ar["rated"] * 100),
                     })
 
-    papers_with_topics = []
-    all_topic_set = set()
-    for row in rows:
-        paper_topics = _classify_paper(row["mesh_terms"], mesh_topic_map, row["keywords"])
-        all_topic_set.update(paper_topics)
-        if not paper_topics:
-            paper_topics = ["Unclassified"]
-        if selected_topics:
-            show = any(t in paper_topics for t in selected_topics) or \
-                   ("Unclassified" in selected_topics and paper_topics == ["Unclassified"])
-            if not show:
-                continue
-        paper_dict = dict(row)
+        # Topic classification and filtering on lightweight rows (no full paper data yet)
+        all_topic_set: set = set()
+        matching_rows: list = []
+        for row in analytics_rows:
+            paper_topics = _classify_paper(row["mesh_terms"], mesh_topic_map, row["keywords"])
+            all_topic_set.update(paper_topics)
+            if not paper_topics:
+                paper_topics = ["Unclassified"]
+            if selected_topics:
+                show = any(t in paper_topics for t in selected_topics) or \
+                       ("Unclassified" in selected_topics and paper_topics == ["Unclassified"])
+                if not show:
+                    continue
+            matching_rows.append((dict(row), paper_topics))
+
+        # Analytics from the full filtered set
+        today_date = datetime.now(timezone.utc).date()
+        topic_counts: dict = Counter(t for _, topics in matching_rows for t in topics)
+        quartile_breakdown: dict = Counter(
+            (r.get("scopus_quartile") or "Unranked") for r, _ in matching_rows
+        )
+        daily_raw: dict = Counter(
+            r["user_added_at"][:10] for r, _ in matching_rows if r.get("user_added_at")
+        )
+        daily_counts = [
+            {"date": str(today_date - timedelta(days=i)),
+             "count": daily_raw.get(str(today_date - timedelta(days=i)), 0)}
+            for i in range(6, -1, -1)
+        ]
+
+        # Paginate the matched list, then fetch full paper data for just this page
+        total = len(matching_rows)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        page = max(1, min(page, total_pages))
+        offset = (page - 1) * page_size
+        page_items = matching_rows[offset:offset + page_size]
+        page_pmids = [r["pmid"] for r, _ in page_items]
+
+        full_data: dict = {}
+        if page_pmids:
+            ph = ",".join("?" * len(page_pmids))
+            full_sql = f"""
+                SELECT p.*, up.is_read, up.is_starred, up.folder_id, up.ris_exported_at,
+                       up.added_at AS user_added_at, up.search_profile_id, up.relevance,
+                       sp.name AS search_profile
+                FROM user_papers up
+                JOIN papers p ON p.pmid = up.pmid
+                LEFT JOIN search_profiles sp ON sp.id = up.search_profile_id
+                WHERE up.user_id = ? AND up.pmid IN ({ph})
+            """
+            for full_row in conn.execute(full_sql, [user["user_id"]] + page_pmids):
+                full_data[full_row["pmid"]] = dict(full_row)
+
+    # Build display page from page_items order, enriching with full paper data
+    papers_page = []
+    for analytics_row, paper_topics in page_items:
+        pmid = analytics_row["pmid"]
+        paper_dict = full_data.get(pmid)
+        if not paper_dict:
+            continue
         _raw_highlights = json.loads(paper_dict.get("highlights") or "null") or []
         paper_dict["highlights"] = [re.sub(r"^[-•*]\s+", "", h) for h in _raw_highlights]
+        _abs_struct = paper_dict.get("abstract_structured")
+        paper_dict["abstract_sections"] = json.loads(_abs_struct) if _abs_struct else None
         affil_raw = json.loads(paper_dict.get("affiliations") or "null") or {}
         aff_list = affil_raw.get("aff_list", [])
         author_aff_map = affil_raw.get("author_aff", [])
@@ -282,52 +315,22 @@ async def feed(
                 author_iso_names.append(None)
         paper_dict["author_isos"] = author_isos
         paper_dict["author_iso_names"] = author_iso_names
-        papers_with_topics.append((paper_dict, paper_topics))
+        if paper_dict.get("user_added_at"):
+            _d = _date.fromisoformat(paper_dict["user_added_at"][:10])
+            paper_dict["days_ago"] = (today_date - _d).days
+        else:
+            paper_dict["days_ago"] = None
+        papers_page.append((paper_dict, paper_topics))
 
     all_topics = sorted(all_topic_set) + ["Unclassified"]
-    _colour_cycle = ["blue","purple","green","orange","teal","red","indigo","yellow","pink","cyan","primary","success","danger","warning","info","secondary"]
+    _colour_cycle = ["blue", "purple", "green", "orange", "teal", "red", "indigo",
+                     "yellow", "pink", "cyan", "primary", "success", "danger",
+                     "warning", "info", "secondary"]
     _user_colours = user_yaml.get("mesh_topic_colours", {})
     topic_color_map = {
         topic: _user_colours.get(topic, _colour_cycle[i % len(_colour_cycle)])
         for i, topic in enumerate(all_topics)
     }
-
-    # Derived analytics computed from the full filtered set (before pagination)
-    today_date = datetime.now(timezone.utc).date()
-
-    topic_counts: dict = Counter()
-    for _paper, _topics in papers_with_topics:
-        for _t in _topics:
-            topic_counts[_t] += 1
-
-    quartile_breakdown: dict = Counter(
-        (_paper.get("scopus_quartile") or "Unranked")
-        for _paper, _ in papers_with_topics
-    )
-
-    daily_raw: dict = Counter(
-        _paper["user_added_at"][:10]
-        for _paper, _ in papers_with_topics
-        if _paper.get("user_added_at")
-    )
-    daily_counts = [
-        {"date": str(today_date - timedelta(days=i)),
-         "count": daily_raw.get(str(today_date - timedelta(days=i)), 0)}
-        for i in range(6, -1, -1)
-    ]
-
-    for _paper, _ in papers_with_topics:
-        if _paper.get("user_added_at"):
-            _d = _date.fromisoformat(_paper["user_added_at"][:10])
-            _paper["days_ago"] = (today_date - _d).days
-        else:
-            _paper["days_ago"] = None
-
-    total = len(papers_with_topics)
-    total_pages = max(1, (total + page_size - 1) // page_size)
-    page = max(1, min(page, total_pages))
-    offset = (page - 1) * page_size
-    papers_page = papers_with_topics[offset:offset + page_size]
 
     # Base URL for pagination links — all current filters, no page param
     qp: dict = {"view": view, "quartile": quartile, "date_filter": date_filter, "sort": sort}
@@ -385,6 +388,10 @@ async def feed(
         "profile_alerts": profile_alerts,
         "rel_cfg": rel_cfg,
         "config": request.app.state.config,
+        "proxy_enabled": bool(
+            request.app.state.config.get("proxy_enabled")
+            and request.app.state.config.get("proxy_domain")
+        ),
     })
 
 
@@ -401,42 +408,38 @@ async def bulk_action(
         return RedirectResponse("/feed", status_code=303)
 
     with conn_ctx() as conn:
+        ph = ",".join("?" * len(pmid_list))
+        uid = user["user_id"]
         if action == "mark_read":
-            for pmid in pmid_list:
-                conn.execute(
-                    "UPDATE user_papers SET is_read = 1 WHERE user_id = ? AND pmid = ?",
-                    (user["user_id"], pmid),
-                )
+            conn.execute(
+                f"UPDATE user_papers SET is_read = 1 WHERE user_id = ? AND pmid IN ({ph})",
+                [uid] + pmid_list,
+            )
         elif action == "mark_unread":
-            for pmid in pmid_list:
-                conn.execute(
-                    "UPDATE user_papers SET is_read = 0 WHERE user_id = ? AND pmid = ?",
-                    (user["user_id"], pmid),
-                )
+            conn.execute(
+                f"UPDATE user_papers SET is_read = 0 WHERE user_id = ? AND pmid IN ({ph})",
+                [uid] + pmid_list,
+            )
         elif action == "star":
-            for pmid in pmid_list:
-                conn.execute(
-                    "UPDATE user_papers SET is_starred = 1 WHERE user_id = ? AND pmid = ?",
-                    (user["user_id"], pmid),
-                )
+            conn.execute(
+                f"UPDATE user_papers SET is_starred = 1 WHERE user_id = ? AND pmid IN ({ph})",
+                [uid] + pmid_list,
+            )
         elif action == "unstar":
-            for pmid in pmid_list:
-                conn.execute(
-                    "UPDATE user_papers SET is_starred = 0 WHERE user_id = ? AND pmid = ?",
-                    (user["user_id"], pmid),
-                )
+            conn.execute(
+                f"UPDATE user_papers SET is_starred = 0 WHERE user_id = ? AND pmid IN ({ph})",
+                [uid] + pmid_list,
+            )
         elif action == "assign_folder" and folder_id is not None:
-            for pmid in pmid_list:
-                conn.execute(
-                    "UPDATE user_papers SET folder_id = ? WHERE user_id = ? AND pmid = ?",
-                    (folder_id, user["user_id"], pmid),
-                )
+            conn.execute(
+                f"UPDATE user_papers SET folder_id = ? WHERE user_id = ? AND pmid IN ({ph})",
+                [folder_id, uid] + pmid_list,
+            )
         elif action == "remove_folder":
-            for pmid in pmid_list:
-                conn.execute(
-                    "UPDATE user_papers SET folder_id = NULL WHERE user_id = ? AND pmid = ?",
-                    (user["user_id"], pmid),
-                )
+            conn.execute(
+                f"UPDATE user_papers SET folder_id = NULL WHERE user_id = ? AND pmid IN ({ph})",
+                [uid] + pmid_list,
+            )
         elif action == "export_ris":
             ris_content = export_ris(user["user_id"], pmid_list)
             return Response(
@@ -454,6 +457,121 @@ async def bulk_action(
 
     referer = request.headers.get("referer", "/feed")
     return RedirectResponse(referer, status_code=303)
+
+
+@router.post("/feed/export-view")
+async def export_view(request: Request):
+    """Export all papers in the current filtered view as RIS (capped at 1000)."""
+    user = require_auth(request)
+    form = await request.form()
+    view = form.get("view", "all")
+    quartile = form.get("quartile", "q1q2")
+    date_filter = form.get("date_filter", "all")
+    date_from = form.get("date_from", "")
+    date_to = form.get("date_to", "")
+    search = form.get("search", "").strip()
+    profile_id_str = form.get("profile_id", "0")
+    folder_id_str = form.get("folder_id", "")
+    try:
+        profile_id = int(profile_id_str)
+    except (ValueError, TypeError):
+        profile_id = 0
+    try:
+        folder_id: Optional[int] = int(folder_id_str) if folder_id_str else None
+    except (ValueError, TypeError):
+        folder_id = None
+
+    topics_str = form.get("topics", "").strip()
+    selected_topics = [t.strip() for t in topics_str.split(",") if t.strip()] if topics_str else []
+
+    user_yaml = _get_user_yaml(user["username"])
+    q2_hard = user_yaml.get("q2_hard", True)
+
+    where, params, order_by = _build_feed_where(
+        user["user_id"], view, quartile,
+        date_filter, date_from, date_to, search, folder_id,
+        profile_id, q2_hard,
+    )
+    sql = f"""SELECT p.pmid, p.mesh_terms, p.keywords FROM user_papers up
+              JOIN papers p ON p.pmid = up.pmid
+              LEFT JOIN (
+                  SELECT upp.pmid, sp.name
+                  FROM user_paper_profiles upp
+                  JOIN search_profiles sp ON sp.id = upp.profile_id
+                  WHERE upp.user_id = ?
+                  GROUP BY upp.pmid ORDER BY upp.added_at LIMIT 1
+              ) sp ON sp.pmid = p.pmid
+              WHERE {where}
+              ORDER BY {order_by}
+              LIMIT 1000"""
+    with conn_ctx() as conn:
+        rows = conn.execute(sql, [user["user_id"]] + params).fetchall()
+
+    if selected_topics:
+        mesh_topic_map = {k.lower(): v for k, v in user_yaml.get("mesh_topic_map", {}).items()}
+        pmid_list = []
+        for r in rows:
+            paper_topics = _classify_paper(r["mesh_terms"], mesh_topic_map, r["keywords"])
+            if not paper_topics:
+                paper_topics = ["Unclassified"]
+            if any(t in paper_topics for t in selected_topics):
+                pmid_list.append(r["pmid"])
+    else:
+        pmid_list = [r["pmid"] for r in rows]
+
+    if not pmid_list:
+        return RedirectResponse(request.headers.get("referer", "/feed"), status_code=303)
+
+    from app.export import export_ris as _export_ris
+    ris_content = _export_ris(user["user_id"], pmid_list)
+    return Response(
+        content=ris_content,
+        media_type="application/x-research-info-systems",
+        headers={"Content-Disposition": "attachment; filename=medpapers_export.ris"},
+    )
+
+
+@router.post("/feed/mark-all-read")
+async def mark_all_read(request: Request):
+    """Mark all papers in the current filtered view as read."""
+    user = require_auth(request)
+    form = await request.form()
+    view = form.get("view", "unread")
+    quartile = form.get("quartile", "all")
+    date_filter = form.get("date_filter", "all")
+    date_from = form.get("date_from", "")
+    date_to = form.get("date_to", "")
+    search = form.get("search", "").strip()
+    profile_id_str = form.get("profile_id", "0")
+    try:
+        profile_id = int(profile_id_str)
+    except (ValueError, TypeError):
+        profile_id = 0
+    user_yaml = _get_user_yaml(user["username"])
+    q2_hard = user_yaml.get("q2_hard", True)
+
+    where, params, _ = _build_feed_where(
+        user["user_id"], view, quartile,
+        date_filter, date_from, date_to, search, None,
+        profile_id, q2_hard,
+    )
+    sql = f"""UPDATE user_papers SET is_read = 1
+              WHERE (user_id, pmid) IN (
+                  SELECT up.user_id, up.pmid
+                  FROM user_papers up
+                  JOIN papers p ON p.pmid = up.pmid
+                  WHERE {where} AND up.is_read = 0
+              )"""
+    with conn_ctx() as conn:
+        conn.execute(sql, params)
+
+    from urllib.parse import urlencode
+    qp: dict = {"view": view, "quartile": quartile, "date_filter": date_filter}
+    if search:
+        qp["search"] = search
+    if profile_id:
+        qp["profile_id"] = profile_id
+    return RedirectResponse("/feed?" + urlencode(qp), status_code=303)
 
 
 @router.post("/feed/toggle-star/{pmid}")

@@ -44,11 +44,39 @@ def load_user_configs(config: dict) -> list[tuple[str, dict]]:
     return result
 
 
-def should_fetch_today(user_cfg: dict) -> bool:
+def should_fetch_today(user_cfg: dict, user_id: int | None = None, db_path: str = "") -> bool:
     schedule = user_cfg.get("fetch_schedule", "daily")
     if schedule == "daily":
         return True
     today = datetime.now(timezone.utc).date()
+
+    # Determine the required interval in days
+    if schedule == "weekly":
+        required_days = 7
+    elif schedule == "monthly":
+        required_days = 28
+    else:
+        return True
+
+    # If we know the user and have a DB, check when the last successful fetch ran.
+    # Fetch if elapsed time exceeds the required interval, so a missed day is recovered.
+    if user_id and db_path:
+        try:
+            with conn_ctx(db_path) as conn:
+                row = conn.execute(
+                    """SELECT run_at FROM fetch_log
+                       WHERE user_id = ? AND status = 'success'
+                       ORDER BY run_at DESC LIMIT 1""",
+                    (user_id,),
+                ).fetchone()
+            if row:
+                last_run = datetime.fromisoformat(row["run_at"].replace("Z", "+00:00")).date()
+                elapsed = (today - last_run).days
+                return elapsed >= required_days
+        except Exception:
+            pass  # Fall through to day-of-week/month check
+
+    # Fallback: check the scheduled day (original behaviour)
     if schedule == "weekly":
         dow = int(user_cfg.get("fetch_schedule_dow", 0))
         return today.weekday() == dow
@@ -443,7 +471,21 @@ def main():
             print(f"[fetch] Title backfill failed: {e}", file=sys.stderr)
 
     for username, user_cfg in users:
-        if not should_fetch_today(user_cfg):
+        # Resolve user_id first so should_fetch_today can check fetch_log
+        _uid_row = None
+        try:
+            with conn_ctx(db_path) as conn:
+                _uid_row = conn.execute(
+                    "SELECT id FROM users WHERE username = ?", (username,)
+                ).fetchone()
+        except Exception:
+            pass
+        if _uid_row is None:
+            print(f"[fetch] User {username} not in DB, skipping.")
+            continue
+
+        _resolved_uid = _uid_row["id"]
+        if not should_fetch_today(user_cfg, _resolved_uid, db_path):
             schedule = user_cfg.get("fetch_schedule", "daily")
             print(f"[fetch] {username}: skipping (schedule={schedule})")
             continue
@@ -457,7 +499,7 @@ def main():
         run_status = "success"
         error_message = None
         profile_details: list[dict] = []
-        user_id = None
+        user_id = _resolved_uid
 
         try:
             with conn_ctx(db_path) as conn:
@@ -648,6 +690,20 @@ def main():
         )
 
     _launch_llm_highlights(config)
+    _clean_expired_sessions(db_path)
+
+
+def _clean_expired_sessions(db_path: str):
+    """Remove expired session rows — kept small so a restarting server never accumulates them."""
+    try:
+        with conn_ctx(db_path) as conn:
+            deleted = conn.execute(
+                "DELETE FROM sessions WHERE expires_at < datetime('now')"
+            ).rowcount
+        if deleted:
+            print(f"[fetch] Cleaned {deleted} expired session(s).")
+    except Exception as e:
+        print(f"[fetch] Could not clean sessions: {e}", file=sys.stderr)
 
 
 def _launch_llm_highlights(config: dict):

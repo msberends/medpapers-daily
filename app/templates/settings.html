@@ -3,9 +3,9 @@
 
 {% block extra_head %}
 <style>
-  .nav-tabs .nav-link { color: #555; }
+  .nav-tabs .nav-link { color: var(--bs-secondary-color); }
   .form-label { font-weight: 500; }
-  .profile-row, .mesh-row { background: #f8f9fa; border-radius: 6px; }
+  .profile-row, .mesh-row { background: var(--bs-tertiary-bg); border-radius: 6px; }
   .handle { cursor: grab; color: #adb5bd; }
   .tip-box { background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle);
              color: var(--bs-primary-text-emphasis); border-radius: 6px; }
@@ -13,16 +13,17 @@
   .topic-name-input:hover { border-color: var(--bs-border-color) !important; }
   .topic-name-input:focus { border-color: var(--bs-primary) !important; background: var(--bs-body-bg) !important; box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb),.15) !important; }
   .topic-chevron { flex-shrink: 0; transition: transform .15s ease; }
-  .chip-colour-blue  {background-color:rgba(13,110,253,.1); color:#0d6efd;border-color:rgba(13,110,253,.3)!important}
-  .chip-colour-indigo{background-color:rgba(102,16,242,.1);color:#6610f2;border-color:rgba(102,16,242,.3)!important}
-  .chip-colour-purple{background-color:rgba(111,66,193,.1); color:#6f42c1;border-color:rgba(111,66,193,.3)!important}
-  .chip-colour-pink  {background-color:rgba(214,51,132,.1); color:#d63384;border-color:rgba(214,51,132,.3)!important}
-  .chip-colour-red   {background-color:rgba(220,53,69,.1);  color:#dc3545;border-color:rgba(220,53,69,.3) !important}
-  .chip-colour-orange{background-color:rgba(253,126,20,.1); color:#fd7e14;border-color:rgba(253,126,20,.3)!important}
-  .chip-colour-yellow{background-color:rgba(255,193,7,.1);  color:#997404;border-color:rgba(255,193,7,.3) !important}
-  .chip-colour-green {background-color:rgba(25,135,84,.1);  color:#198754;border-color:rgba(25,135,84,.3) !important}
-  .chip-colour-teal  {background-color:rgba(32,201,151,.1); color:#20c997;border-color:rgba(32,201,151,.3)!important}
-  .chip-colour-cyan  {background-color:rgba(13,202,240,.1); color:#0aa2c0;border-color:rgba(13,202,240,.3)!important}
+  /* chip-colour-* use identical values to badge-topic-* in base.html for visual consistency */
+  .chip-colour-blue  {background:#dce8ff;border:1px solid #a8c0f5;color:#1a3878}
+  .chip-colour-indigo{background:#e4d8ff;border:1px solid #b89cf5;color:#280870}
+  .chip-colour-purple{background:#ede0ff;border:1px solid #c4a8f8;color:#3d1a82}
+  .chip-colour-pink  {background:#ffe0ef;border:1px solid #f4a8cc;color:#880048}
+  .chip-colour-red   {background:#ffe0e0;border:1px solid #f4a8a8;color:#7a1818}
+  .chip-colour-orange{background:#ffe8dc;border:1px solid #f4b89a;color:#7a2808}
+  .chip-colour-yellow{background:#fff8dc;border:1px solid #f5e87a;color:#4a3c00}
+  .chip-colour-green {background:#ccf4ea;border:1px solid #80d8b8;color:#005544}
+  .chip-colour-teal  {background:#ccf4f0;border:1px solid #80d8d0;color:#004840}
+  .chip-colour-cyan  {background:#ccf0f8;border:1px solid #80d0e8;color:#004860}
 </style>
 {% endblock %}
 
@@ -33,28 +34,19 @@
   <h3 class="mb-1"><i class="bi bi-person-gear me-2"></i>Settings</h3>
   <p class="text-muted mb-4">Configure what you monitor, how often, and how results are presented to you.</p>
 
-  {% if saved %}
-  <div class="alert alert-success alert-dismissible py-2" role="alert">
-    <i class="bi bi-check-circle me-1"></i> Changes saved.
-    <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-  </div>
-  {% endif %}
-  {% if error %}
-  <div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
-  {% endif %}
-
+  {% set active_tab = tab if tab in ['profiles', 'mesh', 'password'] else 'general' %}
   <ul class="nav nav-tabs mb-4" id="settingsTabs">
-    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-general">General</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">Topics</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-password">Password</a></li>
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'general' %}active{% endif %}" data-bs-toggle="tab" href="#tab-general">General</a></li>
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'profiles' %}active{% endif %}" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'mesh' %}active{% endif %}" data-bs-toggle="tab" href="#tab-mesh">Topics</a></li>
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'password' %}active{% endif %}" data-bs-toggle="tab" href="#tab-password">Password</a></li>
   </ul>
 
   <div class="tab-content">
 
     {# ── General ── #}
-    <div class="tab-pane fade show active" id="tab-general">
-      <form method="post" action="/settings/save">
+    <div class="tab-pane fade {% if active_tab == 'general' %}show active{% endif %}" id="tab-general">
+      <form method="post" action="/settings/save/general">
 
         <div class="card mb-3">
           <div class="card-header fw-semibold"><i class="bi bi-person me-1"></i>Account</div>
@@ -87,7 +79,16 @@
               </select>
               <div class="form-text">Applies across the whole application after the next page load. Choosing <em>Default</em> follows the administrator's theme setting.</div>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-3">
+              <label class="form-label">Dark / light mode</label>
+              <select name="theme_mode" class="form-select" style="max-width:160px">
+                <option value="" {% if cfg.get('theme_mode', '') not in ('dark', 'system') %}selected{% endif %}>Light</option>
+                <option value="dark" {% if cfg.get('theme_mode') == 'dark' %}selected{% endif %}>Dark</option>
+                <option value="system" {% if cfg.get('theme_mode') == 'system' %}selected{% endif %}>System</option>
+              </select>
+              <div class="form-text">Switches the colour palette. <em>System</em> follows your device preference automatically.</div>
+            </div>
+            <div class="col-md-3">
               <label class="form-label">Papers per page</label>
               <select name="page_size" class="form-select" style="max-width:120px">
                 {% for n in [10, 25, 50, 100, 150, 200, 500] %}
@@ -277,18 +278,6 @@
           </div>
         </div>
 
-        {# Hidden profile/mesh fields so the save endpoint gets current values #}
-        {% for p in cfg.get('search_profiles', []) %}
-        <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
-        <input type="hidden" name="profile_name" value="{{ p.name }}">
-        <input type="hidden" name="profile_query" value="{{ p.query }}">
-        <input type="hidden" name="profile_enabled" value="{{ '1' if p.get('enabled', True) else '0' }}">
-        {% endfor %}
-        {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
-        <input type="hidden" name="mesh_term" value="{{ term }}">
-        <input type="hidden" name="mesh_topic" value="{{ topic }}">
-        {% endfor %}
-
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-check-lg me-1"></i>Save general settings
         </button>
@@ -296,7 +285,7 @@
     </div>
 
     {# ── Search Profiles ── #}
-    <div class="tab-pane fade" id="tab-profiles">
+    <div class="tab-pane fade {% if active_tab == 'profiles' %}show active{% endif %}" id="tab-profiles">
 
       {# Per-profile reset forms — defined outside the main form to avoid nesting #}
       {% for p in cfg.get('search_profiles', []) %}
@@ -307,8 +296,7 @@
       {% endif %}
       {% endfor %}
 
-      <form method="post" action="/settings/save" id="profilesForm">
-        <input type="hidden" name="relevance_tab" value="1">
+      <form method="post" action="/settings/save/profiles" id="profilesForm">
 
         <div class="tip-box p-3 mb-4">
           <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How search profiles work</p>
@@ -353,10 +341,17 @@
                 <label class="form-label small">PubMed query</label>
                 <textarea name="profile_query" class="form-control form-control-sm font-monospace"
                           rows="3" placeholder="e.g. &quot;antimicrobial resistance&quot;[MeSH]">{{ p.query }}</textarea>
+                <div class="d-flex align-items-center gap-2 mt-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary test-query-btn"
+                          onclick="testProfileQuery(this)" title="Validate query against PubMed live">
+                    <i class="bi bi-check-circle me-1"></i>Validate
+                  </button>
+                  <div class="query-test-result small"></div>
+                </div>
               </div>
-              <div class="col-md-1 d-flex align-items-end justify-content-end pb-1">
+              <div class="col-md-1 d-flex align-items-start justify-content-end pt-4">
                 <button type="button" class="btn btn-sm btn-outline-danger"
-                        onclick="this.closest('.profile-row').remove()">
+                        onclick="this.closest('.profile-row').remove()" title="Remove this profile">
                   <i class="bi bi-trash"></i>
                 </button>
               </div>
@@ -448,32 +443,6 @@
           </div>
         </div>
 
-        {# Pass-through: general settings #}
-        <input type="hidden" name="display_name" value="{{ user.display_name or '' }}">
-        <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
-        {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
-        {% if cfg.get('email_only_new', True) %}<input type="hidden" name="email_only_new" value="1">{% endif %}
-        {% if cfg.get('email_group_by_profile', False) %}<input type="hidden" name="email_group_by_profile" value="1">{% endif %}
-        {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
-        <input type="hidden" name="fetch_schedule" value="{{ cfg.get('fetch_schedule', 'daily') }}">
-        <input type="hidden" name="fetch_schedule_dow" value="{{ cfg.get('fetch_schedule_dow', 0) }}">
-        <input type="hidden" name="fetch_schedule_dom" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
-        <input type="hidden" name="page_size" value="{{ cfg.get('page_size', 50) }}">
-        <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
-        <input type="hidden" name="bootstrap_theme" value="{{ cfg.get('bootstrap_theme', '') }}">
-        {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
-        {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
-        {% if cfg.get('show_flags', True) %}<input type="hidden" name="show_flags" value="1">{% endif %}
-        {% if cfg.get('show_flags_feed', True) %}<input type="hidden" name="show_flags_feed" value="1">{% endif %}
-        {% if cfg.get('show_export_ris', True) %}<input type="hidden" name="show_export_ris" value="1">{% endif %}
-        {% if cfg.get('show_export_nbib', False) %}<input type="hidden" name="show_export_nbib" value="1">{% endif %}
-        <input type="hidden" name="abstract_style" value="{{ cfg.get('abstract_style', 'accent') }}">
-        {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
-        {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
-        <input type="hidden" name="mesh_term" value="{{ term }}">
-        <input type="hidden" name="mesh_topic" value="{{ topic }}">
-        {% endfor %}
-
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-check-lg me-1"></i>Save search profiles
         </button>
@@ -496,16 +465,25 @@
     </div>
 
     {# ── Topics ── #}
-    <div class="tab-pane fade" id="tab-mesh">
-      <form method="post" action="/settings/save" id="meshForm">
-        <input type="hidden" name="topics_tab" value="1">
+    <div class="tab-pane fade {% if active_tab == 'mesh' %}show active{% endif %}" id="tab-mesh">
+      <form method="post" action="/settings/save/topics" id="meshForm">
         <input type="hidden" name="mesh_topic_colours_json" value="">
 
-        <div class="tip-box p-3 mb-4">
+        <div class="tip-box p-3 mb-3">
           <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How topic classification works</p>
           <p class="small mb-2">Papers are classified by matching their <strong>MeSH headings</strong> and <strong>author keywords</strong> against the terms you assign to each topic. A paper can belong to more than one topic. Papers with no matching terms show as <em>Unclassified</em>. Changes take effect immediately without re-fetching.</p>
           <p class="small mb-0">MeSH headings are controlled vocabulary assigned by NLM indexers — use the <a href="https://www.ncbi.nlm.nih.gov/mesh/" target="_blank" rel="noopener">NLM MeSH Browser</a> for exact headings. Author keywords are free-text from authors and match exactly as written. Recent papers may lack MeSH terms; author keywords fill this gap until indexing is complete.</p>
         </div>
+
+        {% if llm_topic_available %}
+        <div class="mb-4">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="suggestTermsBtn"
+                  onclick="suggestTopicTerms()">
+            <i class="bi bi-stars me-1"></i>Suggest term assignments with LLM
+          </button>
+          <div class="form-text mt-1">Asks the LLM to suggest which unassigned terms from your library belong to your existing topics. You confirm before anything is applied.</div>
+        </div>
+        {% endif %}
 
         {# ── Library terms panel ── #}
         {% if all_mesh_terms or all_keywords %}
@@ -658,34 +636,6 @@
           <p class="mb-0">No topics yet. Click <strong>New topic</strong> to get started.</p>
         </div>
 
-        {# Pass-through: preserves all other settings when saving from this tab #}
-        <input type="hidden" name="display_name" value="{{ user.display_name or '' }}">
-        <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
-        {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
-        {% if cfg.get('email_only_new', True) %}<input type="hidden" name="email_only_new" value="1">{% endif %}
-        {% if cfg.get('email_group_by_profile', False) %}<input type="hidden" name="email_group_by_profile" value="1">{% endif %}
-        {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
-        <input type="hidden" name="fetch_schedule" value="{{ cfg.get('fetch_schedule', 'daily') }}">
-        <input type="hidden" name="fetch_schedule_dow" value="{{ cfg.get('fetch_schedule_dow', 0) }}">
-        <input type="hidden" name="fetch_schedule_dom" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
-        <input type="hidden" name="page_size" value="{{ cfg.get('page_size', 50) }}">
-        <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
-        <input type="hidden" name="bootstrap_theme" value="{{ cfg.get('bootstrap_theme', '') }}">
-        {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
-        {% if cfg.get('feed_group_by_profile', False) %}<input type="hidden" name="feed_group_by_profile" value="1">{% endif %}
-        {% if cfg.get('show_flags', True) %}<input type="hidden" name="show_flags" value="1">{% endif %}
-        {% if cfg.get('show_flags_feed', True) %}<input type="hidden" name="show_flags_feed" value="1">{% endif %}
-        {% if cfg.get('show_export_ris', True) %}<input type="hidden" name="show_export_ris" value="1">{% endif %}
-        {% if cfg.get('show_export_nbib', False) %}<input type="hidden" name="show_export_nbib" value="1">{% endif %}
-        <input type="hidden" name="abstract_style" value="{{ cfg.get('abstract_style', 'accent') }}">
-        {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
-        {% for p in cfg.get('search_profiles', []) %}
-        <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
-        <input type="hidden" name="profile_name" value="{{ p.name }}">
-        <input type="hidden" name="profile_query" value="{{ p.query }}">
-        <input type="hidden" name="profile_enabled" value="{{ '1' if p.get('enabled', True) else '0' }}">
-        {% endfor %}
-
         <button type="submit" class="btn btn-primary mt-3">
           <i class="bi bi-check-lg me-1"></i>Save topics
         </button>
@@ -693,7 +643,7 @@
     </div>
 
     {# ── Password ── #}
-    <div class="tab-pane fade" id="tab-password">
+    <div class="tab-pane fade {% if active_tab == 'password' %}show active{% endif %}" id="tab-password">
       <div class="card" style="max-width:480px">
         <div class="card-header fw-semibold"><i class="bi bi-lock me-1"></i>Change Password</div>
         <div class="card-body">
@@ -720,6 +670,34 @@
 
   </div>{# end tab-content #}
 
+  {# ── Topic term suggestions modal ── #}
+  <div class="modal fade" id="topicSuggestModal" tabindex="-1" aria-labelledby="topicSuggestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="topicSuggestModalLabel">
+            <i class="bi bi-stars me-1"></i>LLM term suggestions
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3" id="topicSuggestIntro">
+            The LLM has suggested the following term assignments. Untick any suggestions you do not want to apply, then click <strong>Apply selected</strong>. No changes are saved until you click <strong>Save topics</strong>.
+          </p>
+          <div id="topicSuggestList"></div>
+        </div>
+        <div class="modal-footer">
+          <span class="me-auto small text-muted" id="topicSuggestCount"></span>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="applyTopicSuggestionsBtn"
+                  onclick="applyTopicSuggestions()">
+            <i class="bi bi-check-lg me-1"></i>Apply selected
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {# ── LLM prompt modal (shared, reused across all profiles) ── #}
   <div class="modal fade" id="promptModal" tabindex="-1" aria-labelledby="promptModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -739,12 +717,38 @@
           <textarea id="promptTextarea" class="form-control font-monospace" rows="12" readonly
                     style="resize:vertical;font-size:.85em"></textarea>
           <div id="llmResponseArea" class="mt-3" style="display:none">
-            <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="d-flex justify-content-between align-items-center mb-2">
               <span class="small fw-semibold"><i class="bi bi-stars me-1"></i>LLM suggestion</span>
-              <small class="text-muted">Review carefully before updating your query.</small>
+              <small class="text-muted">Review carefully before applying.</small>
             </div>
-            <div id="llmResponseText" class="border rounded p-3 bg-body-tertiary"
-                 style="font-size:.875em;white-space:pre-wrap;font-family:inherit"></div>
+            <div id="llmParsedArea" style="display:none">
+              <div class="mb-3">
+                <p class="form-label small fw-semibold mb-2">Query changes</p>
+                <div class="row g-2">
+                  <div class="col-6">
+                    <div class="small text-muted mb-1">Current</div>
+                    <div id="llmDiffOld" class="border rounded p-2 font-monospace bg-body-tertiary"
+                         style="font-size:.82em;line-height:1.75;min-height:56px;white-space:pre-wrap;word-break:break-word"></div>
+                  </div>
+                  <div class="col-6">
+                    <div class="small text-muted mb-1">Suggested</div>
+                    <div id="llmDiffNew" class="border rounded p-2 font-monospace bg-body-tertiary"
+                         style="font-size:.82em;line-height:1.75;min-height:56px;white-space:pre-wrap;word-break:break-word"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label small fw-semibold mb-1">Suggested query <span class="fw-normal text-muted">(editable before applying)</span></label>
+                <textarea id="llmParsedQuery" class="form-control form-control-sm font-monospace" rows="3"
+                          style="font-size:.85em"></textarea>
+              </div>
+              <div id="llmRationale" class="small text-muted border-start border-2 ps-2 mb-3" style="display:none"></div>
+            </div>
+            <details class="small">
+              <summary class="text-muted" style="cursor:pointer">Raw LLM response</summary>
+              <div id="llmResponseText" class="border rounded p-2 mt-1 bg-body-tertiary"
+                   style="font-size:.85em;white-space:pre-wrap;font-family:monospace"></div>
+            </details>
           </div>
         </div>
         <div class="modal-footer">
@@ -753,6 +757,10 @@
             <i class="bi bi-stars me-1"></i>Run with LLM
           </button>
           {% endif %}
+          <button type="button" id="applyQueryBtn" class="btn btn-success me-auto" style="display:none"
+                  onclick="applyLlmQuery()">
+            <i class="bi bi-check2 me-1"></i>Apply query
+          </button>
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
           <button type="button" class="btn btn-primary" id="copyPromptBtn" onclick="copyPrompt()">
             <i class="bi bi-clipboard me-1"></i>Copy to clipboard
@@ -768,6 +776,33 @@
 {% block extra_scripts %}
 <script>
 let _peIdx = 1000;
+
+async function testProfileQuery(btn) {
+  const row = btn.closest('.profile-row');
+  const ta = row.querySelector('textarea[name="profile_query"]');
+  const resultDiv = row.querySelector('.query-test-result');
+  const query = (ta ? ta.value : '').trim();
+  if (!query) { resultDiv.innerHTML = '<span class="text-warning">Enter a query first.</span>'; return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  resultDiv.innerHTML = '';
+  try {
+    const r = await fetch('/settings/test-profile-query?query=' + encodeURIComponent(query));
+    const data = await r.json();
+    if (data.error) {
+      resultDiv.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>' + escapeHtml(data.error) + '</span>';
+    } else {
+      const n = data.count;
+      const cls = n === 0 ? 'text-warning' : 'text-success';
+      resultDiv.innerHTML = '<span class="' + cls + '"><i class="bi bi-check-circle me-1"></i>' + n.toLocaleString() + ' result' + (n !== 1 ? 's' : '') + ' on PubMed (all time)</span>';
+    }
+  } catch (e) {
+    resultDiv.innerHTML = '<span class="text-danger">Request failed.</span>';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Validate';
+}
+
 function addProfile() {
   const idx = _peIdx++;
   const html = `<div class="profile-row p-3 mb-3 border">
@@ -780,9 +815,16 @@ function addProfile() {
       <div class="col-md-8">
         <label class="form-label small">PubMed query</label>
         <textarea name="profile_query" class="form-control form-control-sm font-monospace" rows="3" placeholder='e.g. "antimicrobial resistance"[MeSH]'></textarea>
+        <div class="d-flex align-items-center gap-2 mt-1">
+          <button type="button" class="btn btn-sm btn-outline-secondary test-query-btn"
+                  onclick="testProfileQuery(this)" title="Validate query against PubMed live">
+            <i class="bi bi-check-circle me-1"></i>Validate
+          </button>
+          <div class="query-test-result small"></div>
+        </div>
       </div>
-      <div class="col-md-1 d-flex align-items-end justify-content-end pb-1">
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.profile-row').remove()">
+      <div class="col-md-1 d-flex align-items-start justify-content-end pt-4">
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.profile-row').remove()" title="Remove this profile">
           <i class="bi bi-trash"></i>
         </button>
       </div>
@@ -998,9 +1040,54 @@ updateScheduleUI();
 // ── LLM prompt generation ─────────────────────────────────────────────────
 
 let _currentProfileId = null;
+let _currentOldQuery  = '';
+
+function _lcsTable(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m + 1}, () => new Int32Array(n + 1));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+  return dp;
+}
+
+function _wordDiff(oldStr, newStr) {
+  const a = (oldStr || '').trim().split(/\s+/).filter(Boolean);
+  const b = (newStr || '').trim().split(/\s+/).filter(Boolean);
+  const dp = _lcsTable(a, b);
+  const ops = [];
+  let i = a.length, j = b.length;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && a[i-1] === b[j-1]) { ops.unshift({t:'eq', v:a[i-1]}); i--; j--; }
+    else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) { ops.unshift({t:'add', v:b[j-1]}); j--; }
+    else { ops.unshift({t:'del', v:a[i-1]}); i--; }
+  }
+  return ops;
+}
+
+function _renderDiffSide(ops, side) {
+  return ops.flatMap(op => {
+    const t = escapeHtml(op.v);
+    if (op.t === 'eq') return [t];
+    if (op.t === 'del' && side === 'old')
+      return [`<mark style="background:rgba(220,53,69,.18);color:var(--bs-danger-text-emphasis);text-decoration:line-through;border-radius:2px;padding:0 1px">${t}</mark>`];
+    if (op.t === 'add' && side === 'new')
+      return [`<mark style="background:rgba(25,135,84,.18);color:var(--bs-success-text-emphasis);border-radius:2px;padding:0 1px">${t}</mark>`];
+    return [];
+  }).join(' ');
+}
 
 async function generatePrompt(profileId) {
   _currentProfileId = profileId;
+  _currentOldQuery  = '';
+  for (const row of document.querySelectorAll('.profile-row')) {
+    const hiddenId = row.querySelector('input[name="profile_id"]');
+    if (hiddenId && hiddenId.value === String(profileId)) {
+      const ta = row.querySelector('textarea[name="profile_query"]');
+      if (ta) _currentOldQuery = ta.value.trim();
+      break;
+    }
+  }
   const btn = document.getElementById('suggest-btn-' + profileId);
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
@@ -1015,6 +1102,7 @@ async function generatePrompt(profileId) {
     document.getElementById('copyPromptBtn').innerHTML =
       '<i class="bi bi-clipboard me-1"></i>Copy to clipboard';
     document.getElementById('llmResponseArea').style.display = 'none';
+    document.getElementById('llmParsedArea').style.display = 'none';
     document.getElementById('llmResponseText').textContent = '';
     new bootstrap.Modal(document.getElementById('promptModal')).show();
   } catch (err) {
@@ -1033,6 +1121,8 @@ async function runWithAI() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Querying LLM…';
   document.getElementById('llmResponseArea').style.display = 'none';
+  document.getElementById('llmParsedArea').style.display = 'none';
+  document.getElementById('applyQueryBtn').style.display = 'none';
   document.getElementById('llmResponseText').textContent = '';
   try {
     const resp = await fetch('/settings/run-profile-llm/' + _currentProfileId, {method: 'POST'});
@@ -1040,6 +1130,28 @@ async function runWithAI() {
     if (data.error) throw new Error(data.error);
     document.getElementById('llmResponseText').textContent = data.response;
     document.getElementById('llmResponseArea').style.display = '';
+    if (data.parsed && data.parsed.query) {
+      const newQuery = data.parsed.query.trim();
+      document.getElementById('llmParsedQuery').value = newQuery;
+
+      // Diff: word-level comparison of old vs suggested query
+      const ops = _wordDiff(_currentOldQuery, newQuery);
+      document.getElementById('llmDiffOld').innerHTML = _renderDiffSide(ops, 'old');
+      document.getElementById('llmDiffNew').innerHTML = _renderDiffSide(ops, 'new');
+
+      // Rationale — only show if non-empty
+      const rationaleEl = document.getElementById('llmRationale');
+      const rationale = (data.parsed.rationale || '').trim();
+      if (rationale) {
+        rationaleEl.textContent = rationale;
+        rationaleEl.style.display = '';
+      } else {
+        rationaleEl.style.display = 'none';
+      }
+
+      document.getElementById('llmParsedArea').style.display = '';
+      document.getElementById('applyQueryBtn').style.display = '';
+    }
   } catch (err) {
     alert('LLM request failed: ' + err.message);
     console.error(err);
@@ -1047,6 +1159,22 @@ async function runWithAI() {
     btn.disabled = false;
     btn.innerHTML = originalHtml;
   }
+}
+
+function applyLlmQuery() {
+  const newQuery = (document.getElementById('llmParsedQuery').value || '').trim();
+  if (!newQuery || !_currentProfileId) return;
+  // Find the profile row for _currentProfileId and update its textarea
+  const allRows = document.querySelectorAll('.profile-row');
+  for (const row of allRows) {
+    const hiddenId = row.querySelector('input[name="profile_id"]');
+    if (hiddenId && hiddenId.value === String(_currentProfileId)) {
+      const ta = row.querySelector('textarea[name="profile_query"]');
+      if (ta) { ta.value = newQuery; }
+      break;
+    }
+  }
+  bootstrap.Modal.getInstance(document.getElementById('promptModal')).hide();
 }
 
 function copyPrompt() {
@@ -1062,18 +1190,164 @@ function copyPrompt() {
   });
 }
 
-// Restore active tab from URL hash or ?tab= query param (used after save redirects)
-const urlParams = new URLSearchParams(window.location.search);
-const tabParam = urlParams.get('tab');
-if (tabParam) {
-  const tab = document.querySelector(`[href="#tab-${tabParam}"]`);
-  if (tab) new bootstrap.Tab(tab).show();
-} else {
-  const hash = window.location.hash;
-  if (hash) {
-    const tab = document.querySelector(`[href="${hash}"]`);
-    if (tab) new bootstrap.Tab(tab).show();
+// ── LLM topic term suggestions ──────────────────────────────────────────────
+
+let _topicSuggestions = [];
+let _suggestingTerms = false;
+
+async function suggestTopicTerms() {
+  if (_suggestingTerms) return;
+  const btn = document.getElementById('suggestTermsBtn');
+  if (!btn) return;
+
+  // Collect current DOM state: topic names + all currently assigned terms
+  const topics = [];
+  const assignedTerms = [];
+  document.querySelectorAll('.topic-card').forEach(card => {
+    const name = card.querySelector('.topic-name-input').value.trim();
+    if (name) topics.push(name);
+    card.querySelectorAll('.term-chip').forEach(chip => {
+      if (chip.dataset.term) assignedTerms.push(chip.dataset.term.toLowerCase());
+    });
+  });
+
+  if (!topics.length) {
+    alert('Add at least one topic first before asking for suggestions.');
+    return;
+  }
+
+  _suggestingTerms = true;
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Asking LLM…';
+
+  try {
+    const resp = await fetch('/settings/suggest-topic-terms', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({topics, assigned_terms: assignedTerms}),
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    _topicSuggestions = data.suggestions || [];
+    _showTopicSuggestModal(_topicSuggestions, topics);
+  } catch (err) {
+    alert('LLM request failed: ' + err.message);
+    console.error(err);
+  } finally {
+    _suggestingTerms = false;
+    btn.innerHTML = originalHtml;
   }
 }
+
+function _showTopicSuggestModal(suggestions, topics) {
+  const listEl  = document.getElementById('topicSuggestList');
+  const countEl = document.getElementById('topicSuggestCount');
+  const introEl = document.getElementById('topicSuggestIntro');
+
+  if (!suggestions.length) {
+    listEl.innerHTML = '<p class="text-muted mb-0">No confident suggestions could be made for the current topics and unassigned terms.</p>';
+    countEl.textContent = '';
+    document.getElementById('applyTopicSuggestionsBtn').disabled = true;
+    introEl.style.display = 'none';
+  } else {
+    document.getElementById('applyTopicSuggestionsBtn').disabled = false;
+    introEl.style.display = '';
+
+    // Group by topic for readability
+    const grouped = {};
+    suggestions.forEach(s => {
+      if (!grouped[s.topic]) grouped[s.topic] = [];
+      grouped[s.topic].push(s.term);
+    });
+
+    let html = '<div class="list-group list-group-flush">';
+    let idx = 0;
+    Object.entries(grouped).forEach(([topic, terms]) => {
+      terms.forEach(term => {
+        html += `<label class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2 px-2" style="cursor:pointer">
+          <input class="form-check-input flex-shrink-0 topic-suggest-check" type="checkbox"
+                 data-term="${escapeHtml(term)}" data-topic="${escapeHtml(topic)}" checked>
+          <span class="text-truncate"><code class="me-1">${escapeHtml(term)}</code><span class="text-muted mx-1">&rarr;</span>${escapeHtml(topic)}</span>
+        </label>`;
+        idx++;
+      });
+    });
+    html += '</div>';
+    listEl.innerHTML = html;
+    _updateSuggestCount();
+
+    // Live-update count as checkboxes change
+    listEl.querySelectorAll('.topic-suggest-check').forEach(cb =>
+      cb.addEventListener('change', _updateSuggestCount)
+    );
+  }
+
+  new bootstrap.Modal(document.getElementById('topicSuggestModal')).show();
+}
+
+function _updateSuggestCount() {
+  const total   = document.querySelectorAll('.topic-suggest-check').length;
+  const checked = document.querySelectorAll('.topic-suggest-check:checked').length;
+  document.getElementById('topicSuggestCount').textContent =
+    checked + ' of ' + total + ' suggestion' + (total === 1 ? '' : 's') + ' selected';
+}
+
+function applyTopicSuggestions() {
+  const checks = document.querySelectorAll('.topic-suggest-check:checked');
+  checks.forEach(cb => {
+    const term  = cb.dataset.term;
+    const topic = cb.dataset.topic;
+    const card  = [...document.querySelectorAll('.topic-card')].find(c =>
+      c.querySelector('.topic-name-input').value.trim() === topic
+    );
+    if (!card) return;
+    const body = card.querySelector('.topic-body');
+    if (body.style.display === 'none') {
+      body.style.display = '';
+      card.querySelector('.topic-chevron').style.transform = 'rotate(90deg)';
+    }
+    addTermChip(card.querySelector('.topic-chips'), term, card.dataset.colour || 'primary');
+    updateTermCount(card);
+  });
+
+  bootstrap.Modal.getInstance(document.getElementById('topicSuggestModal')).hide();
+
+  // Briefly highlight the save button to remind the user to save
+  const saveBtn = document.querySelector('#meshForm button[type="submit"]');
+  if (saveBtn) {
+    saveBtn.classList.add('btn-success');
+    saveBtn.classList.remove('btn-primary');
+    setTimeout(() => {
+      saveBtn.classList.remove('btn-success');
+      saveBtn.classList.add('btn-primary');
+    }, 3000);
+  }
+}
+
+// ── End LLM topic term suggestions ──────────────────────────────────────────
+
+// Warn before navigating away or switching tabs with unsaved changes
+let _formDirty = false;
+document.querySelectorAll('form input, form textarea, form select').forEach(el => {
+  el.addEventListener('change', () => { _formDirty = true; });
+  el.addEventListener('input', () => { _formDirty = true; });
+});
+document.querySelectorAll('form[method="post"]').forEach(f => {
+  f.addEventListener('submit', () => { _formDirty = false; });
+});
+window.addEventListener('beforeunload', e => {
+  if (_formDirty) { e.preventDefault(); e.returnValue = ''; }
+});
+document.querySelectorAll('#settingsTabs .nav-link').forEach(tab => {
+  tab.addEventListener('click', e => {
+    if (_formDirty && !confirm('You have unsaved changes. Switch tab anyway?')) {
+      e.preventDefault();
+      e.stopPropagation();
+    } else {
+      _formDirty = false;
+    }
+  });
+});
 </script>
 {% endblock %}

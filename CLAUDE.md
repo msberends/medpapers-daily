@@ -83,6 +83,24 @@ The FastAPI process is never exposed directly.
 15 6 * * * /var/www/papersdaily/venv/bin/python /var/www/papersdaily/email_digest.py >> /var/www/papersdaily/logs/email.log 2>&1
 ```
 
+## Settings form passthrough pattern
+
+`/settings/save` is a **single endpoint** shared by three separate forms (General, Search Profiles, Topics). Each form owns some fields and must pass through the others as hidden inputs so they are not wiped on save.
+
+**Ownership:**
+- **General tab** owns: all the main user preferences (`email`, `fetch_*`, `page_size`, `lookback_days`, `show_*`, `q2_hard`, `bootstrap_theme`, `abstract_style`, `display_name`, …).
+- **Search Profiles tab** owns: `profile_name[]`, `profile_query[]`, `profile_enabled[]` (and the `relevance_tab` sentinel + relevance alert fields).
+- **Topics tab** owns: `mesh_term[]`, `mesh_topic[]`, `mesh_topic_colours_json` (serialised by JS on submit) and the `topics_tab` sentinel.
+
+**Two special cases handled by the `**existing` spread** — these keys are only written to `data` when their sentinel field is present in the form, so they are automatically preserved from the saved YAML for all other tabs and do NOT need explicit passthrough:
+- `mesh_topic_colours` — only written when `topics_tab` in form.
+- `relevance_alert_*` — only written when `relevance_tab` in form.
+
+**Rule: when you add a new user-facing setting to `save_settings`, you must:**
+1. Add it as a real input in the tab that owns it.
+2. Add a matching `<input type="hidden">` passthrough in every other tab's passthrough block (the comments `{# Pass-through: … #}` mark these blocks). Checkboxes use the conditional pattern `{% if cfg.get('key', default) %}<input type="hidden" name="key" value="1">{% endif %}`.
+3. If the setting is only written conditionally (guarded by a sentinel like `topics_tab`), it does NOT need a passthrough — the `**existing` spread preserves it.
+
 ## Sample files (public repo hygiene)
 
 `config.yaml` and `users/*.yaml` contain secrets and personal data and are excluded from git. Their sanitised counterparts **must be kept in sync**:

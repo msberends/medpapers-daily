@@ -1,7 +1,5 @@
 import re
 
-import requests
-
 DEFAULT_HIGHLIGHTS_PROMPT = (
     "You summarise scientific abstracts into journal-style Highlights. "
     "When given an abstract, respond with 3 to 5 bullet points that capture "
@@ -25,30 +23,20 @@ def call_llm(config: dict, system_prompt: str, user_message: str,
         raise ValueError("No model name configured")
 
     if provider == "claude":
+        import anthropic
         api_key = (config.get("llm_api_key") or "").strip()
         if not api_key:
             raise ValueError("Claude API key not configured")
-        payload: dict = {
-            "model": model,
-            "max_tokens": 512,
-            "messages": [{"role": "user", "content": user_message}],
-        }
+        client = anthropic.Anthropic(api_key=api_key)
+        kwargs: dict = {"model": model, "max_tokens": 512,
+                        "messages": [{"role": "user", "content": user_message}]}
         if system_prompt:
-            payload["system"] = system_prompt
-        resp = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json=payload,
-            timeout=timeout,
-        )
-        resp.raise_for_status()
-        return resp.json()["content"][0]["text"]
+            kwargs["system"] = system_prompt
+        message = client.messages.create(**kwargs)
+        return message.content[0].text
 
     elif provider == "chatgpt":
+        import requests
         api_key = (config.get("llm_api_key") or "").strip()
         if not api_key:
             raise ValueError("OpenAI API key not configured")
@@ -69,6 +57,7 @@ def call_llm(config: dict, system_prompt: str, user_message: str,
         return resp.json()["choices"][0]["message"]["content"]
 
     elif provider == "ollama":
+        import requests
         base_url = (config.get("llm_ollama_url") or "http://localhost:11434").rstrip("/")
         messages = []
         if system_prompt:

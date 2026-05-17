@@ -12,6 +12,43 @@ A self-hosted monitor for medical scientific literature. This webapp fetches pap
 - Per-user PubMed search profiles
 - Multi-user support with an admin panel
 
+## Security
+
+MedPapers Daily is a closed, admin-provisioned tool — there is no self-registration. The following hardening measures are built in.
+
+### Authentication & sessions
+
+- **Constant-time login.** A dummy bcrypt hash is always checked when a username is not found, so valid and invalid usernames produce identical response times and cannot be enumerated by timing.
+- **Brute-force protection.** Failed login attempts are tracked per IP and per username. Accounts are locked and a back-off delay is applied after repeated failures within a rolling window.
+- **CSRF mitigation.** The session cookie is set with `SameSite=Lax`, which browsers enforce for all cross-site form submissions and navigations, making classic CSRF attacks ineffective.
+- **Session invalidation on password change.** Changing a password immediately deletes all other active sessions from the database — a stolen session cookie cannot be used after the victim changes their password.
+- **SHA-256 session tokens.** Raw tokens are never stored in the database; only their SHA-256 digest is kept. Sessions expire after 90 days.
+
+### Injection & XSS prevention
+
+- **Paper titles are HTML-sanitised.** PubMed titles can contain inline HTML (`<sub>`, `<sup>`, etc.). These are allowed through an `nh3`-based allow-list filter (`safe_title`); all other tags and attributes are stripped before rendering.
+- **Admin-configured display names are escaped.** Publisher short names in `config.yaml` are HTML-escaped inside the `publisher_display` Jinja2 filter before the result is marked safe, so no admin-supplied string can inject HTML to other users.
+- **SQL sort clauses use a dict lookup.** The feed sort parameter resolves to a hard-coded SQL fragment via a fixed mapping — there is no string interpolation from user input into SQL.
+- **LIKE wildcards are escaped.** `%` and `_` characters in feed search terms are escaped before being passed to SQLite `LIKE` queries, preventing both wildcard injection and full-table-scan surprises.
+
+### HTTP security headers
+
+Every response carries a full set of security headers via a Starlette middleware:
+
+| Header | Value |
+|---|---|
+| `Content-Security-Policy` | Restricts scripts, styles, images, and frames to trusted sources |
+| `X-Frame-Options` | `DENY` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | Camera, microphone, and geolocation disabled |
+
+### Deployment posture
+
+- **Never exposed directly.** The FastAPI process listens on `127.0.0.1` only. All production traffic must go through a reverse proxy (nginx, Caddy, etc.) that handles TLS.
+- **Dedicated service account.** The systemd unit runs as an unprivileged user with no sudo access; the app directory is its only writable path.
+- **No paywall bypass.** Institutional access relies on Shibboleth/SAML (browser-only). Scripting around publisher paywalls would violate publisher terms and is intentionally absent.
+
 ## Requirements
 
 - Python 3.12 (see `.python-version`; bcrypt 5.x is incompatible with Python 3.11)

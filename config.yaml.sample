@@ -43,8 +43,8 @@ predatory_publishers: []
 #   - Hindawi
 
 # UI
-bootstrap_theme: yeti   # any Bootswatch theme name
-theme: light            # light or dark
+bootstrap_theme: yeti   # any Bootswatch theme name (Bootswatch palette)
+# Per-user dark/light mode is set in each user's settings page (stored in users/<username>.yaml as theme_mode)
 timezone: UTC           # IANA timezone, e.g. Europe/Amsterdam
 
 # LLM integration — abstract highlights and search profile suggestions
@@ -66,3 +66,6 @@ llm_prompt: |
   (e.g. -ise not -ize, colour not color).
 # Allow users to send their Search Profile improvement prompts through the LLM.
 llm_allow_profile_optimisation: false
+# Allow users to use the LLM to suggest term-to-topic assignments in their Topics settings.
+# Suggestions are shown for confirmation before any changes are applied.
+llm_allow_topic_suggestions: false

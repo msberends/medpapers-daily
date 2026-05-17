@@ -138,8 +138,15 @@ def _create_tables(conn: sqlite3.Connection):
 
 def _drop_col(conn: sqlite3.Connection, table: str, col: str):
     existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-    if col in existing:
-        conn.execute(f"ALTER TABLE {table} DROP COLUMN {col}")
+    if col not in existing:
+        return
+    # ALTER TABLE … DROP COLUMN requires SQLite ≥ 3.35.0 (March 2021).
+    # Older versions (e.g. Ubuntu 20.04 ships 3.31.1) do not support it.
+    # Skip silently — the column is harmless if left in place.
+    ver = tuple(int(x) for x in sqlite3.sqlite_version.split("."))
+    if ver < (3, 35, 0):
+        return
+    conn.execute(f"ALTER TABLE {table} DROP COLUMN {col}")
 
 
 def _migrate(conn: sqlite3.Connection):
@@ -217,6 +224,53 @@ def _migrate(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE papers ADD COLUMN highlights TEXT")
     if "abstract_structured" not in papers_cols:
         conn.execute("ALTER TABLE papers ADD COLUMN abstract_structured TEXT")
+
+    # Performance indexes
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_up_user_added   ON user_papers(user_id, added_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_up_user_read    ON user_papers(user_id, is_read);
+        CREATE INDEX IF NOT EXISTS idx_up_user_star    ON user_papers(user_id, is_starred);
+        CREATE INDEX IF NOT EXISTS idx_up_user_folder  ON user_papers(user_id, folder_id);
+        CREATE INDEX IF NOT EXISTS idx_papers_quartile ON papers(scopus_quartile);
+        CREATE INDEX IF NOT EXISTS idx_papers_issn     ON papers(issn);
+        CREATE INDEX IF NOT EXISTS idx_sessions_hash   ON sessions(token_hash);
+        CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_upp_profile     ON user_paper_profiles(profile_id, user_id);
+    """)
+
+    # FTS5 full-text search index over paper titles and abstracts
+    conn.executescript("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(
+            pmid UNINDEXED,
+            title,
+            abstract,
+            content='papers',
+            content_rowid='rowid'
+        );
+        CREATE TRIGGER IF NOT EXISTS papers_ai AFTER INSERT ON papers BEGIN
+            INSERT INTO papers_fts(rowid, pmid, title, abstract)
+            VALUES (new.rowid, new.pmid, new.title, new.abstract);
+        END;
+        CREATE TRIGGER IF NOT EXISTS papers_au AFTER UPDATE ON papers BEGIN
+            INSERT INTO papers_fts(papers_fts, rowid, pmid, title, abstract)
+            VALUES ('delete', old.rowid, old.pmid, old.title, old.abstract);
+            INSERT INTO papers_fts(rowid, pmid, title, abstract)
+            VALUES (new.rowid, new.pmid, new.title, new.abstract);
+        END;
+        CREATE TRIGGER IF NOT EXISTS papers_ad AFTER DELETE ON papers BEGIN
+            INSERT INTO papers_fts(papers_fts, rowid, pmid, title, abstract)
+            VALUES ('delete', old.rowid, old.pmid, old.title, old.abstract);
+        END;
+    """)
+
+    # Backfill FTS5 index for existing papers (runs once when the table is first empty)
+    fts_empty = not conn.execute("SELECT 1 FROM papers_fts LIMIT 1").fetchone()
+    papers_exist = conn.execute("SELECT 1 FROM papers LIMIT 1").fetchone()
+    if fts_empty and papers_exist:
+        conn.execute("""
+            INSERT INTO papers_fts(rowid, pmid, title, abstract)
+            SELECT rowid, pmid, title, abstract FROM papers
+        """)
 
     # Backfill user_paper_profiles from user_papers for existing installations.
     # Only runs once: when user_papers has profile-linked rows but user_paper_profiles is empty.

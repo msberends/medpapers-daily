@@ -4,6 +4,8 @@ jinja2
 python-multipart
 bcrypt
 pyyaml
+ruamel.yaml
 biopython
 requests
+anthropic
 aiofiles

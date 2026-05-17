@@ -20,7 +20,7 @@
 
   <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="/feed">Feed</a></li>
+      <li class="breadcrumb-item"><a href="{{ back_url }}">Feed</a></li>
       <li class="breadcrumb-item active">Paper</li>
     </ol>
   </nav>
@@ -51,7 +51,7 @@
     {% endfor %}
   </div>
 
-  <h1 class="h3 mb-2">{{ paper.title | safe }}</h1>
+  <h1 class="h3 mb-2">{{ paper.title | safe_title }}</h1>
 
   {# Authors #}
   <div class="text-muted mb-1" style="line-height:1.6">
@@ -73,7 +73,7 @@
   {# Journal metadata #}
   <p class="mb-2">
     <em>{{ paper.journal | clean_journal }}</em>
-    {% if paper.publisher %}<span class="text-muted small">&bull; {{ paper.publisher | publisher_display(config.get('publisher_map', {}), config.get('predatory_publishers', [])) | safe }}</span>{% endif %}
+    {% if paper.publisher %}<span class="text-muted small">&bull; {{ paper.publisher | publisher_display(config.get('publisher_map', {}), config.get('predatory_publishers', [])) }}</span>{% endif %}
     {% set pub_date_norm = paper.pub_date | norm_pub_date %}
     {% if paper.epub_date %}
       {% if pub_date_norm and pub_date_norm != paper.epub_date %}
@@ -202,7 +202,7 @@
           {% endfor %}
         {% endif %}
       {% else %}
-        {{ paper.abstract }}
+        <div style="white-space: pre-line">{{ paper.abstract }}</div>
       {% endif %}
     </div>
   </div>

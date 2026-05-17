@@ -33,6 +33,7 @@ mesh_topic_colours:
 # Per-user UI overrides (optional; inherits from config.yaml if omitted)
 folders: []
 bootstrap_theme: yeti
+theme_mode: ''                     # '' or 'light' = light mode (default); 'dark' = dark; 'system' = follow device preference
 show_quartile: true
 show_flags: true                   # true = show country flag per author on paper detail page
 show_flags_feed: true              # true = show country flag per author in feed cards

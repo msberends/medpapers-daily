@@ -28,17 +28,7 @@
   </div>
   <p class="text-muted mb-4">Configure what this user monitors, how often, and how results are presented. Users can also adjust most of these settings themselves from their own Settings page.</p>
 
-  {% if saved %}
-  <div class="alert alert-success alert-dismissible py-2" role="alert">
-    <i class="bi bi-check-circle me-1"></i> Changes saved.
-    <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-  </div>
-  {% endif %}
-  {% if error %}
-  <div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
-  {% endif %}
-
-  <ul class="nav nav-tabs mb-4">
+<ul class="nav nav-tabs mb-4">
     <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-general">General</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">Topic Map</a></li>

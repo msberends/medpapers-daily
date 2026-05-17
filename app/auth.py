@@ -1,6 +1,8 @@
 import hashlib
 import os
 import secrets
+import threading
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -10,6 +12,15 @@ from app.db import conn_ctx
 
 SESSION_COOKIE = "pd_session"
 SESSION_DAYS = 90
+
+# Used when the username is not found, so verify_password always runs (constant-time defence)
+_DUMMY_HASH: str = bcrypt.hashpw(b"dummy-constant-time-guard", bcrypt.gensalt()).decode()
+
+# In-memory brute-force rate limiter (per client IP)
+_failed_attempts: dict[str, list[float]] = defaultdict(list)
+_rate_lock = threading.Lock()
+_RATE_WINDOW_SECONDS = 300   # 5-minute sliding window
+_RATE_LIMIT_MAX_FAILURES = 10
 
 
 def hash_password(plain: str) -> str:
@@ -80,7 +91,7 @@ def require_auth(request: Request):
     user = get_current_user(request)
     if user is None:
         from fastapi.responses import RedirectResponse
-        raise HTTPException(status_code=302, headers={"Location": "/login"})
+        raise RedirectResponse("/login", status_code=303)
     return user
 
 
@@ -89,6 +100,39 @@ def require_admin(request: Request):
     if not user["is_admin"]:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+def invalidate_other_sessions(user_id: int, keep_token: str | None = None) -> None:
+    """Delete all sessions for a user, optionally keeping the current one."""
+    keep_hash = _hash_token(keep_token) if keep_token else None
+    with conn_ctx() as conn:
+        if keep_hash:
+            conn.execute(
+                "DELETE FROM sessions WHERE user_id = ? AND token_hash != ?",
+                (user_id, keep_hash),
+            )
+        else:
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+
+def check_login_rate_limit(ip: str) -> bool:
+    """Return True if the IP may attempt login, False if rate-limited."""
+    now = datetime.now(timezone.utc).timestamp()
+    cutoff = now - _RATE_WINDOW_SECONDS
+    with _rate_lock:
+        _failed_attempts[ip] = [t for t in _failed_attempts[ip] if t > cutoff]
+        return len(_failed_attempts[ip]) < _RATE_LIMIT_MAX_FAILURES
+
+
+def record_failed_login(ip: str) -> None:
+    now = datetime.now(timezone.utc).timestamp()
+    with _rate_lock:
+        _failed_attempts[ip].append(now)
+
+
+def record_successful_login(ip: str) -> None:
+    with _rate_lock:
+        _failed_attempts.pop(ip, None)
 
 
 def clean_expired_sessions():
