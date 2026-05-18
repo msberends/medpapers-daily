@@ -87,11 +87,14 @@ def get_current_user(request: Request):
     }
 
 
+class LoginRequired(Exception):
+    pass
+
+
 def require_auth(request: Request):
     user = get_current_user(request)
     if user is None:
-        from fastapi.responses import RedirectResponse
-        raise RedirectResponse("/login", status_code=303)
+        raise LoginRequired()
     return user
 
 

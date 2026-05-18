@@ -7,7 +7,15 @@ DEFAULT_HIGHLIGHTS_PROMPT = (
     "Each bullet point must be at most 100 characters long (including spaces). "
     "Return only the bullet points, one per line, each starting with a dash (-). "
     "No introduction, no numbering, no trailing commentary. "
-    "Use British English spelling throughout (e.g. -ise not -ize, colour not color)."
+    "Use British English spelling throughout (e.g. -ise not -ize, colour not color).\n\n"
+    "Rules:\n"
+    "- Use the same strength of language as the abstract. If the abstract states "
+    "\"significant progress has been achieved\", do not downgrade this to \"shows promise\".\n"
+    "- Every bullet must reflect a specific finding, method, or recommendation from the abstract. "
+    "Do not write generic statements.\n"
+    "- Cover distinct aspects across the bullets. Do not combine separate findings into one bullet.\n"
+    "- Do not omit findings that the abstract explicitly flags as key conclusions, "
+    "such as cost, turnaround time, or validation requirements."
 )
 
 

@@ -18,7 +18,7 @@ from app.flash import _COOKIE as _FLASH_COOKIE, _decode as _flash_decode
 from app.auth import (
     SESSION_COOKIE, _DUMMY_HASH, check_login_rate_limit, clean_expired_sessions,
     create_session, delete_session, get_current_user, record_failed_login,
-    record_successful_login, verify_password,
+    record_successful_login, verify_password, LoginRequired,
 )
 from app.routes import admin, feed, folders, journals, logs, paper, settings
 from app.themes import get_theme_url, favicon_href, VALID_THEMES
@@ -174,6 +174,12 @@ class _FlashMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(_FlashMiddleware)
 app.add_middleware(_SecurityHeaders)
+
+
+@app.exception_handler(LoginRequired)
+async def _login_required_handler(request: Request, exc: LoginRequired):
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/login", status_code=303)
 
 
 def _startup(app: FastAPI):

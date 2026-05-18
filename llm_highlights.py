@@ -113,7 +113,8 @@ def main():
                 ).fetchall()
 
         total = len(papers)
-        print(f"[llm] {total} paper(s) to process (force={force}).", flush=True)
+        model = (config.get("llm_model") or "").strip()
+        print(f"[llm] Starting — provider={provider}, model={model}, papers={total} (force={force}).", flush=True)
         _write_status({
             "status": "running",
             "started_at": datetime.now(timezone.utc).isoformat(),
@@ -175,7 +176,7 @@ def main():
         "errors": errors,
         "last_error": last_error,
     })
-    print(f"[llm] Done. processed={processed}, errors={errors}", flush=True)
+    print(f"[llm] Done — provider={provider}, model={model}, processed={processed}, errors={errors}.", flush=True)
     _release_lock()
 
 
