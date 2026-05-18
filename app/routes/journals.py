@@ -1,4 +1,7 @@
 import csv
+import threading
+import time
+from collections import defaultdict
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -6,13 +9,58 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from app.auth import get_current_user, require_auth
+from app.auth import get_current_user
 from app.db import conn_ctx
 
 router = APIRouter()
 BASE_DIR = Path(__file__).parent.parent.parent
 
 _SORT_KEYS = {"title", "quartile", "citescore", "percentile", "coverage_start", "publisher", "feed_count"}
+
+# Anonymous callers: max 60 requests per 60-second window per IP
+_ANON_RATE_WINDOW = 60
+_ANON_RATE_MAX    = 60
+_ANON_PER_PAGE_MAX = 200
+
+_anon_requests: dict[str, list[float]] = defaultdict(list)
+_anon_lock = threading.Lock()
+
+
+def _check_anon_rate(ip: str) -> bool:
+    now = time.monotonic()
+    cutoff = now - _ANON_RATE_WINDOW
+    with _anon_lock:
+        _anon_requests[ip] = [t for t in _anon_requests[ip] if t > cutoff]
+        if len(_anon_requests[ip]) >= _ANON_RATE_MAX:
+            return False
+        _anon_requests[ip].append(now)
+        return True
+
+
+# Abbreviation map: rebuilt from DB at most once every 5 minutes.
+# The map is the same for every user, so there is no reason to query it per request.
+_abbrev_cache: tuple[float, dict[str, str]] | None = None
+_abbrev_cache_lock = threading.Lock()
+_ABBREV_CACHE_TTL = 300
+
+
+def _get_abbrev_map() -> dict[str, str]:
+    global _abbrev_cache
+    now = time.monotonic()
+    with _abbrev_cache_lock:
+        if _abbrev_cache is not None and now - _abbrev_cache[0] < _ABBREV_CACHE_TTL:
+            return _abbrev_cache[1]
+    with conn_ctx() as conn:
+        result: dict[str, str] = {}
+        for row in conn.execute(
+            "SELECT issn, iso_abbreviation FROM papers "
+            "WHERE issn != '' AND iso_abbreviation IS NOT NULL"
+        ).fetchall():
+            if row["issn"] and row["iso_abbreviation"] and row["issn"] not in result:
+                result[row["issn"]] = row["iso_abbreviation"]
+    with _abbrev_cache_lock:
+        _abbrev_cache = (now, result)
+    return result
 
 
 @lru_cache(maxsize=1)
@@ -61,7 +109,6 @@ def _load_scopus_rows(mtime: float) -> list[dict]:
 
 @router.get("/journals", response_class=HTMLResponse)
 async def journals_page(request: Request):
-    require_auth(request)
     csv_path = BASE_DIR / "data" / "scopus_journals.csv"
     has_data = csv_path.exists()
     last_updated = None
@@ -86,23 +133,29 @@ async def journals_data(
     sort: str = "citescore",
     dir: str = "desc",
 ):
-    require_auth(request)
+    user = get_current_user(request)
+
+    if user is None:
+        client_ip = request.client.host if request.client else "unknown"
+        if not _check_anon_rate(client_ip):
+            return JSONResponse(
+                {"detail": "Too many requests. Please slow down."},
+                status_code=429,
+                headers={"Retry-After": str(_ANON_RATE_WINDOW)},
+            )
+        per_page = min(per_page, _ANON_PER_PAGE_MAX)
+
     csv_path = BASE_DIR / "data" / "scopus_journals.csv"
     if not csv_path.exists():
         return JSONResponse({"rows": [], "total": 0, "page": 1, "pages": 0, "per_page": per_page})
 
-    user = get_current_user(request)
+    # Abbreviation map is user-independent; serve from cache
+    abbrev_map = _get_abbrev_map()
 
-    # Build ISSN → ISO abbreviation and feed counts from the DB
-    abbrev_map: dict[str, str] = {}
+    # Feed counts are user-specific; only query when authenticated
     feed_map: dict[str, int] = {}
-    with conn_ctx() as conn:
-        for row in conn.execute(
-            "SELECT issn, iso_abbreviation FROM papers WHERE issn != '' AND iso_abbreviation IS NOT NULL"
-        ).fetchall():
-            if row["issn"] and row["iso_abbreviation"] and row["issn"] not in abbrev_map:
-                abbrev_map[row["issn"]] = row["iso_abbreviation"]
-        if user:
+    if user:
+        with conn_ctx() as conn:
             for row in conn.execute(
                 """SELECT p.issn, COUNT(*) AS cnt
                    FROM papers p JOIN user_papers up ON p.pmid = up.pmid
@@ -154,7 +207,7 @@ async def journals_data(
         rows.sort(key=lambda r: (r[sort_key] or "").lower(), reverse=reverse)
 
     total    = len(rows)
-    per_page = max(10, min(per_page, 500))
+    per_page = max(10, min(per_page, 500 if user else _ANON_PER_PAGE_MAX))
     pages    = max(1, (total + per_page - 1) // per_page)
     page     = max(1, min(page, pages))
     start    = (page - 1) * per_page

@@ -34,148 +34,269 @@
   <h3 class="mb-1"><i class="bi bi-person-gear me-2"></i>Settings</h3>
   <p class="text-muted mb-4">Configure what you monitor, how often, and how results are presented to you.</p>
 
-  {% set active_tab = tab if tab in ['profiles', 'mesh', 'password'] else 'general' %}
-  <ul class="nav nav-tabs mb-4" id="settingsTabs">
-    <li class="nav-item"><a class="nav-link {% if active_tab == 'general' %}active{% endif %}" data-bs-toggle="tab" href="#tab-general">General</a></li>
-    <li class="nav-item"><a class="nav-link {% if active_tab == 'profiles' %}active{% endif %}" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
-    <li class="nav-item"><a class="nav-link {% if active_tab == 'mesh' %}active{% endif %}" data-bs-toggle="tab" href="#tab-mesh">Topics</a></li>
-    <li class="nav-item"><a class="nav-link {% if active_tab == 'password' %}active{% endif %}" data-bs-toggle="tab" href="#tab-password">Password</a></li>
-  </ul>
+  {% set active_tab = tab if tab in ['account', 'appearance', 'fetch', 'profiles', 'mesh'] else 'account' %}
+  <div class="overflow-x-auto mb-4">
+    <ul class="nav nav-tabs flex-nowrap" id="settingsTabs" style="min-width:max-content">
+      <li class="nav-item"><a class="nav-link {% if active_tab == 'account' %}active{% endif %}" data-bs-toggle="tab" href="#tab-account"><i class="bi bi-person me-1"></i>Account</a></li>
+      <li class="nav-item"><a class="nav-link {% if active_tab == 'appearance' %}active{% endif %}" data-bs-toggle="tab" href="#tab-appearance"><i class="bi bi-palette me-1"></i>Appearance</a></li>
+      <li class="nav-item"><a class="nav-link {% if active_tab == 'fetch' %}active{% endif %}" data-bs-toggle="tab" href="#tab-fetch"><i class="bi bi-cloud-arrow-down me-1"></i>Fetch &amp; Email</a></li>
+      <li class="nav-item"><a class="nav-link {% if active_tab == 'profiles' %}active{% endif %}" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
+      <li class="nav-item"><a class="nav-link {% if active_tab == 'mesh' %}active{% endif %}" data-bs-toggle="tab" href="#tab-mesh">Topics</a></li>
+    </ul>
+  </div>
 
   <div class="tab-content">
 
-    {# ── General ── #}
-    <div class="tab-pane fade {% if active_tab == 'general' %}show active{% endif %}" id="tab-general">
-      <form method="post" action="/settings/save/general">
-
+    {# ── Account ── #}
+    <div class="tab-pane fade {% if active_tab == 'account' %}show active{% endif %}" id="tab-account">
+      <form method="post" action="/settings/save/account" class="mb-4">
         <div class="card mb-3">
-          <div class="card-header fw-semibold"><i class="bi bi-person me-1"></i>Account</div>
-          <div class="card-body">
-            <div class="col-md-5">
-              <label class="form-label">Display name</label>
-              <input type="text" name="display_name" class="form-control"
-                     value="{{ user.display_name or '' }}" placeholder="{{ user.username }}">
-              <div class="form-text">Shown in the navigation bar and in email subject lines. Leave blank to use your login username.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card mb-3">
-          <div class="card-header fw-semibold"><i class="bi bi-palette me-1"></i>Appearance</div>
-          <div class="card-body row g-3">
-            <div class="col-md-6">
-              <label class="form-label">Colour theme</label>
-              {% set admin_theme = config.get('bootstrap_theme', 'flatly') %}
-              {% set admin_theme_label = 'Bootstrap (plain)' if admin_theme == 'default' else admin_theme | capitalize %}
-              <select name="bootstrap_theme" class="form-select" style="max-width:220px">
-                <option value="" {% if not cfg.get('bootstrap_theme') %}selected{% endif %}>
-                  Default ({{ admin_theme_label }})
-                </option>
-                {% for t in valid_themes | sort %}
-                <option value="{{ t }}" {% if cfg.get('bootstrap_theme') == t %}selected{% endif %}>
-                  {% if t == 'default' %}Bootstrap (plain){% else %}{{ t | capitalize }}{% endif %}
-                </option>
-                {% endfor %}
-              </select>
-              <div class="form-text">Applies across the whole application after the next page load. Choosing <em>Default</em> follows the administrator's theme setting.</div>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Dark / light mode</label>
-              <select name="theme_mode" class="form-select" style="max-width:160px">
-                <option value="" {% if cfg.get('theme_mode', '') not in ('dark', 'system') %}selected{% endif %}>Light</option>
-                <option value="dark" {% if cfg.get('theme_mode') == 'dark' %}selected{% endif %}>Dark</option>
-                <option value="system" {% if cfg.get('theme_mode') == 'system' %}selected{% endif %}>System</option>
-              </select>
-              <div class="form-text">Switches the colour palette. <em>System</em> follows your device preference automatically.</div>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Papers per page</label>
-              <select name="page_size" class="form-select" style="max-width:120px">
-                {% for n in [10, 25, 50, 100, 150, 200, 500] %}
-                <option value="{{ n }}" {% if cfg.get('page_size', 50) == n %}selected{% endif %}>{{ n }}</option>
-                {% endfor %}
-              </select>
-              <div class="form-text">How many papers are shown per page in your feed. Larger values load more at once but may feel slower on long lists.</div>
-            </div>
-            <div class="col-12">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="feed_group_by_profile"
-                       id="feedGroupByProfile" {% if cfg.get('feed_group_by_profile', False) %}checked{% endif %}>
-                <label class="form-check-label fw-medium" for="feedGroupByProfile">Group feed by search profile</label>
-              </div>
-              <div class="form-text ms-4 ps-1">Papers are sorted and grouped by search profile with a section header between them. Has no effect when a specific profile is already selected in the sidebar.</div>
-            </div>
-            <div class="col-12">
-              <p class="fw-medium mb-2">Country flags</p>
-              <div class="d-flex flex-wrap gap-4">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" name="show_flags"
-                         id="showFlags" {% if cfg.get('show_flags', True) %}checked{% endif %}>
-                  <label class="form-check-label" for="showFlags">Paper pages</label>
-                </div>
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" name="show_flags_feed"
-                         id="showFlagsFeed" {% if cfg.get('show_flags_feed', True) %}checked{% endif %}>
-                  <label class="form-check-label" for="showFlagsFeed">Feed cards</label>
-                </div>
-              </div>
-              <div class="form-text">Small flag per author derived from their first listed affiliation.</div>
-            </div>
-            <div class="col-12">
-              <p class="fw-medium mb-2">Export buttons</p>
-              <div class="d-flex flex-wrap gap-4">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" name="show_export_ris"
-                         id="showExportRis" {% if cfg.get('show_export_ris', True) %}checked{% endif %}>
-                  <label class="form-check-label" for="showExportRis">Export RIS <span class="text-muted small">(Zotero, Mendeley, …)</span></label>
-                </div>
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" name="show_export_nbib"
-                         id="showExportNbib" {% if cfg.get('show_export_nbib', False) %}checked{% endif %}>
-                  <label class="form-check-label" for="showExportNbib">Open in EndNote <span class="text-muted small">(<code>.nbib</code>)</span></label>
-                </div>
-              </div>
-              <div class="form-text">Shown on paper pages and in the feed bulk-action bar.</div>
-            </div>
-            <div class="col-12">
-              <label class="form-label fw-medium mb-1">Structured abstract style</label>
-              <div class="d-flex gap-3">
-                <div class="form-check">
-                  <input class="form-check-input" type="radio" name="abstract_style" id="absAccent"
-                         value="accent" {% if cfg.get('abstract_style', 'accent') == 'accent' %}checked{% endif %}>
-                  <label class="form-check-label" for="absAccent">Accent stripe <span class="text-muted small">(default)</span></label>
-                </div>
-                <div class="form-check">
-                  <input class="form-check-input" type="radio" name="abstract_style" id="absPill"
-                         value="pill" {% if cfg.get('abstract_style', 'accent') == 'pill' %}checked{% endif %}>
-                  <label class="form-check-label" for="absPill">Pill badge</label>
-                </div>
-              </div>
-              <div class="form-text">Controls how section headings (Background, Methods, etc.) are displayed in structured abstracts.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card mb-3">
-          <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email</div>
+          <div class="card-header fw-semibold"><i class="bi bi-person me-1"></i>Profile</div>
           <div class="card-body">
             <div class="row g-3">
-              <div class="col-md-6">
+              <div class="col-md-5">
+                <label class="form-label">Display name</label>
+                <input type="text" name="display_name" class="form-control"
+                       value="{{ user.display_name or '' }}" placeholder="{{ user.username }}">
+                <div class="form-text">Shown in the navigation bar and email subject lines. Leave blank to use your login username.</div>
+              </div>
+              <div class="col-md-5">
                 <label class="form-label">Email address</label>
                 <input type="email" name="email" class="form-control"
                        value="{{ cfg.get('email', '') }}" required>
-                <div class="form-text">Your digest emails are delivered here. Use an address you check regularly.</div>
+                <div class="form-text">Your digest emails are delivered here.</div>
               </div>
             </div>
-            <div class="row g-3 mt-1">
-              <div class="col-md-6">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" name="fetch_enabled"
-                         id="fetchEnabled" {% if cfg.get('fetch_enabled', True) %}checked{% endif %}>
-                  <label class="form-check-label fw-medium" for="fetchEnabled">Fetching enabled</label>
-                </div>
-                <div class="form-text ms-4 ps-1">Turn this off to pause all scheduled fetching for your account. Your existing library is not affected.</div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-lg me-1"></i>Save
+        </button>
+      </form>
+
+      <div class="card" style="max-width:480px">
+        <div class="card-header fw-semibold"><i class="bi bi-lock me-1"></i>Security</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">You will remain logged in on all devices after changing your password. Choose something you do not use elsewhere.</p>
+          <form method="post" action="/settings/change-password">
+            <div class="mb-3">
+              <label class="form-label">Current password</label>
+              <input type="password" name="current_password" class="form-control" required autocomplete="current-password">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">New password</label>
+              <input type="password" name="new_password" class="form-control" minlength="8" required autocomplete="new-password">
+              <div class="form-text">Minimum 8 characters.</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Confirm new password</label>
+              <input type="password" name="confirm_password" class="form-control" minlength="8" required autocomplete="new-password">
+            </div>
+            <button type="submit" class="btn btn-primary">Change password</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {# ── Appearance ── #}
+    <div class="tab-pane fade {% if active_tab == 'appearance' %}show active{% endif %}" id="tab-appearance">
+      <form method="post" action="/settings/save/appearance">
+        <div class="card mb-4">
+          <div class="card-body">
+
+            <p class="fw-medium mb-2">Theme</p>
+            <div class="d-flex flex-wrap gap-3">
+              <div>
+                <label class="form-label small text-muted mb-1">Colour theme</label>
+                {% set admin_theme = config.get('bootstrap_theme', 'flatly') %}
+                {% set admin_theme_label = 'Bootstrap (plain)' if admin_theme == 'default' else admin_theme | capitalize %}
+                <select name="bootstrap_theme" class="form-select" style="max-width:220px">
+                  <option value="" {% if not cfg.get('bootstrap_theme') %}selected{% endif %}>
+                    Default ({{ admin_theme_label }})
+                  </option>
+                  {% for t in valid_themes | sort %}
+                  <option value="{{ t }}" {% if cfg.get('bootstrap_theme') == t %}selected{% endif %}>
+                    {% if t == 'default' %}Bootstrap (plain){% else %}{{ t | capitalize }}{% endif %}
+                  </option>
+                  {% endfor %}
+                </select>
               </div>
+              <div>
+                <label class="form-label small text-muted mb-1">Dark / light mode</label>
+                <select name="theme_mode" class="form-select" style="max-width:160px">
+                  <option value="" {% if cfg.get('theme_mode', '') not in ('dark', 'system') %}selected{% endif %}>Light</option>
+                  <option value="dark" {% if cfg.get('theme_mode') == 'dark' %}selected{% endif %}>Dark</option>
+                  <option value="system" {% if cfg.get('theme_mode') == 'system' %}selected{% endif %}>System</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-text mt-1">Applies across the whole application after the next page load. <em>System</em> follows your device preference automatically.</div>
+
+            <hr class="my-3">
+            <p class="fw-medium mb-2">Feed</p>
+            <div class="row g-3">
+              <div class="col-auto">
+                <label class="form-label small text-muted mb-1">Papers per page</label>
+                <select name="page_size" class="form-select" style="max-width:100px">
+                  {% for n in [10, 25, 50, 100, 150, 200, 500] %}
+                  <option value="{{ n }}" {% if cfg.get('page_size', 50) == n %}selected{% endif %}>{{ n }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="feed_group_by_profile"
+                         id="feedGroupByProfile" {% if cfg.get('feed_group_by_profile', False) %}checked{% endif %}>
+                  <label class="form-check-label" for="feedGroupByProfile">Group feed by search profile</label>
+                </div>
+                <div class="form-text ms-4 ps-1">Papers are sorted and grouped by search profile with a section header between them.</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label small text-muted mb-1">Author list</label>
+                <div class="d-flex flex-wrap gap-3">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="author_list_style" id="authorTruncate"
+                           value="truncate" {% if cfg.get('author_list_style', 'truncate') == 'truncate' %}checked{% endif %}>
+                    <label class="form-check-label" for="authorTruncate">First &amp; last two <span class="text-muted small">(default)</span></label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="author_list_style" id="authorAll"
+                           value="all" {% if cfg.get('author_list_style', 'truncate') == 'all' %}checked{% endif %}>
+                    <label class="form-check-label" for="authorAll">Show all</label>
+                  </div>
+                </div>
+                <div class="form-text">When a paper has more than 5 authors, either abbreviate to first two, (N others), last two — or list everyone.</div>
+              </div>
+            </div>
+
+            <hr class="my-3">
+            <p class="fw-medium mb-2">Structured abstract headings</p>
+            <div class="d-flex flex-wrap gap-3 mb-1">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="abstract_style" id="absAccent"
+                       value="accent" {% if cfg.get('abstract_style', 'accent') == 'accent' %}checked{% endif %}>
+                <label class="form-check-label" for="absAccent">Bold, in theme colour <span class="text-muted small">(default)</span></label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="abstract_style" id="absPill"
+                       value="pill" {% if cfg.get('abstract_style', 'accent') == 'pill' %}checked{% endif %}>
+                <label class="form-check-label" for="absPill">Small neutral chip</label>
+              </div>
+            </div>
+            <div class="form-text">How headings such as Background, Methods, and Results are shown when a journal provides a structured abstract.</div>
+
+            <hr class="my-3">
+            <p class="fw-medium mb-2">Country flags</p>
+            <div class="d-flex flex-wrap gap-4 mb-1">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_flags_feed"
+                       id="showFlagsFeed" {% if cfg.get('show_flags_feed', True) %}checked{% endif %}>
+                <label class="form-check-label" for="showFlagsFeed">Show on feed</label>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_flags"
+                       id="showFlags" {% if cfg.get('show_flags', True) %}checked{% endif %}>
+                <label class="form-check-label" for="showFlags">Show on paper detail page</label>
+              </div>
+            </div>
+            <div class="form-text">Small flag per author derived from their first listed affiliation.</div>
+
+            <hr class="my-3">
+            <p class="fw-medium mb-2">Exports &amp; badges</p>
+            <div class="d-flex flex-wrap gap-4 mb-1">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_export_ris"
+                       id="showExportRis" {% if cfg.get('show_export_ris', True) %}checked{% endif %}>
+                <label class="form-check-label" for="showExportRis">Export RIS <span class="text-muted small">(Zotero, Mendeley, …)</span></label>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_export_nbib"
+                       id="showExportNbib" {% if cfg.get('show_export_nbib', False) %}checked{% endif %}>
+                <label class="form-check-label" for="showExportNbib">Open in EndNote <span class="text-muted small">(<code>.nbib</code>)</span></label>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="show_quartile"
+                       id="showQuartile" {% if cfg.get('show_quartile', True) %}checked{% endif %}>
+                <label class="form-check-label" for="showQuartile">Journal quartile badge</label>
+              </div>
+            </div>
+            <div class="form-text">Shown on paper pages and in the feed. The quartile badge displays Q1–Q4 from Elsevier Scopus (CiteScore).</div>
+
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-lg me-1"></i>Save appearance
+        </button>
+      </form>
+    </div>
+
+    {# ── Fetch & Email ── #}
+    <div class="tab-pane fade {% if active_tab == 'fetch' %}show active{% endif %}" id="tab-fetch">
+      <form method="post" action="/settings/save/fetch">
+
+        <div class="card mb-3">
+          <div class="card-header fw-semibold"><i class="bi bi-cloud-arrow-down me-1"></i>Fetching</div>
+          <div class="card-body">
+            <div class="form-check form-switch mb-1">
+              <input class="form-check-input" type="checkbox" name="fetch_enabled"
+                     id="fetchEnabled" {% if cfg.get('fetch_enabled', True) %}checked{% endif %}>
+              <label class="form-check-label fw-medium" for="fetchEnabled">Fetching enabled</label>
+            </div>
+            <div class="form-text ms-4 ps-1 mb-3">Turn this off to pause all scheduled fetching for your account. Your existing library is not affected.</div>
+
+            <hr class="my-3">
+            <p class="text-muted small mb-3">Controls how often PubMed is queried for new papers matching your search profiles. If you choose weekly or monthly, set the lookback window to cover the full interval so no papers are missed.</p>
+            <div class="d-flex flex-wrap gap-3 align-items-end mb-3">
+              <div>
+                <label class="form-label small text-muted mb-1">Frequency</label>
+                <select name="fetch_schedule" id="fetchSchedule" class="form-select" style="width:auto" onchange="updateScheduleUI()">
+                  <option value="daily" {% if cfg.get('fetch_schedule', 'daily') == 'daily' %}selected{% endif %}>Every day</option>
+                  <option value="weekly" {% if cfg.get('fetch_schedule') == 'weekly' %}selected{% endif %}>Weekly</option>
+                  <option value="monthly" {% if cfg.get('fetch_schedule') == 'monthly' %}selected{% endif %}>Monthly</option>
+                </select>
+              </div>
+              <div id="dowPicker">
+                <label class="form-label small text-muted mb-1">Day of week</label>
+                <select name="fetch_schedule_dow" class="form-select" style="width:auto">
+                  {% set dow_names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
+                  {% for i in range(7) %}
+                  <option value="{{ i }}" {% if (cfg.get('fetch_schedule_dow', 0) | int) == i %}selected{% endif %}>{{ dow_names[i] }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div id="domPicker">
+                <label class="form-label small text-muted mb-1">Day of month</label>
+                <input type="number" name="fetch_schedule_dom" class="form-control" style="width:90px"
+                       min="1" max="28" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
+                <div class="form-text">Day 1–28</div>
+              </div>
+            </div>
+            <div>
+              <label class="form-label small text-muted mb-1">Lookback window</label>
+              <div class="d-flex align-items-center gap-2">
+                <input type="number" name="lookback_days" class="form-control" style="width:90px"
+                       value="{{ cfg.get('lookback_days', 7) }}" min="1" max="90">
+                <span class="text-muted small">days</span>
+              </div>
+              <div class="form-text mt-1">Each fetch queries PubMed for papers published within this many days. Match this to your fetch frequency: 7 for daily or weekly, 31 or more for monthly.</div>
+            </div>
+
+            <hr class="my-3">
+            <p class="fw-medium mb-1">Journal quality filter</p>
+            <p class="text-muted small mb-2">Journals indexed in Elsevier Scopus are ranked from Q1 (top 25% by CiteScore) to Q4 (bottom 25%). This ranking data must be fetched by your administrator (Admin &rsaquo; Journal Rankings) before filtering takes effect.</p>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="q2_hard"
+                     id="q2Hard" {% if cfg.get('q2_hard', True) %}checked{% endif %}>
+              <label class="form-check-label fw-medium" for="q2Hard">Exclude Q3, Q4 and unranked journals</label>
+            </div>
+            <div class="form-text ms-4 ps-1">Papers from lower-ranked or unlisted journals are hidden from your feed and not stored during future fetches. Papers already in your library are unaffected.</div>
+          </div>
+        </div>
+
+        <div class="card mb-4">
+          <div class="card-header fw-semibold"><i class="bi bi-envelope me-1"></i>Email digest</div>
+          <div class="card-body">
+            <div class="row g-3">
               <div class="col-md-6">
                 <div class="form-check form-switch">
                   <input class="form-check-input" type="checkbox" name="email_suppress_empty"
@@ -190,7 +311,7 @@
                          id="emailOnlyNew" {% if cfg.get('email_only_new', True) %}checked{% endif %}>
                   <label class="form-check-label fw-medium" for="emailOnlyNew">Only email newly fetched papers</label>
                 </div>
-                <div class="form-text ms-4 ps-1">When on (default), each digest only includes papers not yet sent in any previous digest. When off, all unread papers from the last 24 hours are included every time, which may resend papers you have already received.</div>
+                <div class="form-text ms-4 ps-1">When on, each digest only includes papers not yet sent in any previous digest. When off, all unread papers from the last 24 hours are included every time.</div>
               </div>
               <div class="col-md-6">
                 <div class="form-check form-switch">
@@ -204,82 +325,8 @@
           </div>
         </div>
 
-        <div class="card mb-3">
-          <div class="card-header fw-semibold"><i class="bi bi-calendar3 me-1"></i>Fetch Schedule</div>
-          <div class="card-body">
-            <p class="text-muted small mb-3">Controls how often PubMed is queried for new papers matching your search profiles. The digest email is only sent on fetch days. If you choose weekly or monthly, set the lookback window below to cover the full interval so no papers are missed.</p>
-            <div class="row g-3 align-items-end">
-              <div class="col-auto">
-                <label class="form-label">Frequency</label>
-                <select name="fetch_schedule" id="fetchSchedule" class="form-select" style="width:auto" onchange="updateScheduleUI()">
-                  <option value="daily" {% if cfg.get('fetch_schedule', 'daily') == 'daily' %}selected{% endif %}>Every day</option>
-                  <option value="weekly" {% if cfg.get('fetch_schedule') == 'weekly' %}selected{% endif %}>Weekly</option>
-                  <option value="monthly" {% if cfg.get('fetch_schedule') == 'monthly' %}selected{% endif %}>Monthly</option>
-                </select>
-              </div>
-              <div class="col-auto" id="dowPicker">
-                <label class="form-label">Day of week</label>
-                <select name="fetch_schedule_dow" class="form-select" style="width:auto">
-                  {% set dow_names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
-                  {% for i in range(7) %}
-                  <option value="{{ i }}" {% if (cfg.get('fetch_schedule_dow', 0) | int) == i %}selected{% endif %}>{{ dow_names[i] }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div class="col-auto" id="domPicker">
-                <label class="form-label">Day of month</label>
-                <input type="number" name="fetch_schedule_dom" class="form-control" style="width:90px"
-                       min="1" max="28" value="{{ cfg.get('fetch_schedule_dom', 1) }}">
-                <div class="form-text">Day 1 to 28</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card mb-3">
-          <div class="card-header fw-semibold"><i class="bi bi-clock-history me-1"></i>Lookback Window</div>
-          <div class="card-body row g-3">
-            <div class="col-md-4">
-              <label class="form-label">Days to look back</label>
-              <input type="number" name="lookback_days" class="form-control" style="max-width:100px"
-                     value="{{ cfg.get('lookback_days', 7) }}" min="1" max="90">
-            </div>
-            <div class="col-12">
-              <div class="form-text">Each fetch queries PubMed for papers published within this many days. Match this to your fetch frequency: 7 for daily or weekly, 31 or more for monthly. Setting it too short risks missing papers that were indexed by PubMed slightly after they were published.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card mb-4">
-          <div class="card-header fw-semibold"><i class="bi bi-funnel me-1"></i>Journal Quality Filter</div>
-          <div class="card-body">
-            <p class="text-muted small mb-3">Journals indexed in Elsevier Scopus are ranked from Q1 (top 25% by CiteScore) to Q4 (bottom 25%). Q1 and Q2 journals are generally considered high-impact peer-reviewed venues. This ranking data must be fetched by your administrator (Admin &rsaquo; Journal Rankings) before filtering takes effect.</p>
-            <div class="row g-3">
-              <div class="col-md-6">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" name="q2_hard"
-                         id="q2Hard" {% if cfg.get('q2_hard', True) %}checked{% endif %}>
-                  <label class="form-check-label fw-medium" for="q2Hard">Exclude Q3, Q4 and unranked journals</label>
-                </div>
-                <div class="form-text ms-4 ps-1">Papers from lower-ranked or unlisted journals are hidden from your feed and not stored during future fetches. Papers already in your library are unaffected.</div>
-              </div>
-              <div class="col-md-6">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" name="show_quartile"
-                         id="showQuartile" {% if cfg.get('show_quartile', True) %}checked{% endif %}>
-                  <label class="form-check-label fw-medium" for="showQuartile">Show quartile badge on papers</label>
-                </div>
-                <div class="form-text ms-4 ps-1">Displays a Q1, Q2, Q3 or Q4 badge alongside each paper. Turning this off is a display-only change and does not affect which papers are shown.</div>
-              </div>
-              <div class="col-12 mt-2">
-                <div class="form-text">When the quartile badge is shown, it displays the journal's <strong>CiteScore</strong> from Elsevier Scopus — citations received over a 4-year window divided by documents published in those years.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <button type="submit" class="btn btn-primary">
-          <i class="bi bi-check-lg me-1"></i>Save general settings
+          <i class="bi bi-check-lg me-1"></i>Save settings
         </button>
       </form>
     </div>
@@ -637,32 +684,6 @@
           <i class="bi bi-check-lg me-1"></i>Save topics
         </button>
       </form>
-    </div>
-
-    {# ── Password ── #}
-    <div class="tab-pane fade {% if active_tab == 'password' %}show active{% endif %}" id="tab-password">
-      <div class="card" style="max-width:480px">
-        <div class="card-header fw-semibold"><i class="bi bi-lock me-1"></i>Change Password</div>
-        <div class="card-body">
-          <p class="text-muted small mb-3">You will remain logged in on all devices after changing your password. Choose something you do not use elsewhere.</p>
-          <form method="post" action="/settings/change-password">
-            <div class="mb-3">
-              <label class="form-label">Current password</label>
-              <input type="password" name="current_password" class="form-control" required autocomplete="current-password">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">New password</label>
-              <input type="password" name="new_password" class="form-control" minlength="8" required autocomplete="new-password">
-              <div class="form-text">Minimum 8 characters.</div>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Confirm new password</label>
-              <input type="password" name="confirm_password" class="form-control" minlength="8" required autocomplete="new-password">
-            </div>
-            <button type="submit" class="btn btn-primary">Change password</button>
-          </form>
-        </div>
-      </div>
     </div>
 
   </div>{# end tab-content #}

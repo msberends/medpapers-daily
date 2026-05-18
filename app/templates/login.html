@@ -13,7 +13,7 @@
     <h4 class="card-title mb-1 text-center fw-bold">
       <i class="bi bi-journal-bookmark-fill me-1"></i>{{ config.get('app_name', 'MedPapers Daily') }}
     </h4>
-    <p class="text-center text-muted small mb-4">Scientific literature monitoring</p>
+    <p class="text-center text-muted small mb-4">Daily PubMed monitoring with Scopus journal filtering, MeSH topic classification, and personalised email digests.</p>
     {% for msg in request.state.flash_messages %}
     <div class="alert alert-{{ msg.category if msg.category in ('success','danger','warning','info') else 'secondary' }} py-2">{{ msg.message }}</div>
     {% endfor %}
@@ -28,6 +28,7 @@
       </div>
       <button type="submit" class="btn btn-primary w-100">Sign in</button>
     </form>
+    <p class="text-center text-muted small mt-3 mb-0">Or <a href="/journals">browse the journal rankings</a></p>
   </div>
 </div>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">

@@ -19,9 +19,12 @@ venv/bin/python fetch.py
 venv/bin/python email_digest.py
 
 # Deploy as systemd service
-sudo cp papersdaily.service /etc/systemd/system/
-sudo systemctl enable --now papersdaily
-sudo journalctl -u papersdaily -f
+sudo cp medpapers-daily.service /etc/systemd/system/
+sudo systemctl enable --now medpapers-daily
+sudo journalctl -u medpapers-daily -f
+
+# Restart the service after code changes (Claude has no sudo rights — ask the user to run this)
+sudo service medpapers-daily restart
 ```
 
 There is no test suite.

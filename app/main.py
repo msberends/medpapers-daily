@@ -21,7 +21,7 @@ from app.auth import (
     record_successful_login, verify_password,
 )
 from app.routes import admin, feed, folders, journals, logs, paper, settings
-from app.themes import get_theme_url, VALID_THEMES
+from app.themes import get_theme_url, favicon_href, VALID_THEMES
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -99,6 +99,10 @@ def get_user_theme_mode(user: dict | None, config: dict) -> str:
     """Return 'dark', 'light' (default), or 'system' for the current user."""
     mode = _user_cfg_for_request(user).get("theme_mode", "")
     return mode if mode in ("dark", "system") else "light"
+
+
+def get_user_favicon_href(user: dict | None, config: dict) -> str:
+    return favicon_href(get_user_theme(user, config))
 
 
 def proxy_url(doi: str, config: dict) -> str | None:
@@ -187,6 +191,7 @@ def _startup(app: FastAPI):
     app.state.templates.env.globals["proxy_url"] = proxy_url
     app.state.templates.env.globals["get_user_theme"] = get_user_theme
     app.state.templates.env.globals["get_user_theme_mode"] = get_user_theme_mode
+    app.state.templates.env.globals["get_user_favicon_href"] = get_user_favicon_href
     app.state.templates.env.globals["valid_themes"] = VALID_THEMES
     app.state.templates.env.filters["from_json"] = __import__("json").loads
     app.state.templates.env.filters["norm_pub_date"] = _norm_pub_date
@@ -203,6 +208,11 @@ def _startup(app: FastAPI):
         return Markup(s)
 
     app.state.templates.env.filters["inline_md"] = inline_md
+
+    def fix_decimal(text: str) -> str:
+        return re.sub(r'(\d)\xb7(\d)', r'\1.\2', str(text))
+
+    app.state.templates.env.filters["fix_decimal"] = fix_decimal
 
     def dim_initials(author: str) -> str:
         author = (author or "").strip()

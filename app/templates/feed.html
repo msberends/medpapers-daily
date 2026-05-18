@@ -402,14 +402,13 @@
               {% set authors = paper.authors | from_json %}
               {% set isos = paper.author_isos if show_flags_feed else [] %}
               {% set names = paper.author_iso_names if show_flags_feed else [] %}
-              {% if authors | length > 4 %}
+              {% if author_list_style != 'all' and authors | length > 5 %}
                 {% set n = authors | length %}{% set n2 = n - 2 %}{% set n1 = n - 1 %}
                 {{ flag_img(isos[0] if isos else '', names[0] if names else '', border_codes) }}{{ authors[0] | last_name }};
                 {{ flag_img(isos[1] if isos and isos|length > 1 else '', names[1] if names and names|length > 1 else '', border_codes) }}{{ authors[1] | last_name }};
-                &hellip;;
+                <span class="opacity-75">({{ n - 4 }} others)</span>;
                 {{ flag_img(isos[n2] if isos and isos|length > n2 else '', names[n2] if names and names|length > n2 else '', border_codes) }}{{ authors[n2] | last_name }};
                 {{ flag_img(isos[n1] if isos and isos|length > n1 else '', names[n1] if names and names|length > n1 else '', border_codes) }}{{ authors[n1] | last_name }}
-                <span class="opacity-75">&middot; {{ authors | length }} authors</span>
               {% elif authors %}
                 {% for author in authors %}
                   {%- set i = loop.index0 -%}
@@ -435,7 +434,7 @@
                 <i class="bi bi-stars" style="font-size:.7em"></i> Key Highlights<span class="hl-arrow"></span>
               </a>
               <div class="collapse" id="hl-{{ paper.pmid }}">
-                <ul class="mt-1 mb-0" style="padding-left:1.85rem; font-size:.82em; line-height:1.5; color:var(--bs-secondary-color); color:color-mix(in srgb, var(--bs-primary) 50%, var(--bs-secondary-color))">
+                <ul class="mt-1 mb-0" style="padding-left:1.85rem; font-size:.82em; line-height:1.5; color:var(--bs-primary)">
                   {% for h in paper.highlights %}
                   <li>{{ h | inline_md }}</li>
                   {% endfor %}
@@ -454,15 +453,15 @@
                 <div class="small text-muted mt-1 mb-1 inline-abs" style="line-height:1.55">
                   {% if paper.abstract_sections %}
                     {% for section in paper.abstract_sections %}
-                    <div class="abs-accent d-flex gap-2{% if not loop.first %} mt-2{% endif %}">
+                    <div class="abs-accent d-flex flex-column flex-sm-row gap-2{% if not loop.first %} mt-2{% endif %}">
                       {% if section.label %}
                       <div class="abs-accent-label">{{ section.label }}</div>
                       {% endif %}
-                      <div>{{ section.text }}</div>
+                      <div>{{ section.text | fix_decimal }}</div>
                     </div>
                     {% endfor %}
                   {% else %}
-                    <div style="white-space:pre-line">{{ paper.abstract }}</div>
+                    <div style="white-space:pre-line">{{ paper.abstract | fix_decimal }}</div>
                   {% endif %}
                 </div>
                 <a href="/paper/{{ paper.pmid }}" class="small text-decoration-none opacity-75">Open full page &rarr;</a>

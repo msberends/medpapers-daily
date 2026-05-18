@@ -40,6 +40,7 @@ show_flags_feed: true              # true = show country flag per author in feed
 show_export_ris: true              # true = show "Export RIS" button on paper page and feed bulk actions
 show_export_nbib: false            # true = show "Open in EndNote" button (downloads .nbib file)
 abstract_style: accent             # accent | pill — layout style for structured abstract section headings
+author_list_style: truncate        # truncate | all — feed author list: truncate = first 2, (N others), last 2; all = show everyone
 feed_group_by_profile: false       # true = group feed papers by search profile with section headers
 fetch_schedule: daily   # daily | weekly | monthly
 fetch_schedule_dow: 0   # 0=Mon … 6=Sun (weekly only)

@@ -11,6 +11,9 @@
     .abs-accent-label { min-width: auto; }
     .abs-pill-col { width: auto; }
   }
+  .aff-toggle .aff-hide { display: none; }
+  .aff-toggle[aria-expanded="true"] .aff-show { display: none; }
+  .aff-toggle[aria-expanded="true"] .aff-hide { display: inline; }
 </style>
 {% endblock %}
 
@@ -58,16 +61,26 @@
     {% for author in paper.authors_list %}
       {% set aff_indices = paper.author_aff[loop.index0] if paper.author_aff and loop.index0 < paper.author_aff|length else [] %}
       {% set first_aff = paper.aff_list[aff_indices[0]] if aff_indices and paper.aff_list else '' %}
-      <span class="d-block">{% if show_flags %}{{ first_aff | affil_flag_html | safe }}{% endif %}{{ author | dim_initials | safe }}{% if aff_indices %}{% for idx in aff_indices %}<sup>{{ idx + 1 }}</sup>{% if not loop.last %}<sup>,</sup>{% endif %}{% endfor %}{% endif %}</span>
+      <span class="d-block">{% if show_flags %}{{ first_aff | affil_flag_html | safe }}{% endif %}{{ author | dim_initials | safe }}{% if aff_indices %}<span class="aff-sup d-none">{% for idx in aff_indices %}<sup>{{ idx + 1 }}</sup>{% if not loop.last %}<sup>,</sup>{% endif %}{% endfor %}</span>{% endif %}</span>
     {% endfor %}
   </div>
   {# Affiliations #}
   {% if paper.aff_list %}
-  <ol class="small text-muted mb-2 ps-3" style="font-size:.8em; line-height:1.4">
-    {% for aff in paper.aff_list %}
-    <li>{{ aff }}</li>
-    {% endfor %}
-  </ol>
+  <div class="mb-2">
+    <a class="small text-muted text-decoration-none user-select-none aff-toggle"
+       data-bs-toggle="collapse" href="#paperAffiliations"
+       role="button" aria-expanded="false">
+      <span class="aff-show">Show affiliations{% if paper.authors_list | length > 8 %} for {{ paper.authors_list | length }} authors{% endif %} &raquo;</span>
+      <span class="aff-hide">Hide affiliations{% if paper.authors_list | length > 8 %} for {{ paper.authors_list | length }} authors{% endif %} &laquo;</span>
+    </a>
+    <div class="collapse" id="paperAffiliations">
+      <ol class="small text-muted mt-1 mb-0 ps-3" style="font-size:.8em; line-height:1.4">
+        {% for aff in paper.aff_list %}
+        <li>{{ aff }}</li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
   {% endif %}
 
   {# Journal metadata #}
@@ -188,7 +201,7 @@
               <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis fw-normal">{{ section.label }}</span>
             </div>
             {% endif %}
-            <div class="flex-grow-1">{{ section.text }}</div>
+            <div class="flex-grow-1">{{ section.text | fix_decimal }}</div>
           </div>
           {% endfor %}
         {% else %}
@@ -197,12 +210,12 @@
             {% if section.label %}
             <div class="abs-accent-label">{{ section.label }}</div>
             {% endif %}
-            <div>{{ section.text }}</div>
+            <div>{{ section.text | fix_decimal }}</div>
           </div>
           {% endfor %}
         {% endif %}
       {% else %}
-        <div style="white-space: pre-line">{{ paper.abstract }}</div>
+        <div style="white-space: pre-line">{{ paper.abstract | fix_decimal }}</div>
       {% endif %}
     </div>
   </div>
@@ -296,6 +309,16 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
     new bootstrap.Tooltip(el, { trigger: 'hover' });
   });
+
+  const affPanel = document.getElementById('paperAffiliations');
+  if (affPanel) {
+    affPanel.addEventListener('show.bs.collapse', function () {
+      document.querySelectorAll('.aff-sup').forEach(el => el.classList.remove('d-none'));
+    });
+    affPanel.addEventListener('hide.bs.collapse', function () {
+      document.querySelectorAll('.aff-sup').forEach(el => el.classList.add('d-none'));
+    });
+  }
 });
 
 document.getElementById('markReadForm').addEventListener('submit', function (e) {

@@ -127,6 +127,7 @@ async def feed(
     q2_hard = user_yaml.get("q2_hard", True)
     show_quartile = user_yaml.get("show_quartile", True)
     show_flags_feed = user_yaml.get("show_flags_feed", True)
+    author_list_style = user_yaml.get("author_list_style", "truncate")
     show_export_ris = user_yaml.get("show_export_ris", True)
     show_export_nbib = user_yaml.get("show_export_nbib", False)
     feed_group_by_profile = user_yaml.get("feed_group_by_profile", False)
@@ -372,6 +373,7 @@ async def feed(
         "search": search,
         "show_quartile": show_quartile,
         "show_flags_feed": show_flags_feed,
+        "author_list_style": author_list_style,
         "show_export_ris": show_export_ris,
         "show_export_nbib": show_export_nbib,
         "border_codes": _BORDER_CODES,

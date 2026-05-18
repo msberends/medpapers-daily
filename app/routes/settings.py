@@ -177,9 +177,9 @@ async def settings_page(request: Request, tab: str = ""):
     })
 
 
-@router.post("/settings/save/general")
-async def save_settings_general(request: Request):
-    """Save General tab settings only. Does not touch profiles or topic map."""
+@router.post("/settings/save/account")
+async def save_settings_account(request: Request):
+    """Save Account tab: display name (DB) + email address (YAML)."""
     user = require_auth(request)
     form = await request.form()
     existing = _load_user_cfg(user["username"])
@@ -191,8 +191,52 @@ async def save_settings_general(request: Request):
             (display_name or None, user["user_id"]),
         )
 
+    data = {**existing, "email": form.get("email", "").strip()}
+    _save_user_cfg(user["username"], data)
+    return flash_redirect("/settings?tab=account", "Account settings saved.")
+
+
+@router.post("/settings/save/appearance")
+async def save_settings_appearance(request: Request):
+    """Save Appearance tab settings."""
+    user = require_auth(request)
+    form = await request.form()
+    existing = _load_user_cfg(user["username"])
+
     from app.themes import VALID_THEMES
     theme = form.get("bootstrap_theme", "").strip()
+    try:
+        page_size = int(form.get("page_size", 50))
+        if page_size not in (10, 25, 50, 100, 150, 200, 500):
+            page_size = 50
+    except (ValueError, TypeError):
+        page_size = 50
+
+    data = {
+        **existing,
+        "bootstrap_theme": theme if (theme == "" or theme in VALID_THEMES) else existing.get("bootstrap_theme", ""),
+        "theme_mode": form.get("theme_mode", "").strip() if form.get("theme_mode", "") in ("dark", "system") else "",
+        "page_size": page_size,
+        "feed_group_by_profile": "feed_group_by_profile" in form,
+        "show_flags": "show_flags" in form,
+        "show_flags_feed": "show_flags_feed" in form,
+        "show_export_ris": "show_export_ris" in form,
+        "show_export_nbib": "show_export_nbib" in form,
+        "abstract_style": form.get("abstract_style", "accent") if form.get("abstract_style", "accent") in ("accent", "pill") else "accent",
+        "author_list_style": form.get("author_list_style", "truncate") if form.get("author_list_style", "") in ("all", "truncate") else "truncate",
+        "show_quartile": "show_quartile" in form,
+    }
+    _save_user_cfg(user["username"], data)
+    return flash_redirect("/settings?tab=appearance", "Appearance settings saved.")
+
+
+@router.post("/settings/save/fetch")
+async def save_settings_fetch(request: Request):
+    """Save Fetch & Email tab settings."""
+    user = require_auth(request)
+    form = await request.form()
+    existing = _load_user_cfg(user["username"])
+
     fetch_schedule = form.get("fetch_schedule", "daily").strip()
     if fetch_schedule not in ("daily", "weekly", "monthly"):
         fetch_schedule = "daily"
@@ -205,41 +249,24 @@ async def save_settings_general(request: Request):
     except (ValueError, TypeError):
         fetch_schedule_dom = 1
     try:
-        page_size = int(form.get("page_size", 50))
-        if page_size not in (10, 25, 50, 100, 150, 200, 500):
-            page_size = 50
-    except (ValueError, TypeError):
-        page_size = 50
-    try:
         lookback_days = max(1, min(90, int(form.get("lookback_days", 7))))
     except (ValueError, TypeError):
         lookback_days = 7
 
     data = {
         **existing,
-        "email": form.get("email", "").strip(),
-        "email_suppress_empty": "email_suppress_empty" in form,
-        "email_only_new": "email_only_new" in form,
-        "email_group_by_profile": "email_group_by_profile" in form,
         "fetch_enabled": "fetch_enabled" in form,
         "fetch_schedule": fetch_schedule,
         "fetch_schedule_dow": fetch_schedule_dow,
         "fetch_schedule_dom": fetch_schedule_dom,
-        "page_size": page_size,
         "lookback_days": lookback_days,
-        "show_quartile": "show_quartile" in form,
-        "feed_group_by_profile": "feed_group_by_profile" in form,
-        "show_flags": "show_flags" in form,
-        "show_flags_feed": "show_flags_feed" in form,
-        "show_export_ris": "show_export_ris" in form,
-        "show_export_nbib": "show_export_nbib" in form,
-        "abstract_style": form.get("abstract_style", "accent"),
         "q2_hard": "q2_hard" in form,
-        "bootstrap_theme": theme if (theme == "" or theme in VALID_THEMES) else existing.get("bootstrap_theme", ""),
-        "theme_mode": form.get("theme_mode", "").strip() if form.get("theme_mode", "") in ("dark", "system") else "",
+        "email_suppress_empty": "email_suppress_empty" in form,
+        "email_only_new": "email_only_new" in form,
+        "email_group_by_profile": "email_group_by_profile" in form,
     }
     _save_user_cfg(user["username"], data)
-    return flash_redirect("/settings", "General settings saved.")
+    return flash_redirect("/settings?tab=fetch", "Fetch &amp; email settings saved.")
 
 
 @router.post("/settings/save/profiles")
@@ -314,7 +341,7 @@ async def save_settings_legacy(request: Request):
         return await save_settings_topics(request)
     if "relevance_tab" in form:
         return await save_settings_profiles(request)
-    return await save_settings_general(request)
+    return await save_settings_account(request)
 
 
 @router.post("/settings/reset-profile-relevance/{profile_id}")
@@ -621,15 +648,15 @@ async def change_password(request: Request):
             "SELECT password_hash FROM users WHERE id = ?", (user["user_id"],)
         ).fetchone()
         if not verify_password(current_password, row["password_hash"]):
-            return flash_redirect("/settings?tab=password", "Wrong current password.", "danger")
+            return flash_redirect("/settings?tab=account", "Wrong current password.", "danger")
         if new_password != confirm_password:
-            return flash_redirect("/settings?tab=password", "Passwords do not match.", "danger")
+            return flash_redirect("/settings?tab=account", "Passwords do not match.", "danger")
         if len(new_password) < 8:
-            return flash_redirect("/settings?tab=password", "Password must be at least 8 characters.", "danger")
+            return flash_redirect("/settings?tab=account", "Password must be at least 8 characters.", "danger")
         conn.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
             (hash_password(new_password), user["user_id"]),
         )
     current_token = request.cookies.get(SESSION_COOKIE)
     invalidate_other_sessions(user["user_id"], keep_token=current_token)
-    return flash_redirect("/settings?tab=password", "Password changed successfully.")
+    return flash_redirect("/settings?tab=account", "Password changed successfully.")

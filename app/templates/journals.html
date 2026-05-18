@@ -33,7 +33,7 @@
     <li><span class="badge badge-q3">Q3</span> &mdash; 25th&ndash;50th percentile</li>
     <li><span class="badge badge-q4">Q4</span> &mdash; bottom 25% (lowest-ranked)</li>
   </ul>
-  <p class="small mb-0">The percentile shown is the journal&rsquo;s best rank across all subject areas it belongs to. <span class="badge badge-oa-full">OA</span> marks fully open-access journals; <span class="badge badge-oa-pw">PW</span> marks pay-walled journals. &ldquo;In feed&rdquo; shows how many papers from that journal are in your personal feed.</p>
+  <p class="small mb-0">The percentile shown is the journal&rsquo;s best rank across all subject areas it belongs to. <span class="badge badge-oa-full">OA</span> marks fully open-access journals; <span class="badge badge-oa-pw">PW</span> marks pay-walled journals.{% if user %} &ldquo;In feed&rdquo; shows how many papers from that journal are in your personal feed.{% endif %}</p>
 </div>
 
 {% if not has_data %}
@@ -73,7 +73,7 @@
           <th class="sortable" data-col="quartile">Q <i class="sort-icon">↕</i></th>
           <th class="sortable text-end" data-col="citescore">CiteScore <i class="sort-icon">↕</i></th>
           <th class="sortable text-end" data-col="percentile">Percentile <i class="sort-icon">↕</i></th>
-          <th class="sortable text-end" data-col="feed_count">In feed <i class="sort-icon">↕</i></th>
+          {% if user %}<th class="sortable text-end" data-col="feed_count">In feed <i class="sort-icon">↕</i></th>{% endif %}
           <th>ISSN</th>
           <th>eISSN</th>
           <th class="sortable text-end" data-col="coverage_start">Since <i class="sort-icon">↕</i></th>
@@ -81,7 +81,7 @@
         </tr>
       </thead>
       <tbody id="journalTableBody">
-        <tr><td colspan="9" class="text-center text-muted py-3">Loading&hellip;</td></tr>
+        <tr><td colspan="{{ 9 if user else 8 }}" class="text-center text-muted py-3">Loading&hellip;</td></tr>
       </tbody>
     </table>
   </div>
@@ -97,6 +97,7 @@
 {% block extra_scripts %}
 {% if has_data %}
 <script>
+const showFeedCol = {{ 'true' if user else 'false' }};
 let journalPage   = 1;
 let journalSort   = 'citescore';
 let journalDir    = 'desc';
@@ -123,7 +124,8 @@ function oaBadge(oa) {
 function loadJournals(page) {
   journalPage = page;
   const body = document.getElementById('journalTableBody');
-  body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">Loading&hellip;</td></tr>';
+  const cols = showFeedCol ? 9 : 8;
+  body.innerHTML = `<tr><td colspan="${cols}" class="text-center text-muted py-3">Loading&hellip;</td></tr>`;
   const params = new URLSearchParams({
     q: journalSearch, page, per_page: 100,
     sort: journalSort, dir: journalDir, quartile: journalQ,
@@ -132,7 +134,7 @@ function loadJournals(page) {
     .then(r => r.json())
     .then(renderJournals)
     .catch(() => {
-      body.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-3">Failed to load journal data.</td></tr>';
+      body.innerHTML = `<tr><td colspan="${showFeedCol ? 9 : 8}" class="text-center text-danger py-3">Failed to load journal data.</td></tr>`;
     });
 }
 
@@ -152,7 +154,7 @@ function renderJournals(data) {
   });
 
   if (!data.rows || !data.rows.length) {
-    body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No journals found.</td></tr>';
+    body.innerHTML = `<tr><td colspan="${showFeedCol ? 9 : 8}" class="text-center text-muted py-3">No journals found.</td></tr>`;
     if (info)  info.textContent  = '';
     if (nav)   nav.innerHTML     = '';
     if (count) count.textContent = '';
@@ -169,15 +171,15 @@ function renderJournals(data) {
     const pubmedLink = (r.issn || r.eissn)
       ? ` <a href="https://pubmed.ncbi.nlm.nih.gov/?term=%22${encodeURIComponent(r.issn || r.eissn)}%22[ISSN]" target="_blank" rel="noopener" class="text-muted ms-1" title="Search this journal in PubMed"><i class="bi bi-box-arrow-up-right" style="font-size:.7em"></i></a>`
       : '';
-    const feedBadge = r.feed_count > 0
-      ? `<span class="badge text-bg-secondary">${r.feed_count}</span>`
-      : '<span class="text-muted small">—</span>';
+    const feedCell = showFeedCol
+      ? `<td class="text-end small">${r.feed_count > 0 ? `<span class="badge text-bg-secondary">${r.feed_count}</span>` : '<span class="text-muted small">—</span>'}</td>`
+      : '';
     return `<tr>
       <td class="small">${titleLink}${oaBadge(r.oa)}${abbrev}${pubmedLink}</td>
       <td>${qBadge(r.quartile)}</td>
       <td class="text-end small text-muted">${r.citescore != null ? r.citescore.toFixed(1) : '—'}</td>
       <td class="text-end small text-muted">${r.percentile != null ? Math.round(r.percentile) + 'th' : '—'}</td>
-      <td class="text-end small">${feedBadge}</td>
+      ${feedCell}
       <td class="small text-muted font-monospace text-nowrap">${escHtml(r.issn)}</td>
       <td class="small text-muted font-monospace text-nowrap">${escHtml(r.eissn)}</td>
       <td class="text-end small text-muted">${r.coverage_start != null ? r.coverage_start : '—'}</td>
