@@ -23,8 +23,23 @@ BASE_DIR = Path(__file__).parent
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
+_JOURNAL_MINOR_WORDS = frozenset({
+    "a", "an", "the", "and", "but", "or", "nor", "for", "yet", "so",
+    "at", "by", "in", "of", "on", "to", "up",
+})
+
+
 def _clean_journal(journal: str) -> str:
-    return re.sub(r"\s*\([^)]*\)", "", journal or "").strip()
+    """Strip PubMed subtitle and parentheticals, then apply title case."""
+    s = journal or ""
+    s = s.split(" : ")[0].strip()
+    s = re.sub(r"\s*\([^)]*\)", "", s).strip()
+    words = s.split()
+    return " ".join(
+        w if w.isupper() else
+        ((w[0].upper() + w[1:]) if i == 0 or w.lower() not in _JOURNAL_MINOR_WORDS else w.lower())
+        for i, w in enumerate(words)
+    )
 
 
 _EMAIL_DANGER = "rgba(220,53,69,0.75)"   # BS --bs-danger at 75% opacity; hex required for email clients

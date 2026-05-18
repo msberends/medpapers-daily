@@ -5,6 +5,12 @@
 <style>
   .tip-box { background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle);
              color: var(--bs-primary-text-emphasis); border-radius: 6px; }
+  th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  th.sortable:hover { background: var(--bs-tertiary-bg); }
+  th.sortable .sort-icon { opacity: .35; font-style: normal; }
+  th.sortable.active .sort-icon { opacity: 1; }
+  .badge-oa-full { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); border: 1px solid var(--bs-success-border-subtle); }
+  .badge-oa-pw   { background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis);  border: 1px solid var(--bs-danger-border-subtle);  }
 </style>
 {% endblock %}
 
@@ -23,11 +29,11 @@
   <p class="small mb-2">This table lists all journals indexed in <strong>Elsevier Scopus</strong> together with their <strong>CiteScore</strong> quartile ranking. CiteScore measures the average citations received per document published in a journal over a three-year period. Each journal is ranked within its subject area:</p>
   <ul class="small mb-2">
     <li><span class="badge badge-q1">Q1</span> &mdash; top 25% by CiteScore (highest-ranked)</li>
-    <li><span class="badge badge-q2">Q2</span> &mdash; 50th–75th percentile</li>
-    <li><span class="badge badge-q3">Q3</span> &mdash; 25th–50th percentile</li>
+    <li><span class="badge badge-q2">Q2</span> &mdash; 50th&ndash;75th percentile</li>
+    <li><span class="badge badge-q3">Q3</span> &mdash; 25th&ndash;50th percentile</li>
     <li><span class="badge badge-q4">Q4</span> &mdash; bottom 25% (lowest-ranked)</li>
   </ul>
-  <p class="small mb-0">The percentile shown is the journal's best rank across all subject areas it belongs to. Rankings are refreshed annually by your administrator. Sorted by CiteScore, highest first.</p>
+  <p class="small mb-0">The percentile shown is the journal&rsquo;s best rank across all subject areas it belongs to. <span class="badge badge-oa-full">OA</span> marks fully open-access journals; <span class="badge badge-oa-pw">PW</span> marks pay-walled journals. &ldquo;In feed&rdquo; shows how many papers from that journal are in your personal feed.</p>
 </div>
 
 {% if not has_data %}
@@ -44,10 +50,17 @@
 
 <div class="card">
   <div class="card-body pb-2">
-    <div class="d-flex gap-2 align-items-center">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
       <div class="flex-grow-1">
         <input type="search" id="journalSearch" class="form-control"
-               placeholder="Search by title, publisher, or ISSN…" autocomplete="off">
+               placeholder="Search by title, abbreviation, publisher, or ISSN&hellip;" autocomplete="off">
+      </div>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Filter by quartile" id="quartileFilter">
+        <button type="button" class="btn btn-outline-secondary active" data-q="">All</button>
+        <button type="button" class="btn btn-outline-secondary" data-q="Q1">Q1</button>
+        <button type="button" class="btn btn-outline-secondary" data-q="Q2">Q2</button>
+        <button type="button" class="btn btn-outline-secondary" data-q="Q3">Q3</button>
+        <button type="button" class="btn btn-outline-secondary" data-q="Q4">Q4</button>
       </div>
       <span id="journalCount" class="text-muted small text-nowrap"></span>
     </div>
@@ -56,18 +69,19 @@
     <table class="table table-sm table-hover mb-0 align-middle">
       <thead class="table-light" style="position:sticky;top:0">
         <tr>
-          <th>Title</th>
+          <th class="sortable" data-col="title">Title <i class="sort-icon">↕</i></th>
+          <th class="sortable" data-col="quartile">Q <i class="sort-icon">↕</i></th>
+          <th class="sortable text-end" data-col="citescore">CiteScore <i class="sort-icon">↕</i></th>
+          <th class="sortable text-end" data-col="percentile">Percentile <i class="sort-icon">↕</i></th>
+          <th class="sortable text-end" data-col="feed_count">In feed <i class="sort-icon">↕</i></th>
           <th>ISSN</th>
           <th>eISSN</th>
-          <th>Q</th>
-          <th class="text-end">CiteScore</th>
-          <th class="text-end">Percentile</th>
-          <th class="text-end">Since</th>
-          <th>Publisher</th>
+          <th class="sortable text-end" data-col="coverage_start">Since <i class="sort-icon">↕</i></th>
+          <th class="sortable" data-col="publisher">Publisher <i class="sort-icon">↕</i></th>
         </tr>
       </thead>
       <tbody id="journalTableBody">
-        <tr><td colspan="8" class="text-center text-muted py-3">Loading…</td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-3">Loading&hellip;</td></tr>
       </tbody>
     </table>
   </div>
@@ -83,8 +97,12 @@
 {% block extra_scripts %}
 {% if has_data %}
 <script>
-let journalPage = 1;
-let journalSearchTimer = null;
+let journalPage   = 1;
+let journalSort   = 'citescore';
+let journalDir    = 'desc';
+let journalQ      = '';
+let journalSearch = '';
+let searchTimer   = null;
 
 function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -96,16 +114,25 @@ function qBadge(q) {
   return `<span class="badge ${cls}">${q}</span>`;
 }
 
+function oaBadge(oa) {
+  if (oa === 'full') return ' <span class="badge badge-oa-full ms-1" title="Fully open access">OA</span>';
+  if (oa === 'pw')   return ' <span class="badge badge-oa-pw ms-1" title="Pay-walled">PW</span>';
+  return '';
+}
+
 function loadJournals(page) {
   journalPage = page;
-  const q    = (document.getElementById('journalSearch')?.value || '').trim();
   const body = document.getElementById('journalTableBody');
-  body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Loading…</td></tr>';
-  fetch(`/journals/data?q=${encodeURIComponent(q)}&page=${page}&per_page=100`)
+  body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">Loading&hellip;</td></tr>';
+  const params = new URLSearchParams({
+    q: journalSearch, page, per_page: 100,
+    sort: journalSort, dir: journalDir, quartile: journalQ,
+  });
+  fetch(`/journals/data?${params}`)
     .then(r => r.json())
     .then(renderJournals)
     .catch(() => {
-      body.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-3">Failed to load journal data.</td></tr>';
+      body.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-3">Failed to load journal data.</td></tr>';
     });
 }
 
@@ -116,8 +143,16 @@ function renderJournals(data) {
   const count = document.getElementById('journalCount');
   if (!body) return;
 
+  // Update sort indicators
+  document.querySelectorAll('th.sortable').forEach(th => {
+    const col = th.dataset.col;
+    th.classList.toggle('active', col === data.sort);
+    const icon = th.querySelector('.sort-icon');
+    if (icon) icon.textContent = col !== data.sort ? '↕' : (data.dir === 'asc' ? '↑' : '↓');
+  });
+
   if (!data.rows || !data.rows.length) {
-    body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No journals found.</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No journals found.</td></tr>';
     if (info)  info.textContent  = '';
     if (nav)   nav.innerHTML     = '';
     if (count) count.textContent = '';
@@ -125,19 +160,29 @@ function renderJournals(data) {
   }
 
   body.innerHTML = data.rows.map(r => {
-    const titleHtml = r.source_id
-      ? `<a href="https://www.scopus.com/sourceid/${encodeURIComponent(r.source_id)}" target="_blank" rel="noopener" class="text-decoration-none">${escHtml(r.title)}</a>`
-      : escHtml(r.title);
+    const titleLink = r.source_id
+      ? `<a href="https://www.scopus.com/sourceid/${encodeURIComponent(r.source_id)}" target="_blank" rel="noopener" class="text-decoration-none fw-medium">${escHtml(r.title)}</a>`
+      : `<span class="fw-medium">${escHtml(r.title)}</span>`;
+    const abbrev = r.abbreviation
+      ? `<br><span class="text-muted small font-monospace">${escHtml(r.abbreviation)}</span>`
+      : '';
+    const pubmedLink = (r.issn || r.eissn)
+      ? ` <a href="https://pubmed.ncbi.nlm.nih.gov/?term=%22${encodeURIComponent(r.issn || r.eissn)}%22[ISSN]" target="_blank" rel="noopener" class="text-muted ms-1" title="Search this journal in PubMed"><i class="bi bi-box-arrow-up-right" style="font-size:.7em"></i></a>`
+      : '';
+    const feedBadge = r.feed_count > 0
+      ? `<span class="badge text-bg-secondary">${r.feed_count}</span>`
+      : '<span class="text-muted small">—</span>';
     return `<tr>
-    <td class="small">${titleHtml}</td>
-    <td class="small text-muted font-monospace text-nowrap">${escHtml(r.issn)}</td>
-    <td class="small text-muted font-monospace text-nowrap">${escHtml(r.eissn)}</td>
-    <td>${qBadge(r.quartile)}</td>
-    <td class="text-end small text-muted">${r.citescore != null ? r.citescore.toFixed(1) : '—'}</td>
-    <td class="text-end small text-muted">${r.percentile != null ? Math.round(r.percentile) + 'th' : '—'}</td>
-    <td class="text-end small text-muted">${r.coverage_start != null ? r.coverage_start : '—'}</td>
-    <td class="small text-muted" style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(r.publisher)}">${escHtml(r.publisher)}</td>
-  </tr>`;
+      <td class="small">${titleLink}${oaBadge(r.oa)}${abbrev}${pubmedLink}</td>
+      <td>${qBadge(r.quartile)}</td>
+      <td class="text-end small text-muted">${r.citescore != null ? r.citescore.toFixed(1) : '—'}</td>
+      <td class="text-end small text-muted">${r.percentile != null ? Math.round(r.percentile) + 'th' : '—'}</td>
+      <td class="text-end small">${feedBadge}</td>
+      <td class="small text-muted font-monospace text-nowrap">${escHtml(r.issn)}</td>
+      <td class="small text-muted font-monospace text-nowrap">${escHtml(r.eissn)}</td>
+      <td class="text-end small text-muted">${r.coverage_start != null ? r.coverage_start : '—'}</td>
+      <td class="small text-muted" style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(r.publisher)}">${escHtml(r.publisher)}</td>
+    </tr>`;
   }).join('');
 
   const from = (data.page - 1) * data.per_page + 1;
@@ -163,13 +208,33 @@ function renderJournals(data) {
 
 document.addEventListener('DOMContentLoaded', () => {
   loadJournals(1);
-  const search = document.getElementById('journalSearch');
-  if (search) {
-    search.addEventListener('input', () => {
-      clearTimeout(journalSearchTimer);
-      journalSearchTimer = setTimeout(() => loadJournals(1), 300);
+
+  document.getElementById('journalSearch').addEventListener('input', e => {
+    journalSearch = e.target.value.trim();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadJournals(1), 300);
+  });
+
+  document.getElementById('quartileFilter').addEventListener('click', e => {
+    const btn = e.target.closest('[data-q]');
+    if (!btn) return;
+    journalQ = btn.dataset.q;
+    document.querySelectorAll('#quartileFilter [data-q]').forEach(b => b.classList.toggle('active', b === btn));
+    loadJournals(1);
+  });
+
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (journalSort === col) {
+        journalDir = journalDir === 'desc' ? 'asc' : 'desc';
+      } else {
+        journalSort = col;
+        journalDir  = ['title', 'publisher'].includes(col) ? 'asc' : 'desc';
+      }
+      loadJournals(1);
     });
-  }
+  });
 });
 </script>
 {% endif %}

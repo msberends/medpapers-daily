@@ -125,13 +125,13 @@ def _parse_float(raw: str) -> float | None:
         return None
 
 
-def load_scopus() -> dict[str, tuple[str, float | None, float | None, str | None]]:
-    """Returns ISSN (hyphen-free) -> (quartile, citescore, percentile, publisher).
+def load_scopus() -> dict[str, tuple[str, float | None, float | None, str | None, str | None]]:
+    """Returns ISSN (hyphen-free) -> (quartile, citescore, percentile, publisher, title).
 
     Reads data/scopus_journals.csv produced by fetch_scopus_journals.py.
-    Columns used: issn, eIssn, quartile (numeric 1-4), citescore, percentile, publisher.
+    Columns used: issn, eIssn, quartile (numeric 1-4), citescore, percentile, publisher, title.
     """
-    mapping: dict[str, tuple[str, float | None, float | None, str | None]] = {}
+    mapping: dict[str, tuple[str, float | None, float | None, str | None, str | None]] = {}
     p = BASE_DIR / "data" / "scopus_journals.csv"
     if not p.exists():
         print(f"[fetch] WARNING: {p} not found. Quartile filtering disabled.")
@@ -149,13 +149,14 @@ def load_scopus() -> dict[str, tuple[str, float | None, float | None, str | None
             citescore  = _parse_float(row.get("citescore")  or "")
             percentile = _parse_float(row.get("percentile") or "")
             publisher  = (row.get("publisher") or "").strip() or None
+            title      = (row.get("title")     or "").strip() or None
             for issn_field in (row.get("issn") or "", row.get("eIssn") or ""):
                 for raw_issn in issn_field.split(","):
                     raw_issn = raw_issn.strip()
                     if raw_issn:
                         norm = _norm_issn(raw_issn)
                         if norm not in mapping:
-                            mapping[norm] = (quartile, citescore, percentile, publisher)
+                            mapping[norm] = (quartile, citescore, percentile, publisher, title)
     return mapping
 
 
@@ -284,9 +285,11 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
     # Journal
     journal_el = art.find("Journal")
     journal_name = ""
+    iso_abbreviation = ""
     issn = ""
     if journal_el is not None:
-        journal_name = _text(journal_el, "Title") or _text(journal_el, "ISOAbbreviation")
+        iso_abbreviation = _text(journal_el, "ISOAbbreviation") or ""
+        journal_name = _text(journal_el, "Title") or iso_abbreviation
         # prefer print ISSN, fall back to electronic
         issn_el = journal_el.find("ISSN[@IssnType='Print']")
         if issn_el is None:
@@ -346,6 +349,7 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
         "authors": json.dumps(authors),
         "affiliations": affiliations,
         "journal": journal_name,
+        "iso_abbreviation": iso_abbreviation or None,
         "issn": issn,
         "pub_date": pub_date,
         "epub_date": epub_date,
@@ -435,7 +439,7 @@ def main():
             for row in to_fix:
                 data = scopus.get(_norm_issn(row["issn"]))
                 if data:
-                    _, citescore, percentile, pub = data
+                    _, citescore, percentile, pub, _ = data
                     conn.execute(
                         """UPDATE papers
                            SET scopus_citescore  = COALESCE(scopus_citescore,  ?),
@@ -447,6 +451,24 @@ def main():
                     updated += 1
         if updated:
             print(f"[fetch] Backfilled Scopus fields for {updated} papers")
+
+    # Sync journal names from Scopus — runs on every fetch so a CSV refresh propagates automatically
+    if scopus:
+        with conn_ctx(db_path) as conn:
+            rows = conn.execute(
+                "SELECT pmid, issn, journal FROM papers WHERE issn IS NOT NULL"
+            ).fetchall()
+            updated = 0
+            for row in rows:
+                data = scopus.get(_norm_issn(row["issn"]))
+                if data:
+                    _, _, _, _, scopus_title = data
+                    if scopus_title and scopus_title != row["journal"]:
+                        conn.execute("UPDATE papers SET journal = ? WHERE pmid = ?",
+                                     (scopus_title, row["pmid"]))
+                        updated += 1
+        if updated:
+            print(f"[fetch] Updated journal names from Scopus for {updated} papers")
 
     # Backfill titles that were truncated by old XML parsing (text before first <i> child only)
     with conn_ctx(db_path) as conn:
@@ -580,11 +602,13 @@ def main():
 
                         norm_issn = _norm_issn(record["issn"])
                         scopus_data = scopus.get(norm_issn)
-                        quartile, citescore, percentile, publisher = scopus_data if scopus_data else (None, None, None, None)
+                        quartile, citescore, percentile, publisher, scopus_title = scopus_data if scopus_data else (None, None, None, None, None)
                         record["scopus_quartile"]   = quartile
                         record["scopus_citescore"]  = citescore
                         record["scopus_percentile"] = percentile
                         record["publisher"]         = publisher
+                        if scopus_title:
+                            record["journal"] = scopus_title
 
                         if q2_hard and quartile in ("Q3", "Q4"):
                             pf_filtered += 1
@@ -602,13 +626,13 @@ def main():
                                 record["first_seen_at"] = now_iso
                                 conn.execute(
                                     """INSERT INTO papers
-                                       (pmid, title, authors, affiliations, journal, issn,
+                                       (pmid, title, authors, affiliations, journal, iso_abbreviation, issn,
                                         pub_date, epub_date, abstract, abstract_structured, doi,
                                         oa_url, mesh_terms, keywords,
                                         scopus_quartile, scopus_citescore,
                                         scopus_percentile, publisher, first_seen_at)
                                        VALUES
-                                       (:pmid,:title,:authors,:affiliations,:journal,:issn,
+                                       (:pmid,:title,:authors,:affiliations,:journal,:iso_abbreviation,:issn,
                                         :pub_date,:epub_date,:abstract,:abstract_structured,:doi,
                                         :oa_url,:mesh_terms,:keywords,
                                         :scopus_quartile,:scopus_citescore,

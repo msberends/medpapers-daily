@@ -112,14 +112,17 @@ async def settings_page(request: Request, tab: str = ""):
             }
 
     # Collect all unique MeSH terms and author keywords from this user's papers
+    # Apply q2_hard filter so the unclassified count matches what the feed shows.
     all_mesh: set[str] = set()
     all_keywords: set[str] = set()
+    q2_hard = cfg.get("q2_hard", True)
+    quartile_filter = " AND p.scopus_quartile IN ('Q1', 'Q2')" if q2_hard else ""
     with conn_ctx() as conn:
         term_rows = conn.execute(
-            """SELECT p.mesh_terms, p.keywords
+            f"""SELECT p.mesh_terms, p.keywords
                FROM papers p
                JOIN user_papers up ON up.pmid = p.pmid
-               WHERE up.user_id = ?""",
+               WHERE up.user_id = ?{quartile_filter}""",
             (user["user_id"],),
         ).fetchall()
     for row in term_rows:
@@ -127,6 +130,14 @@ async def settings_page(request: Request, tab: str = ""):
         all_keywords.update(t.lower() for t in json.loads(row["keywords"] or "[]") if t)
 
     normalized_topic_map = {k.lower(): v for k, v in cfg.get("mesh_topic_map", {}).items()}
+
+    total_papers_count = len(term_rows)
+    unclassified_count = 0
+    for row in term_rows:
+        row_terms = set(t.lower() for t in json.loads(row["mesh_terms"] or "[]") if t)
+        row_terms.update(t.lower() for t in json.loads(row["keywords"] or "[]") if t)
+        if not any(t in normalized_topic_map for t in row_terms):
+            unclassified_count += 1
 
     topics_grouped: dict[str, list[str]] = {}
     for term, topic in cfg.get("mesh_topic_map", {}).items():
@@ -161,6 +172,8 @@ async def settings_page(request: Request, tab: str = ""):
         "effective_topic_colours": effective_topic_colours,
         "llm_available": llm_available,
         "llm_topic_available": llm_topic_available,
+        "unclassified_count": unclassified_count,
+        "total_papers_count": total_papers_count,
     })
 
 
@@ -519,8 +532,8 @@ async def suggest_topic_terms(request: Request):
     if not topics:
         return JSONResponse({"error": "No topics provided."}, status_code=400)
 
-    all_mesh: set[str] = set()
-    all_keywords: set[str] = set()
+    from collections import Counter
+    term_counts: Counter = Counter()
     with conn_ctx() as conn:
         term_rows = conn.execute(
             """SELECT p.mesh_terms, p.keywords
@@ -530,10 +543,18 @@ async def suggest_topic_terms(request: Request):
             (user["user_id"],),
         ).fetchall()
     for row in term_rows:
-        all_mesh.update(t.lower() for t in json.loads(row["mesh_terms"] or "[]") if t)
-        all_keywords.update(t.lower() for t in json.loads(row["keywords"] or "[]") if t)
+        for t in json.loads(row["mesh_terms"] or "[]"):
+            if t:
+                term_counts[t.lower()] += 1
+        for t in json.loads(row["keywords"] or "[]"):
+            if t:
+                term_counts[t.lower()] += 1
 
-    unassigned = sorted((all_mesh | all_keywords) - assigned)[:80]
+    # Sort by prevalence (most papers first), then alphabetically; exclude already-assigned
+    unassigned = sorted(
+        (t for t in term_counts if t not in assigned),
+        key=lambda t: (-term_counts[t], t),
+    )[:80]
     if not unassigned:
         return JSONResponse({"suggestions": []})
 
@@ -549,7 +570,7 @@ async def suggest_topic_terms(request: Request):
 
 
 @router.get("/settings/test-profile-query")
-async def test_profile_query(request: Request, query: str = ""):
+async def test_profile_query(request: Request, query: str = "", recent: bool = False):
     require_auth(request)
     query = query.strip()
     if not query:
@@ -563,6 +584,9 @@ async def test_profile_query(request: Request, query: str = ""):
         "retmax": 0,
         "retmode": "json",
     }
+    if recent:
+        params["reldate"] = 90
+        params["datetype"] = "pdat"
     if api_key:
         params["api_key"] = api_key
     try:

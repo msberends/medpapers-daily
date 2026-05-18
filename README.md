@@ -12,6 +12,59 @@ A self-hosted monitor for medical scientific literature. This webapp fetches pap
 - Per-user PubMed search profiles
 - Multi-user support with an admin panel
 
+
+## Requirements
+
+- Python 3.12 (see `.python-version`; bcrypt 5.x is incompatible with Python 3.11)
+
+Preferred:
+- A free [NCBI API key](https://www.ncbi.nlm.nih.gov/account/) to increase the PubMed rate limit to 10 req/sec
+- A free [Elsevier API key](https://dev.elsevier.com/) to retrieve Journal rankings
+- An SMTP relay (e.g. Gmail App Password)
+
+
+## Setup
+
+```bash
+# 1. Create a virtual environment and install dependencies
+python3.12 -m venv venv
+venv/bin/pip install -r requirements.txt
+
+# 2. Create initial admin user
+venv/bin/python setup_admin.py <username> <password>
+
+# 3. Run the app
+venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 2711 --reload
+```
+
+> All options can be set in the app and there is never a need to edit `.yaml` files manually.
+
+
+## Cron
+
+Use Cron to fetch new papers daily, and send a per-user email digest of new papers.
+
+```
+0  6 * * * /path/to/medpapers-daily/venv/bin/python /path/to/medpapers-daily/fetch.py && /path/to/medpapers-daily/venv/bin/python /path/to/medpapers-daily/email_digest.py
+# or only fetch, without email
+0  6 * * * /path/to/medpapers-daily/venv/bin/python /path/to/medpapers-daily/fetch.py
+```
+
+
+## Deploy as a systemd service
+
+Run MedPapers Daily as a service to keep the webserver alive. A reverse proxy is a very effective way to get the app as one of your subdomains.
+
+```bash
+cp medpapers-daily.service.example medpapers-daily.service
+# Edit medpapers-daily.service: replace YOUR_USERNAME and /path/to/medpapers-daily
+nano medpapers-daily.service
+
+sudo cp medpapers-daily.service /etc/systemd/system/
+sudo systemctl enable --now medpapers-daily
+```
+
+
 ## Security
 
 MedPapers Daily is a closed, admin-provisioned tool — there is no self-registration. The following hardening measures are built in.
@@ -43,59 +96,13 @@ Every response carries a full set of security headers via a Starlette middleware
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | Camera, microphone, and geolocation disabled |
 
+
 ### Deployment posture
 
 - **Never exposed directly.** The FastAPI process listens on `127.0.0.1` only. All production traffic must go through a reverse proxy (nginx, Caddy, etc.) that handles TLS.
 - **Dedicated service account.** The systemd unit runs as an unprivileged user with no sudo access; the app directory is its only writable path.
 - **No paywall bypass.** Institutional access relies on Shibboleth/SAML (browser-only). Scripting around publisher paywalls would violate publisher terms and is intentionally absent.
 
-## Requirements
-
-- Python 3.12 (see `.python-version`; bcrypt 5.x is incompatible with Python 3.11)
-
-Preferred:
-- A free [NCBI API key](https://www.ncbi.nlm.nih.gov/account/) to increase the PubMed rate limit to 10 req/sec
-- A free [Elsevier API key](https://dev.elsevier.com/) to retrieve Journal rankings
-- An SMTP relay (e.g. Gmail App Password)
-
-## Setup
-
-```bash
-# 1. Create a virtual environment and install dependencies
-python3.12 -m venv venv
-venv/bin/pip install -r requirements.txt
-
-# 2. Create initial admin user
-venv/bin/python setup_admin.py <username> <password>
-
-# 3. Run the app
-venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 2711 --reload
-```
-
-> All options can be set in the app and there is never a need to edit `.yaml` files manually.
-
-## Cron
-
-Use Cron to fetch new papers daily, and send a per-user email digest of new papers.
-
-```
-0  6 * * * /path/to/medpapers-daily/venv/bin/python /path/to/medpapers-daily/fetch.py && /path/to/medpapers-daily/venv/bin/python /path/to/medpapers-daily/email_digest.py
-# or only fetch, without email
-0  6 * * * /path/to/medpapers-daily/venv/bin/python /path/to/medpapers-daily/fetch.py
-```
-
-## Deploy as a systemd service
-
-Run MedPapers Daily as a service to keep the webserver alive. A reverse proxy is a very effective way to get the app as one of your subdomains.
-
-```bash
-cp medpapers-daily.service.example medpapers-daily.service
-# Edit medpapers-daily.service: replace YOUR_USERNAME and /path/to/medpapers-daily
-nano medpapers-daily.service
-
-sudo cp medpapers-daily.service /etc/systemd/system/
-sudo systemctl enable --now medpapers-daily
-```
 
 ## Screenshots
 

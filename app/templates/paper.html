@@ -47,7 +47,7 @@
       <span class="badge bg-danger fs-6"><i class="bi bi-lock me-1"></i>Paywall</span>
     {% endif %}
     {% for topic in topics %}
-      <span class="badge {% if topic == 'Unclassified' %}bg-secondary{% else %}badge-topic-{{ topic_color_map.get(topic, 'secondary') }}{% endif %} fs-6">{{ topic }}</span>
+      <span class="badge {% if topic == 'Unclassified' %}badge-topic-secondary{% else %}badge-topic-{{ topic_color_map.get(topic, 'secondary') }}{% endif %} fs-6">{{ topic }}</span>
     {% endfor %}
   </div>
 
@@ -216,7 +216,7 @@
       {% for kw in paper.keyword_list %}
       {% set mapped_topic = mesh_topic_map.get(kw|lower) %}
       <span class="d-inline-flex align-items-center">
-        <span class="badge bg-light text-dark border{% if mapped_topic %} rounded-end-0 border-end-0{% endif %}">{{ kw }}</span>
+        <span class="badge bg-body-secondary text-body border{% if mapped_topic %} rounded-end-0 border-end-0{% endif %}">{{ kw }}</span>
         {% if mapped_topic %}
         <span class="badge badge-topic-{{ topic_color_map.get(mapped_topic, 'secondary') }} rounded-start-0">{{ mapped_topic }}</span>
         {% endif %}
@@ -236,7 +236,7 @@
       <span class="d-inline-flex align-items-center">
         <a href="https://www.ncbi.nlm.nih.gov/mesh/?term=%22{{ term | urlenc }}%22[MeSH+Terms]"
            target="_blank" rel="noopener"
-           class="badge bg-light text-dark border text-decoration-none{% if mapped_topic %} rounded-end-0 border-end-0{% endif %}">{{ term }}</a>
+           class="badge bg-body-secondary text-body border text-decoration-none{% if mapped_topic %} rounded-end-0 border-end-0{% endif %}">{{ term }}</a>
         {% if mapped_topic %}
         <span class="badge badge-topic-{{ topic_color_map.get(mapped_topic, 'secondary') }} rounded-start-0">{{ mapped_topic }}</span>
         {% endif %}

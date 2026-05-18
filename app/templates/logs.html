@@ -35,13 +35,13 @@
     <li class="nav-item">
       <a class="nav-link active" data-bs-toggle="tab" href="#tab-fetch">
         <i class="bi bi-cloud-download me-1"></i>Fetch
-        <span class="badge bg-secondary ms-1">{{ total }}</span>
+        <span class="badge text-bg-secondary ms-1">{{ total }}</span>
       </a>
     </li>
     <li class="nav-item">
       <a class="nav-link" data-bs-toggle="tab" href="#tab-mail">
         <i class="bi bi-envelope me-1"></i>Email
-        <span class="badge bg-secondary ms-1">{{ mail_logs | length }}</span>
+        <span class="badge text-bg-secondary ms-1">{{ mail_logs | length }}</span>
       </a>
     </li>
     {% if user.is_admin %}

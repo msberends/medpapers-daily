@@ -7,8 +7,10 @@
   .paper-card:hover { background: rgba(0,0,0,.03); }
   .paper-card.kb-focus { outline: 2px solid var(--bs-primary); outline-offset: -2px; }
   .glance-bar { height: 40px; }
-  .hl-toggle[aria-expanded="false"] .hl-arrow::after { content: " \00BB"; }
-  .hl-toggle[aria-expanded="true"]  .hl-arrow::after { content: " \00AB"; }
+  .hl-toggle[aria-expanded="false"] .hl-arrow::after  { content: " \00BB"; }
+  .hl-toggle[aria-expanded="true"]  .hl-arrow::after  { content: " \00AB"; }
+  .abs-toggle[aria-expanded="false"] .abs-arrow::after { content: " \00BB"; }
+  .abs-toggle[aria-expanded="true"]  .abs-arrow::after { content: " \00AB"; }
   /* Inline abstract structured rendering */
   .inline-abs { max-height: 360px; overflow-y: auto; }
   .inline-abs .abs-accent { border-left: 3px solid var(--bs-primary); padding-left: .6rem; }
@@ -84,7 +86,7 @@
             {% for topic in all_topics %}
             {% set t_pct = (topic_counts.get(topic, 0) / total * 100) | round(1) %}
             {% if t_pct > 0 %}
-            {% set seg_cls = 'bg-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ topic_color_map.get(topic, 'secondary') %}
+            {% set seg_cls = 'badge-topic-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ topic_color_map.get(topic, 'secondary') %}
             <div class="progress-bar {{ seg_cls }}" style="width:{{ t_pct }}%"
                  data-bs-toggle="tooltip" title="{{ topic }}: {{ topic_counts.get(topic, 0) }} papers"></div>
             {% endif %}
@@ -122,29 +124,29 @@
           <a href="/feed?view=unread&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'unread' %}active{% endif %}">
             <i class="bi bi-envelope me-1"></i> Unread
-            <span id="unreadBadge" class="badge bg-secondary float-end{% if not unread_count %} d-none{% endif %}">{{ unread_count }}</span>
+            <span id="unreadBadge" class="badge text-bg-secondary float-end{% if not unread_count %} d-none{% endif %}">{{ unread_count }}</span>
           </a>
           <a href="/feed?view=unrated&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'unrated' %}active{% endif %}">
             <i class="bi bi-question-circle me-1"></i> Unrated
-            <span id="unratedBadge" class="badge bg-secondary float-end{% if not unrated_count %} d-none{% endif %}">{{ unrated_count }}</span>
+            <span id="unratedBadge" class="badge text-bg-secondary float-end{% if not unrated_count %} d-none{% endif %}">{{ unrated_count }}</span>
           </a>
           <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'all' %}active{% endif %}">
             <i class="bi bi-grid me-1"></i> All papers
-            {% if total_user_papers %}<span class="badge bg-secondary float-end">{{ total_user_papers }}</span>{% endif %}
+            {% if total_user_papers %}<span class="badge text-bg-secondary float-end">{{ total_user_papers }}</span>{% endif %}
           </a>
           <a href="/feed?view=starred&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'starred' %}active{% endif %}">
             <i class="bi bi-star-fill text-warning me-1"></i> Starred
-            {% if starred_count %}<span class="badge bg-secondary float-end">{{ starred_count }}</span>{% endif %}
+            {% if starred_count %}<span class="badge text-bg-secondary float-end">{{ starred_count }}</span>{% endif %}
           </a>
           {% for f in folders %}
           <a href="/feed?view=folder&folder_id={{ f.id }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'folder' and folder_id == f.id %}active{% endif %}">
             <i class="bi bi-folder me-1"></i> {{ f.name }}
             {% set cnt = folder_counts.get(f.id, 0) %}
-            {% if cnt %}<span class="badge bg-secondary float-end">{{ cnt }}</span>{% endif %}
+            {% if cnt %}<span class="badge text-bg-secondary float-end">{{ cnt }}</span>{% endif %}
           </a>
           {% endfor %}
         </div>
@@ -189,7 +191,7 @@
         <div class="card-header fw-semibold py-2">Topics</div>
         <div class="card-body py-2">
           {% for topic in all_topics %}
-          {% set dot_cls = 'bg-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ topic_color_map.get(topic, 'secondary') %}
+          {% set dot_cls = 'badge-topic-secondary' if topic == 'Unclassified' else 'badge-topic-' ~ topic_color_map.get(topic, 'secondary') %}
           <div class="form-check">
             <input class="form-check-input" type="checkbox" name="topic_cb" value="{{ topic }}"
                    id="topic_{{ loop.index }}"
@@ -335,7 +337,7 @@
     {% if not papers %}
       {% if total_user_papers == 0 %}
       {# ── First-run: nothing fetched yet for this user ── #}
-      <div class="card border-0 bg-light mb-3">
+      <div class="card border-0 bg-body-secondary mb-3">
         <div class="card-body py-4 px-4">
           <h6 class="mb-3"><i class="bi bi-inbox me-2"></i>No papers yet — here's how this works</h6>
           <p class="mb-2">{{ config.get('app_name') or 'This application' }} fetches new PubMed results on a schedule and stores them here for you to browse, star, and organise. Nothing has been fetched for your account yet.</p>
@@ -345,7 +347,7 @@
       </div>
       {% elif view == 'unread' and unread_count == 0 %}
       {# ── All papers have been read ── #}
-      <div class="card border-0 bg-light mb-3">
+      <div class="card border-0 bg-body-secondary mb-3">
         <div class="card-body py-4 px-4">
           <h6 class="mb-3"><i class="bi bi-check2-all me-2"></i>You are all caught up</h6>
           <p class="mb-2">All <strong>{{ total_user_papers }}</strong> paper(s) in your library have been read. Switch to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>All papers</strong></a> to browse your full library, or come back after the next scheduled fetch.{% if unrated_count > 0 %} In the meantime, why not take a moment to <a href="/feed?view=unrated&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>rate the relevance</strong></a> of some papers?{% endif %}</p>
@@ -356,7 +358,7 @@
       </div>
       {% else %}
       {# ── This user has papers, but current filters exclude all of them ── #}
-      <div class="card border-0 bg-light mb-3">
+      <div class="card border-0 bg-body-secondary mb-3">
         <div class="card-body py-4 px-4">
           <h6 class="mb-3"><i class="bi bi-funnel me-2"></i>No papers match the current filters</h6>
           <p class="mb-2">Your library contains <strong>{{ total_user_papers }}</strong> paper(s), but none pass all the active filters at once.</p>
@@ -433,7 +435,7 @@
                 <i class="bi bi-stars" style="font-size:.7em"></i> Key Highlights<span class="hl-arrow"></span>
               </a>
               <div class="collapse" id="hl-{{ paper.pmid }}">
-                <ul class="mt-1 mb-0 ps-3" style="font-size:.82em; line-height:1.5; color:var(--bs-secondary-color)">
+                <ul class="mt-1 mb-0" style="padding-left:1.85rem; font-size:.82em; line-height:1.5; color:var(--bs-secondary-color); color:color-mix(in srgb, var(--bs-primary) 50%, var(--bs-secondary-color))">
                   {% for h in paper.highlights %}
                   <li>{{ h | inline_md }}</li>
                   {% endfor %}
@@ -443,10 +445,10 @@
             {% endif %}
             {% if paper.abstract %}
             <div class="mt-1">
-              <a class="small text-muted text-decoration-none user-select-none"
+              <a class="small text-muted text-decoration-none user-select-none abs-toggle"
                  data-bs-toggle="collapse" href="#abs-{{ paper.pmid }}"
                  role="button" aria-expanded="false">
-                <i class="bi bi-chevron-down" style="font-size:.7em"></i> Abstract <span class="fw-normal opacity-75" style="font-size:.85em">({{ paper.abstract.split() | length }} words)</span>
+                <i class="bi bi-card-text" style="font-size:.7em"></i> Abstract <span class="fw-normal opacity-75" style="font-size:.85em">({{ paper.abstract.split() | length }} words)</span><span class="abs-arrow"></span>
               </a>
               <div class="collapse" id="abs-{{ paper.pmid }}">
                 <div class="small text-muted mt-1 mb-1 inline-abs" style="line-height:1.55">
@@ -487,7 +489,7 @@
               <span class="badge bg-danger"><i class="bi bi-lock me-1"></i>PW</span>
               {% endif %}
               {% for topic in topics %}
-              <span class="badge {% if topic == 'Unclassified' %}bg-secondary{% else %}badge-topic-{{ topic_color_map.get(topic, 'secondary') }}{% endif %}">{{ topic }}</span>
+              <span class="badge {% if topic == 'Unclassified' %}badge-topic-secondary{% else %}badge-topic-{{ topic_color_map.get(topic, 'secondary') }}{% endif %}">{{ topic }}</span>
               {% endfor %}
             </div>
           </div>

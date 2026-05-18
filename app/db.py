@@ -220,6 +220,8 @@ def _migrate(conn: sqlite3.Connection):
 
     if "affiliations" not in papers_cols:
         conn.execute("ALTER TABLE papers ADD COLUMN affiliations TEXT")
+    if "iso_abbreviation" not in papers_cols:
+        conn.execute("ALTER TABLE papers ADD COLUMN iso_abbreviation TEXT")
     if "highlights" not in papers_cols:
         conn.execute("ALTER TABLE papers ADD COLUMN highlights TEXT")
     if "abstract_structured" not in papers_cols:

@@ -309,8 +309,8 @@
             <li>Phrase search with quotes: <code>"antimicrobial resistance"</code></li>
           </ul>
           <p class="small mb-2">Use <a href="https://pubmed.ncbi.nlm.nih.gov/advanced/" target="_blank" rel="noopener">PubMed Advanced Search</a> to build and test queries interactively before pasting them here.</p>
-          <p class="fw-semibold small mb-1"><i class="bi bi-hand-thumbs-up me-1"></i>Relevance tracking</p>
-          <p class="small mb-2">Each paper in your feed that was fetched by a named search profile shows thumbs-up (<i class="bi bi-hand-thumbs-up"></i>) and thumbs-down (<i class="bi bi-hand-thumbs-down"></i>) buttons. Use them to tell the system whether the paper was a good result. You can also rate papers from the paper detail page. Clicking a button a second time clears the rating.</p>
+          <p class="fw-semibold small mb-1">Relevance tracking</p>
+          <p class="small mb-2">Each paper in your feed that was fetched by a named search profile shows thumbs-up (<i class="bi bi-hand-thumbs-up"></i>) and thumbs-down (<i class="bi bi-hand-thumbs-down"></i>) buttons. Use them to tell the system whether the paper was a <strong>relevant</strong> result. You can also rate papers from the paper detail page. Clicking a button a second time clears the rating.</p>
           <p class="small mb-0">Because a paper can be matched by more than one search profile, a single rating counts as feedback for <em>every</em> profile that fetched it. When a profile's relevant percentage falls below your alert threshold and enough papers have been rated, a warning appears at the top of your feed. Per-profile stats are shown within each profile below.</p>
         </div>
 
@@ -329,75 +329,65 @@
           {% set not_relevant = stats.get('not_relevant', 0) %}
           {% set pct = ((relevant / rated * 100) | int) if rated > 0 else none %}
           {% set threshold_pct = (rel_cfg.threshold * 100) | int %}
-          <div class="profile-row p-3 mb-3 border">
+          <div class="profile-row card mb-3">
             <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
-            <div class="row g-2 align-items-start">
-              <div class="col-md-3">
-                <label class="form-label small">Profile name</label>
-                <input type="text" name="profile_name" class="form-control form-control-sm"
-                       value="{{ p.name }}" placeholder="e.g. AMR Surveillance" required>
+            <div class="card-header d-flex align-items-center gap-2 py-2 px-3">
+              <input type="hidden" name="profile_enabled"
+                     value="{{ '1' if p.get('enabled', True) else '0' }}">
+              <div class="form-check form-switch mb-0 flex-shrink-0">
+                <input class="form-check-input" type="checkbox" id="pe_{{ loop.index }}"
+                       onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'"
+                       {% if p.get('enabled', True) %}checked{% endif %}>
+                <label class="form-check-label small text-muted" for="pe_{{ loop.index }}">Active</label>
               </div>
-              <div class="col-md-8">
-                <label class="form-label small">PubMed query</label>
-                <textarea name="profile_query" class="form-control form-control-sm font-monospace"
-                          rows="3" placeholder="e.g. &quot;antimicrobial resistance&quot;[MeSH]">{{ p.query }}</textarea>
-                <div class="d-flex align-items-center gap-2 mt-1">
-                  <button type="button" class="btn btn-sm btn-outline-secondary test-query-btn"
-                          onclick="testProfileQuery(this)" title="Validate query against PubMed live">
-                    <i class="bi bi-check-circle me-1"></i>Validate
-                  </button>
-                  <div class="query-test-result small"></div>
-                </div>
-              </div>
-              <div class="col-md-1 d-flex align-items-start justify-content-end pt-4">
-                <button type="button" class="btn btn-sm btn-outline-danger"
-                        onclick="this.closest('.profile-row').remove()" title="Remove this profile">
-                  <i class="bi bi-trash"></i>
+              <input type="text" name="profile_name" class="form-control form-control-sm fw-semibold"
+                     value="{{ p.name }}" placeholder="Profile name" required>
+              <button type="button" class="btn btn-link text-danger p-1 flex-shrink-0"
+                      onclick="this.closest('.profile-row').remove()" title="Delete this profile">
+                <i class="bi bi-trash3"></i>
+              </button>
+            </div>
+            <div class="card-body py-2 px-3">
+              <textarea name="profile_query" class="form-control form-control-sm font-monospace"
+                        rows="3" placeholder="e.g. &quot;antimicrobial resistance&quot;[MeSH]">{{ p.query }}</textarea>
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary test-query-btn"
+                        onclick="testProfileQuery(this)" title="Check how many results this query returns on PubMed">
+                  <i class="bi bi-search me-1"></i>Test query
                 </button>
+                <div class="query-test-result small"></div>
               </div>
-              <div class="col-12 d-flex align-items-center justify-content-between flex-wrap gap-2 pt-1">
-                <div>
-                  <input type="hidden" name="profile_enabled"
-                         value="{{ '1' if p.get('enabled', True) else '0' }}">
-                  <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="pe_{{ loop.index }}"
-                           onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'"
-                           {% if p.get('enabled', True) %}checked{% endif %}>
-                    <label class="form-check-label small text-muted" for="pe_{{ loop.index }}">Active</label>
-                  </div>
-                </div>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                  <span class="small text-muted">
-                    {% if rated == 0 %}
-                    No ratings yet (last {{ rel_cfg.lookback_days }} days)
-                    {% else %}
-                    <i class="bi bi-hand-thumbs-up text-success"></i> {{ relevant }}
-                    &middot;
-                    <i class="bi bi-hand-thumbs-down text-danger"></i> {{ not_relevant }}
-                    &middot; {{ rated }} rated
-                    {% if pct is not none %}
-                    <span class="badge ms-1
-                      {% if pct >= threshold_pct %}text-bg-success
-                      {% elif pct >= threshold_pct - 10 %}text-bg-warning
-                      {% else %}text-bg-danger{% endif %}">{{ pct }}%</span>
-                    {% endif %}
-                    {% if rated < rel_cfg.min_rated and pct is not none and pct < threshold_pct %}
-                    <span class="text-muted small">({{ rel_cfg.min_rated - rated }} more needed for alert)</span>
-                    {% endif %}
-                    {% endif %}
-                  </span>
-                  {% if pid %}
-                  <button type="submit" form="reset-form-{{ pid }}"
-                          class="btn btn-sm btn-outline-secondary">Reset ratings</button>
-                  {% endif %}
-                  {% if pid and (llm_available or (rated >= rel_cfg.min_rated and pct is not none and pct < threshold_pct)) %}
-                  <button type="button" id="suggest-btn-{{ pid }}"
-                          class="btn btn-sm btn-outline-primary"
-                          onclick="generatePrompt({{ pid }})">
-                    <i class="bi bi-stars me-1"></i>{% if llm_available %}Improve with LLM{% else %}Suggest improvements{% endif %}
-                  </button>
-                  {% endif %}
-                </div>
+            </div>
+            <div class="card-footer d-flex align-items-center justify-content-between flex-wrap gap-2 py-2 px-3 bg-transparent">
+              <span class="small text-muted">
+                {% if rated == 0 %}
+                No ratings yet (last {{ rel_cfg.lookback_days }} days)
+                {% else %}
+                <i class="bi bi-hand-thumbs-up text-success"></i> {{ relevant }}
+                &middot;
+                <i class="bi bi-hand-thumbs-down text-danger"></i> {{ not_relevant }}
+                &middot; {{ rated }} rated
+                {% if pct is not none %}
+                <span class="badge ms-1 {% if pct >= threshold_pct %}text-bg-success{% elif pct >= threshold_pct - 10 %}text-bg-warning{% else %}text-bg-danger{% endif %}"
+                      style="vertical-align:middle">{{ pct }}%</span>
+                {% endif %}
+                {% if rated < rel_cfg.min_rated and pct is not none and pct < threshold_pct %}
+                <span class="text-muted small">({{ rel_cfg.min_rated - rated }} more needed for alert)</span>
+                {% endif %}
+                {% endif %}
+              </span>
+              <div class="d-flex gap-2 flex-wrap">
+                {% if pid %}
+                <button type="submit" form="reset-form-{{ pid }}"
+                        class="btn btn-sm btn-outline-secondary">Reset ratings</button>
+                {% endif %}
+                {% if pid and (llm_available or (rated >= rel_cfg.min_rated and pct is not none and pct < threshold_pct)) %}
+                <button type="button" id="suggest-btn-{{ pid }}"
+                        class="btn btn-sm btn-outline-primary"
+                        onclick="generatePrompt({{ pid }})">
+                  <i class="bi bi-stars me-1"></i>{% if llm_available %}Improve with LLM{% else %}Suggest improvements{% endif %}
+                </button>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -475,6 +465,14 @@
           <p class="small mb-0">MeSH headings are controlled vocabulary assigned by NLM indexers — use the <a href="https://www.ncbi.nlm.nih.gov/mesh/" target="_blank" rel="noopener">NLM MeSH Browser</a> for exact headings. Author keywords are free-text from authors and match exactly as written. Recent papers may lack MeSH terms; author keywords fill this gap until indexing is complete.</p>
         </div>
 
+        {% if total_papers_count > 0 %}
+          {% if unclassified_count == 0 %}
+          <p class="small text-muted mb-3">All {{ total_papers_count }} of your papers have at least one topic assigned.</p>
+          {% else %}
+          <p class="small text-muted mb-3">{{ unclassified_count }} of your {{ total_papers_count }} papers ({{ (unclassified_count / total_papers_count * 100) | round | int }}%) currently have no topic assigned and appear as <em>Unclassified</em> in your <a href="/feed?topics=Unclassified&amp;view=all">feed</a>.</p>
+          {% endif %}
+        {% endif %}
+
         {% if llm_topic_available %}
         <div class="mb-4">
           <button type="button" class="btn btn-sm btn-outline-secondary" id="suggestTermsBtn"
@@ -500,7 +498,7 @@
               {% for kw in all_keywords %}
               {% set already_mapped = kw in normalized_topic_map %}
               <button type="button"
-                      class="badge border text-decoration-none term-badge {% if already_mapped %}bg-secondary-subtle text-secondary border-secondary-subtle{% else %}bg-light text-dark{% endif %}"
+                      class="badge border text-decoration-none term-badge {% if already_mapped %}bg-secondary-subtle text-secondary border-secondary-subtle{% else %}bg-body-secondary text-body{% endif %}"
                       style="cursor:pointer;font-size:.8em"
                       data-term="{{ kw | e }}"
                       onclick="stageTermForTopic(this.dataset.term)"
@@ -514,7 +512,7 @@
               {% for term in all_mesh_terms %}
               {% set already_mapped = term in normalized_topic_map %}
               <button type="button"
-                      class="badge border text-decoration-none term-badge {% if already_mapped %}bg-secondary-subtle text-secondary border-secondary-subtle{% else %}bg-light text-dark{% endif %}"
+                      class="badge border text-decoration-none term-badge {% if already_mapped %}bg-secondary-subtle text-secondary border-secondary-subtle{% else %}bg-body-secondary text-body{% endif %}"
                       style="cursor:pointer;font-size:.8em"
                       data-term="{{ term | e }}"
                       onclick="stageTermForTopic(this.dataset.term)"
@@ -563,11 +561,10 @@
           {% set colour = effective_topic_colours.get(topic_name, 'primary') %}
           {% if colour in _std_colours %}
             {% set _dot_style = 'background-color:var(--bs-' ~ colour ~ ')' %}
-            {% set _chip_cls = 'bg-' ~ colour ~ '-subtle text-' ~ colour ~ '-emphasis border border-' ~ colour ~ '-subtle' %}
           {% else %}
             {% set _dot_style = 'background-color:' ~ _colour_hex.get(colour, '#6c757d') %}
-            {% set _chip_cls = 'chip-colour-' ~ colour ~ ' border' %}
           {% endif %}
+          {% set _chip_cls = 'bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle' %}
           <div class="topic-card card mb-2" data-colour="{{ colour }}">
             <div class="topic-header card-header d-flex align-items-center gap-2 py-2 px-3"
                  style="cursor:pointer;user-select:none" onclick="topicToggle(event,this)">
@@ -600,7 +597,7 @@
                      value="{{ topic_name | e }}" placeholder="Topic name"
                      onclick="event.stopPropagation()"
                      onkeydown="if(event.key==='Enter')this.blur()">
-              <span class="badge text-bg-secondary term-count ms-1">{{ terms | length }}</span>
+              <span class="badge bg-secondary-subtle text-secondary-emphasis term-count ms-1">{{ terms | length }}</span>
               <button type="button" class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0"
                       onclick="event.stopPropagation();this.closest('.topic-card').remove();checkEmptyState()">
                 <i class="bi bi-trash"></i>
@@ -682,7 +679,7 @@
         </div>
         <div class="modal-body">
           <p class="text-muted small mb-3" id="topicSuggestIntro">
-            The LLM has suggested the following term assignments. Untick any suggestions you do not want to apply, then click <strong>Apply selected</strong>. No changes are saved until you click <strong>Save topics</strong>.
+            The LLM has suggested the following term assignments. Untick any suggestions you do not want to apply, then click <strong>Apply selected</strong>.
           </p>
           <div id="topicSuggestList"></div>
         </div>
@@ -784,57 +781,63 @@ async function testProfileQuery(btn) {
   const query = (ta ? ta.value : '').trim();
   if (!query) { resultDiv.innerHTML = '<span class="text-warning">Enter a query first.</span>'; return; }
   btn.disabled = true;
+  const origWidth = btn.offsetWidth;
+  btn.style.minWidth = origWidth + 'px';
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
   resultDiv.innerHTML = '';
   try {
-    const r = await fetch('/settings/test-profile-query?query=' + encodeURIComponent(query));
-    const data = await r.json();
-    if (data.error) {
-      resultDiv.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>' + escapeHtml(data.error) + '</span>';
+    const enc = encodeURIComponent(query);
+    const [r1, r2] = await Promise.all([
+      fetch('/settings/test-profile-query?query=' + enc),
+      fetch('/settings/test-profile-query?query=' + enc + '&recent=true'),
+    ]);
+    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    if (d1.error) {
+      resultDiv.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>' + escapeHtml(d1.error) + '</span>';
     } else {
-      const n = data.count;
+      const n = d1.count;
       const cls = n === 0 ? 'text-warning' : 'text-success';
-      resultDiv.innerHTML = '<span class="' + cls + '"><i class="bi bi-check-circle me-1"></i>' + n.toLocaleString() + ' result' + (n !== 1 ? 's' : '') + ' on PubMed (all time)</span>';
+      let msg = n.toLocaleString() + ' result' + (n !== 1 ? 's' : '') + ' on PubMed';
+      if (n > 0 && !d2.error) {
+        msg += ' (of which ' + d2.count.toLocaleString() + ' in last 3 months)';
+      }
+      resultDiv.innerHTML = '<span class="' + cls + '"><i class="bi bi-check-circle me-1"></i>' + msg + '</span>';
     }
   } catch (e) {
     resultDiv.innerHTML = '<span class="text-danger">Request failed.</span>';
   }
   btn.disabled = false;
-  btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Validate';
+  btn.style.minWidth = '';
+  btn.innerHTML = '<i class="bi bi-search me-1"></i>Test query';
 }
 
 function addProfile() {
   const idx = _peIdx++;
-  const html = `<div class="profile-row p-3 mb-3 border">
+  const html = `<div class="profile-row card mb-3">
     <input type="hidden" name="profile_id" value="">
-    <div class="row g-2 align-items-start">
-      <div class="col-md-3">
-        <label class="form-label small">Profile name</label>
-        <input type="text" name="profile_name" class="form-control form-control-sm" placeholder="e.g. AMR Surveillance" required>
+    <div class="card-header d-flex align-items-center gap-2 py-2 px-3">
+      <input type="hidden" name="profile_enabled" value="1">
+      <div class="form-check form-switch mb-0 flex-shrink-0">
+        <input class="form-check-input" type="checkbox" id="pe_${idx}"
+               onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'" checked>
+        <label class="form-check-label small text-muted" for="pe_${idx}">Active</label>
       </div>
-      <div class="col-md-8">
-        <label class="form-label small">PubMed query</label>
-        <textarea name="profile_query" class="form-control form-control-sm font-monospace" rows="3" placeholder='e.g. "antimicrobial resistance"[MeSH]'></textarea>
-        <div class="d-flex align-items-center gap-2 mt-1">
-          <button type="button" class="btn btn-sm btn-outline-secondary test-query-btn"
-                  onclick="testProfileQuery(this)" title="Validate query against PubMed live">
-            <i class="bi bi-check-circle me-1"></i>Validate
-          </button>
-          <div class="query-test-result small"></div>
-        </div>
-      </div>
-      <div class="col-md-1 d-flex align-items-start justify-content-end pt-4">
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.profile-row').remove()" title="Remove this profile">
-          <i class="bi bi-trash"></i>
+      <input type="text" name="profile_name" class="form-control form-control-sm fw-semibold"
+             placeholder="Profile name" required>
+      <button type="button" class="btn btn-link text-danger p-1 flex-shrink-0"
+              onclick="this.closest('.profile-row').remove()" title="Delete this profile">
+        <i class="bi bi-trash3"></i>
+      </button>
+    </div>
+    <div class="card-body py-2 px-3">
+      <textarea name="profile_query" class="form-control form-control-sm font-monospace"
+                rows="3" placeholder='e.g. "antimicrobial resistance"[MeSH]'></textarea>
+      <div class="d-flex align-items-center gap-2 mt-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary test-query-btn"
+                onclick="testProfileQuery(this)" title="Check how many results this query returns on PubMed">
+          <i class="bi bi-search me-1"></i>Test query
         </button>
-      </div>
-      <div class="col-12">
-        <input type="hidden" name="profile_enabled" value="1">
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="pe_${idx}"
-                 onchange="this.parentElement.previousElementSibling.value = this.checked ? '1' : '0'" checked>
-          <label class="form-check-label small text-muted" for="pe_${idx}">Active</label>
-        </div>
+        <div class="query-test-result small"></div>
       </div>
     </div>
   </div>`;
@@ -850,9 +853,7 @@ const COLOUR_LABELS = {red:'Red',orange:'Orange',yellow:'Amber',green:'Green',te
 let _nextColourIdx  = {{ topics_grouped | length }};
 
 function chipClasses(colour) {
-  return STD_COLOURS.has(colour)
-    ? ['bg-'+colour+'-subtle','text-'+colour+'-emphasis','border','border-'+colour+'-subtle']
-    : ['chip-colour-'+colour,'border'];
+  return ['bg-secondary-subtle','text-secondary-emphasis','border','border-secondary-subtle'];
 }
 function dotBgStyle(colour) {
   return COLOUR_HEX[colour] ? 'background-color:'+COLOUR_HEX[colour] : 'background-color:var(--bs-'+colour+')';
@@ -948,7 +949,7 @@ function addTopic() {
       </div>
     </div>
     <input type="text" class="topic-name-input form-control form-control-sm fw-semibold ms-1" value="" placeholder="Topic name" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter')this.blur()">
-    <span class="badge text-bg-secondary term-count ms-1">0</span>
+    <span class="badge bg-secondary-subtle text-secondary-emphasis term-count ms-1">0</span>
     <button type="button" class="btn btn-sm btn-outline-danger ms-auto flex-shrink-0" onclick="event.stopPropagation();this.closest('.topic-card').remove();checkEmptyState()"><i class="bi bi-trash"></i></button>
   </div>
   <div class="topic-body">
@@ -1263,8 +1264,8 @@ function _showTopicSuggestModal(suggestions, topics) {
 
     let html = '<div class="list-group list-group-flush">';
     let idx = 0;
-    Object.entries(grouped).forEach(([topic, terms]) => {
-      terms.forEach(term => {
+    Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).forEach(([topic, terms]) => {
+      terms.sort((a, b) => a.localeCompare(b)).forEach(term => {
         html += `<label class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-2 px-2" style="cursor:pointer">
           <input class="form-check-input flex-shrink-0 topic-suggest-check" type="checkbox"
                  data-term="${escapeHtml(term)}" data-topic="${escapeHtml(topic)}" checked>
@@ -1312,17 +1313,7 @@ function applyTopicSuggestions() {
   });
 
   bootstrap.Modal.getInstance(document.getElementById('topicSuggestModal')).hide();
-
-  // Briefly highlight the save button to remind the user to save
-  const saveBtn = document.querySelector('#meshForm button[type="submit"]');
-  if (saveBtn) {
-    saveBtn.classList.add('btn-success');
-    saveBtn.classList.remove('btn-primary');
-    setTimeout(() => {
-      saveBtn.classList.remove('btn-success');
-      saveBtn.classList.add('btn-primary');
-    }, 3000);
-  }
+  document.getElementById('meshForm').requestSubmit();
 }
 
 // ── End LLM topic term suggestions ──────────────────────────────────────────

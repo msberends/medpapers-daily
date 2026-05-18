@@ -4,7 +4,7 @@
 {% block extra_head %}
 <style>
   .form-label { font-weight: 500; }
-  .profile-row, .mesh-row { background: #f8f9fa; border-radius: 6px; }
+  .profile-row, .mesh-row { background: var(--bs-tertiary-bg); border-radius: 6px; }
   .tip-box { background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle);
              color: var(--bs-primary-text-emphasis); border-radius: 6px; }
 </style>
@@ -24,7 +24,7 @@
 
   <div class="d-flex align-items-center gap-2 mb-1">
     <h3 class="mb-0"><i class="bi bi-person-gear me-2"></i>{{ target_user.username }}</h3>
-    {% if target_user.is_admin %}<span class="badge bg-warning text-dark">Admin</span>{% endif %}
+    {% if target_user.is_admin %}<span class="badge text-bg-warning">Admin</span>{% endif %}
   </div>
   <p class="text-muted mb-4">Configure what this user monitors, how often, and how results are presented. Users can also adjust most of these settings themselves from their own Settings page.</p>
 

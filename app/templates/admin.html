@@ -26,7 +26,7 @@
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-llm">LLM</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-users">Users</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-papers">
-    Papers <span class="badge bg-secondary ms-1">{{ papers_total }}</span>
+    Papers <span class="badge text-bg-secondary ms-1">{{ papers_total }}</span>
   </a></li>
 </ul>
 
@@ -201,7 +201,7 @@
         </div>
 
         <div class="col-12" id="smtpFields">
-          <div class="card bg-light border-0">
+          <div class="card bg-body-secondary border-0">
             <div class="card-body row g-3">
               <div class="col-md-6">
                 <label class="form-label">SMTP host</label>
@@ -734,7 +734,7 @@
               <tr>
                 <td class="fw-medium">{{ u.username }}</td>
                 <td class="small text-muted">{{ user_emails.get(u.username, '') }}</td>
-                <td>{% if u.is_admin %}<span class="badge bg-warning text-dark">Admin</span>{% else %}<span class="badge bg-secondary">User</span>{% endif %}</td>
+                <td>{% if u.is_admin %}<span class="badge text-bg-warning">Admin</span>{% else %}<span class="badge text-bg-secondary">User</span>{% endif %}</td>
                 <td class="small text-end text-muted">{{ paper_counts.get(u.id, 0) }}</td>
                 <td class="small text-muted">{{ u.created_at[:10] }}</td>
                 <td>

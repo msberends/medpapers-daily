@@ -31,6 +31,25 @@ _MONTH_ABBR = {
     "sep": "09", "oct": "10", "nov": "11", "dec": "12",
 }
 
+_JOURNAL_MINOR_WORDS = frozenset({
+    "a", "an", "the", "and", "but", "or", "nor", "for", "yet", "so",
+    "at", "by", "in", "of", "on", "to", "up",
+})
+
+
+def _clean_journal(s: str) -> str:
+    """Strip PubMed subtitle and parentheticals, then apply title case."""
+    if not s:
+        return ""
+    s = s.split(" : ")[0].strip()
+    s = re.sub(r"\s*\([^)]*\)", "", s).strip()
+    words = s.split()
+    return " ".join(
+        w if w.isupper() else
+        ((w[0].upper() + w[1:]) if i == 0 or w.lower() not in _JOURNAL_MINOR_WORDS else w.lower())
+        for i, w in enumerate(words)
+    )
+
 
 def _norm_pub_date(s: str) -> str:
     """Convert PubMed pub_date strings like '2026-Mar-31' to ISO '2026-03-31'."""
@@ -172,7 +191,7 @@ def _startup(app: FastAPI):
     app.state.templates.env.filters["from_json"] = __import__("json").loads
     app.state.templates.env.filters["norm_pub_date"] = _norm_pub_date
     app.state.templates.env.filters["urlenc"] = quote_plus
-    app.state.templates.env.filters["clean_journal"] = lambda s: re.sub(r"\s*\([^)]*\)", "", s or "").strip()
+    app.state.templates.env.filters["clean_journal"] = _clean_journal
 
     def inline_md(text: str) -> "markupsafe.Markup":
         from markupsafe import escape, Markup

@@ -307,6 +307,16 @@ def _scan_parts(parts: list[str]) -> str | None:
         # Skip domain-like tokens (e.g. "rsu.lv", "upc.edu.pe")
         if _DOMAIN_RE.match(token):
             continue
+        # Token may bundle state/country with a zip code (e.g. "MA 02115 USA",
+        # "VA USA"); scan its space-separated words right-to-left.
+        subwords = token.split()
+        if len(subwords) > 1:
+            for subword in reversed(subwords):
+                sk = subword.lower()
+                if sk in _COUNTRY_MAP:
+                    return _COUNTRY_MAP[sk]
+                if sk in _US_STATES:
+                    return "us"
     return None
 
 
