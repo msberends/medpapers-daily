@@ -121,28 +121,28 @@
       <div class="card mb-3">
         <div class="card-header fw-semibold py-2">View</div>
         <div class="list-group list-group-flush">
-          <a href="/feed?view=unread&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
+          <a href="/feed?view=unread&quartile={{ quartile }}&date_filter={{ date_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'unread' %}active{% endif %}">
             <i class="bi bi-envelope me-1"></i> Unread
             <span id="unreadBadge" class="badge text-bg-secondary float-end{% if not unread_count %} d-none{% endif %}">{{ unread_count }}</span>
           </a>
-          <a href="/feed?view=unrated&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
+          <a href="/feed?view=unrated&quartile={{ quartile }}&date_filter={{ date_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'unrated' %}active{% endif %}">
             <i class="bi bi-question-circle me-1"></i> Unrated
             <span id="unratedBadge" class="badge text-bg-secondary float-end{% if not unrated_count %} d-none{% endif %}">{{ unrated_count }}</span>
           </a>
-          <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
+          <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'all' %}active{% endif %}">
             <i class="bi bi-grid me-1"></i> All papers
             {% if total_user_papers %}<span class="badge text-bg-secondary float-end">{{ total_user_papers }}</span>{% endif %}
           </a>
-          <a href="/feed?view=starred&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
+          <a href="/feed?view=starred&quartile={{ quartile }}&date_filter={{ date_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'starred' %}active{% endif %}">
             <i class="bi bi-star-fill text-warning me-1"></i> Starred
             {% if starred_count %}<span class="badge text-bg-secondary float-end">{{ starred_count }}</span>{% endif %}
           </a>
           {% for f in folders %}
-          <a href="/feed?view=folder&folder_id={{ f.id }}&quartile={{ quartile }}&date_filter={{ date_filter }}&search={{ search }}&sort={{ sort }}"
+          <a href="/feed?view=folder&folder_id={{ f.id }}&quartile={{ quartile }}&date_filter={{ date_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'folder' and folder_id == f.id %}active{% endif %}">
             <i class="bi bi-folder me-1"></i> {{ f.name }}
             {% set cnt = folder_counts.get(f.id, 0) %}
@@ -315,6 +315,8 @@
         <input type="hidden" name="view" value="{{ view }}">
         <input type="hidden" name="quartile" value="{{ quartile }}">
         <input type="hidden" name="date_filter" value="{{ date_filter }}">
+        <input type="hidden" name="date_from" value="{{ date_from }}">
+        <input type="hidden" name="date_to" value="{{ date_to }}">
         {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
         {% if profile_id %}<input type="hidden" name="profile_id" value="{{ profile_id }}">{% endif %}
         <button type="submit" class="btn btn-sm btn-outline-secondary"

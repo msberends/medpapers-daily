@@ -56,6 +56,7 @@ llm_provider: ''
 llm_api_key: ''                          # Claude or OpenAI API key
 llm_ollama_url: 'http://localhost:11434' # Ollama base URL (ignored for claude/chatgpt)
 llm_model: ''                            # e.g. claude-sonnet-4-6, gpt-4o, llama3.2
+llm_timeout: 120                         # seconds to wait for a response (increase for large local models)
 # System prompt for abstract highlights. The abstract is sent as the user message.
 llm_prompt: |
   You summarise scientific abstracts. When given an abstract, respond with up to

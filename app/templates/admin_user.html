@@ -29,16 +29,16 @@
   <p class="text-muted mb-4">Configure what this user monitors, how often, and how results are presented. Users can also adjust most of these settings themselves from their own Settings page.</p>
 
 <ul class="nav nav-tabs mb-4">
-    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-general">General</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-mesh">Topic Map</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'general' %}active{% endif %}" data-bs-toggle="tab" href="#tab-general">General</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'profiles' %}active{% endif %}" data-bs-toggle="tab" href="#tab-profiles">Search Profiles</a></li>
+    <li class="nav-item"><a class="nav-link {% if tab == 'mesh' %}active{% endif %}" data-bs-toggle="tab" href="#tab-mesh">Topic Map</a></li>
   </ul>
 
   <div class="tab-content">
 
     {# ── General ── #}
-    <div class="tab-pane fade show active" id="tab-general">
-      <form method="post" action="/admin/users/{{ target_user.username }}/save">
+    <div class="tab-pane fade {% if tab == 'general' %}show active{% endif %}" id="tab-general">
+      <form method="post" action="/admin/users/{{ target_user.username }}/save/general">
 
         <div class="card mb-3">
           <div class="card-header fw-semibold"><i class="bi bi-person me-1"></i>Account</div>
@@ -160,24 +160,14 @@
           </div>
         </div>
 
-        {% for p in cfg.get('search_profiles', []) %}
-        <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
-        <input type="hidden" name="profile_name" value="{{ p.name }}">
-        <input type="hidden" name="profile_query" value="{{ p.query }}">
-        {% endfor %}
-        {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
-        <input type="hidden" name="mesh_term" value="{{ term }}">
-        <input type="hidden" name="mesh_topic" value="{{ topic }}">
-        {% endfor %}
-
         <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save general settings</button>
         <a href="/admin#tab-users" class="btn btn-outline-secondary ms-2">Back</a>
       </form>
     </div>
 
     {# ── Search Profiles ── #}
-    <div class="tab-pane fade" id="tab-profiles">
-      <form method="post" action="/admin/users/{{ target_user.username }}/save">
+    <div class="tab-pane fade {% if tab == 'profiles' %}show active{% endif %}" id="tab-profiles">
+      <form method="post" action="/admin/users/{{ target_user.username }}/save/profiles">
 
         <div class="tip-box p-3 mb-4">
           <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How search profiles work</p>
@@ -224,29 +214,13 @@
           {% endfor %}
         </div>
 
-        <input type="hidden" name="display_name" value="{{ target_user.display_name or '' }}">
-        <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
-        {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
-        {% if cfg.get('email_only_new', True) %}<input type="hidden" name="email_only_new" value="1">{% endif %}
-        {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
-        {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
-        {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
-        <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
-        {% if cfg.get('show_export_ris', True) %}<input type="hidden" name="show_export_ris" value="1">{% endif %}
-        {% if cfg.get('show_export_nbib', False) %}<input type="hidden" name="show_export_nbib" value="1">{% endif %}
-        <input type="hidden" name="abstract_style" value="{{ cfg.get('abstract_style', 'accent') }}">
-        {% for term, topic in cfg.get('mesh_topic_map', {}).items() %}
-        <input type="hidden" name="mesh_term" value="{{ term }}">
-        <input type="hidden" name="mesh_topic" value="{{ topic }}">
-        {% endfor %}
-
         <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save search profiles</button>
       </form>
     </div>
 
     {# ── Topic Map ── #}
-    <div class="tab-pane fade" id="tab-mesh">
-      <form method="post" action="/admin/users/{{ target_user.username }}/save">
+    <div class="tab-pane fade {% if tab == 'mesh' %}show active{% endif %}" id="tab-mesh">
+      <form method="post" action="/admin/users/{{ target_user.username }}/save/mesh">
 
         <div class="tip-box p-3 mb-4">
           <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How topic classification works</p>
@@ -279,23 +253,6 @@
           </div>
           {% endfor %}
         </div>
-
-        <input type="hidden" name="display_name" value="{{ target_user.display_name or '' }}">
-        <input type="hidden" name="email" value="{{ cfg.get('email', '') }}">
-        {% if cfg.get('email_suppress_empty', True) %}<input type="hidden" name="email_suppress_empty" value="1">{% endif %}
-        {% if cfg.get('email_only_new', True) %}<input type="hidden" name="email_only_new" value="1">{% endif %}
-        {% if cfg.get('fetch_enabled', True) %}<input type="hidden" name="fetch_enabled" value="1">{% endif %}
-        {% if cfg.get('show_quartile', True) %}<input type="hidden" name="show_quartile" value="1">{% endif %}
-        {% if cfg.get('q2_hard', True) %}<input type="hidden" name="q2_hard" value="1">{% endif %}
-        <input type="hidden" name="lookback_days" value="{{ cfg.get('lookback_days', 7) }}">
-        {% if cfg.get('show_export_ris', True) %}<input type="hidden" name="show_export_ris" value="1">{% endif %}
-        {% if cfg.get('show_export_nbib', False) %}<input type="hidden" name="show_export_nbib" value="1">{% endif %}
-        <input type="hidden" name="abstract_style" value="{{ cfg.get('abstract_style', 'accent') }}">
-        {% for p in cfg.get('search_profiles', []) %}
-        <input type="hidden" name="profile_id" value="{{ p.get('id', '') }}">
-        <input type="hidden" name="profile_name" value="{{ p.name }}">
-        <input type="hidden" name="profile_query" value="{{ p.query }}">
-        {% endfor %}
 
         <button type="submit" class="btn btn-primary mt-2"><i class="bi bi-check-lg me-1"></i>Save topic map</button>
       </form>

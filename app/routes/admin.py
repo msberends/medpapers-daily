@@ -415,7 +415,7 @@ async def delete_user(user_id: int, request: Request):
 
 
 @router.get("/admin/users/{username}", response_class=HTMLResponse)
-async def admin_user_page(username: str, request: Request):
+async def admin_user_page(username: str, request: Request, tab: str = "general"):
     require_admin(request)
     user = get_current_user(request)
     cfg = _load_user_cfg(username)
@@ -426,50 +426,32 @@ async def admin_user_page(username: str, request: Request):
         raise HTTPException(status_code=404, detail="User not found")
     if cfg.get("search_profiles"):
         cfg = {**cfg, "search_profiles": _enrich_profiles(target_user["id"], cfg["search_profiles"])}
+    if tab not in ("general", "profiles", "mesh"):
+        tab = "general"
     return request.app.state.templates.TemplateResponse(request, "admin_user.html", {
         "user": user,
         "target_user": dict(target_user),
         "cfg": cfg,
         "config": request.app.state.config,
+        "tab": tab,
     })
 
 
-@router.post("/admin/users/{username}/save")
-async def admin_save_user(username: str, request: Request):
+@router.post("/admin/users/{username}/save/general")
+async def admin_save_user_general(username: str, request: Request):
     require_admin(request)
     form = await request.form()
     existing = _load_user_cfg(username)
 
-    profile_ids = form.getlist("profile_id")
-    profile_names = form.getlist("profile_name")
-    profile_queries = form.getlist("profile_query")
-    profiles = [
-        {"name": n.strip(), "query": q.strip()}
-        for n, q in zip(profile_names, profile_queries)
-        if n.strip()
-    ]
+    display_name = form.get("display_name", "").strip()
     with conn_ctx() as conn:
-        target_row = conn.execute(
-            "SELECT id FROM users WHERE username = ?", (username,)
-        ).fetchone()
+        target_row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
     if target_row:
-        # enabled=1 for all admin-managed profiles (no toggle in admin form)
-        enabled_all = ["1"] * len(profile_ids)
-        _sync_profiles_to_db(target_row["id"], profile_ids, profile_names,
-                             profile_queries, enabled_all)
-        display_name = form.get("display_name", "").strip()
         with conn_ctx() as conn:
             conn.execute(
                 "UPDATE users SET display_name=? WHERE id=?",
                 (display_name or None, target_row["id"]),
             )
-
-    mesh_terms = form.getlist("mesh_term")
-    mesh_topics = form.getlist("mesh_topic")
-    mesh_map = {}
-    for term, topic in zip(mesh_terms, mesh_topics):
-        if term.strip():
-            mesh_map[term.strip()] = topic.strip()
 
     try:
         lookback_days = max(1, min(90, int(form.get("lookback_days", 7))))
@@ -488,12 +470,53 @@ async def admin_save_user(username: str, request: Request):
         "show_export_ris": "show_export_ris" in form,
         "show_export_nbib": "show_export_nbib" in form,
         "abstract_style": form.get("abstract_style", "accent"),
-        "search_profiles": profiles,
-        "mesh_topic_map": mesh_map,
-        "folders": existing.get("folders", []),
     }
     _save_user_cfg(username, data)
-    return flash_redirect(f"/admin/users/{username}", "User settings saved.")
+    return flash_redirect(f"/admin/users/{username}", "General settings saved.")
+
+
+@router.post("/admin/users/{username}/save/profiles")
+async def admin_save_user_profiles(username: str, request: Request):
+    require_admin(request)
+    form = await request.form()
+    existing = _load_user_cfg(username)
+
+    profile_ids = form.getlist("profile_id")
+    profile_names = form.getlist("profile_name")
+    profile_queries = form.getlist("profile_query")
+    profiles = [
+        {"name": n.strip(), "query": q.strip()}
+        for n, q in zip(profile_names, profile_queries)
+        if n.strip()
+    ]
+    with conn_ctx() as conn:
+        target_row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+    if target_row:
+        enabled_all = ["1"] * len(profile_ids)
+        _sync_profiles_to_db(target_row["id"], profile_ids, profile_names,
+                             profile_queries, enabled_all)
+
+    data = {**existing, "search_profiles": profiles}
+    _save_user_cfg(username, data)
+    return flash_redirect(f"/admin/users/{username}?tab=profiles", "Search profiles saved.")
+
+
+@router.post("/admin/users/{username}/save/mesh")
+async def admin_save_user_mesh(username: str, request: Request):
+    require_admin(request)
+    form = await request.form()
+    existing = _load_user_cfg(username)
+
+    mesh_terms = form.getlist("mesh_term")
+    mesh_topics = form.getlist("mesh_topic")
+    mesh_map = {}
+    for term, topic in zip(mesh_terms, mesh_topics):
+        if term.strip():
+            mesh_map[term.strip()] = topic.strip()
+
+    data = {**existing, "mesh_topic_map": mesh_map}
+    _save_user_cfg(username, data)
+    return flash_redirect(f"/admin/users/{username}?tab=mesh", "Topic map saved.")
 
 
 @router.post("/admin/users/{user_id}/toggle-admin")
@@ -591,10 +614,15 @@ async def save_llm_config(request: Request):
     prompt = (form.get("llm_prompt") or "").strip()
     allow_opt = "llm_allow_profile_optimisation" in form
     allow_topic_suggestions = "llm_allow_topic_suggestions" in form
+    try:
+        timeout = max(10, int(form.get("llm_timeout") or 120))
+    except (ValueError, TypeError):
+        timeout = 120
 
     config["llm_provider"] = provider
     config["llm_model"] = model
     config["llm_ollama_url"] = ollama_url or "http://localhost:11434"
+    config["llm_timeout"] = timeout
     config["llm_prompt"] = prompt
     config["llm_allow_profile_optimisation"] = allow_opt
     config["llm_allow_topic_suggestions"] = allow_topic_suggestions

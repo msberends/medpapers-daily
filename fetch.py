@@ -204,7 +204,7 @@ def fetch_pubmed_records(pmids: list[str], api_key: str) -> ET.Element:
 
 def _text(el, path: str, default: str = "") -> str:
     node = el.find(path)
-    return node.text.strip() if node is not None and node.text else default
+    return _html.unescape(node.text.strip()) if node is not None and node.text else default
 
 
 def _html_text(el) -> str:
@@ -213,13 +213,13 @@ def _html_text(el) -> str:
         return ""
     parts = []
     if el.text:
-        parts.append(_html.escape(el.text))
+        parts.append(_html.escape(_html.unescape(el.text)))
     for child in el:
         tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-        inner = _html.escape("".join(child.itertext()))
+        inner = _html.escape(_html.unescape("".join(child.itertext())))
         parts.append(f"<em>{inner}</em>" if tag == "i" else inner)
         if child.tail:
-            parts.append(_html.escape(child.tail))
+            parts.append(_html.escape(_html.unescape(child.tail)))
     return "".join(parts).strip()
 
 
@@ -241,7 +241,7 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
     title = _html_text(art.find("ArticleTitle"))
     abstract_sections = []
     for node in art.findall(".//AbstractText"):
-        text = "".join(node.itertext()).strip()
+        text = _html.unescape("".join(node.itertext()).strip())
         if not text:
             continue
         raw_label = (node.get("Label") or "").strip()
@@ -258,7 +258,7 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
         ln = _text(auth, "LastName")
         fn = _text(auth, "ForeName") or _text(auth, "Initials")
         affils = [
-            el.text.strip()
+            _html.unescape(el.text.strip())
             for el in auth.findall("AffiliationInfo/Affiliation")
             if el.text
         ]
@@ -330,7 +330,7 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
 
     # MeSH terms
     mesh_terms = [
-        node.text.strip()
+        _html.unescape(node.text.strip())
         for node in medline.findall(".//MeshHeading/DescriptorName")
         if node.text
     ]
@@ -338,7 +338,7 @@ def parse_article(article_set_child: ET.Element) -> dict | None:
     # Author-provided keywords (often present before MeSH indexing is complete).
     # KeywordList is a child of MedlineCitation, not of Article.
     keywords = [
-        node.text.strip()
+        _html.unescape(node.text.strip())
         for node in medline.findall(".//KeywordList/Keyword")
         if node.text
     ]

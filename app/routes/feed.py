@@ -569,6 +569,10 @@ async def mark_all_read(request: Request):
 
     from urllib.parse import urlencode
     qp: dict = {"view": view, "quartile": quartile, "date_filter": date_filter}
+    if date_from:
+        qp["date_from"] = date_from
+    if date_to:
+        qp["date_to"] = date_to
     if search:
         qp["search"] = search
     if profile_id:

@@ -588,7 +588,7 @@ async def suggest_topic_terms(request: Request):
     prompt = _build_topic_suggestions_prompt(topics, unassigned)
     try:
         import asyncio
-        response = await asyncio.to_thread(call_llm, config, "", prompt, 120)
+        response = await asyncio.to_thread(call_llm, config, "", prompt)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

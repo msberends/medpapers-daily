@@ -486,6 +486,12 @@
                    placeholder="http://localhost:11434">
             <div class="form-text">The URL where your Ollama instance is running. Must be reachable from this server.</div>
           </div>
+          <div class="col-md-4">
+            <label class="form-label">Request timeout (seconds)</label>
+            <input type="number" name="llm_timeout" class="form-control" min="10" max="600"
+                   value="{{ config.get('llm_timeout', 120) }}">
+            <div class="form-text">Increase for large local models that are slow to respond. Default: 120.</div>
+          </div>
           <div class="col-12 pt-1">
             <div class="d-flex align-items-center gap-3 flex-wrap">
               <button type="button" class="btn btn-sm btn-outline-secondary" id="llmTestBtn"

@@ -20,10 +20,12 @@ DEFAULT_HIGHLIGHTS_PROMPT = (
 
 
 def call_llm(config: dict, system_prompt: str, user_message: str,
-             timeout: int = 60) -> str:
+             timeout: int | None = None) -> str:
     """Call the configured LLM provider. Raises on any error."""
     provider = config.get("llm_provider", "")
     model = (config.get("llm_model") or "").strip()
+    if timeout is None:
+        timeout = int(config.get("llm_timeout") or 120)
 
     if not provider:
         raise ValueError("No LLM provider configured")
