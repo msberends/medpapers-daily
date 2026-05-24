@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Staff Publications &mdash; {{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .tip-box { background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle);
+             color: var(--bs-primary-text-emphasis); border-radius: 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0"><i class="bi bi-people-fill me-2"></i>Staff Publications</h3>
+  <div class="d-flex gap-2">
+    <a href="/staff/report" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Report</a>
+    <a href="/staff/add" class="btn btn-sm btn-primary"><i class="bi bi-person-plus-fill me-1"></i>Add staff member</a>
+  </div>
+</div>
+
+<div class="tip-box p-3 mb-4">
+  <p class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How the staff publication tracker works</p>
+  <p class="small mb-2">Add each staff member with their PubMed author name and initials. The system searches PubMed for their papers using the <strong>Search online</strong> tool (which uses PubMed's computed-author disambiguation) or a set of seed PMIDs you provide. Candidate papers are stored as <em>pending</em> until you review them; reviewed papers become <em>confirmed</em> or <em>probable</em> and feed the publications report.</p>
+  <p class="fw-semibold small mb-1">Workflow</p>
+  <ol class="small mb-2">
+    <li><strong>Add</strong> a staff member with their last name, initials, and optionally an ORCID or seed PMID(s).</li>
+    <li>Open their profile and click <strong>Search online</strong> to find a representative paper, then use it as a seed to pull their full publication cluster from PubMed.</li>
+    <li>Click <strong>Review</strong> to go through the pending candidates and confirm or reject each one.</li>
+    <li>Use the <strong>Report</strong> to export confirmed publications, filtered by year range, group, or journal quartile.</li>
+  </ol>
+  <p class="fw-semibold small mb-1">Scores</p>
+  <ul class="small mb-0">
+    <li><strong>Score</strong> — authorship position: first or last author = 2, second or second-last = 1, any other position = 0.5.</li>
+    <li><strong>Quartile-score</strong> — Score &times; (Scopus percentile &divide; 100). Adjusts for journal standing; empty when Scopus data is unavailable.</li>
+  </ul>
+</div>
+
+{% if members %}
+<div class="table-responsive mb-4">
+  <table class="table table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>Name</th>
+        <th>Groups</th>
+        <th class="text-end">Total</th>
+        <th class="text-end">Confirmed</th>
+        <th class="text-end">Probable</th>
+        <th class="text-end">Pending review</th>
+        <th class="text-end">Score</th>
+        <th class="text-end">Quartile-score</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in members %}
+      <tr>
+        <td>
+          <a href="/staff/{{ m.id }}" class="fw-semibold text-decoration-none">{{ m.name }}</a>
+          <div class="text-body-tertiary small">
+            {{ m.author_last }}&thinsp;{{ m.author_initials }}
+            {% if m.orcid %}<span class="ms-2"><i class="bi bi-person-badge me-1"></i>{{ m.orcid }}</span>{% endif %}
+          </div>
+        </td>
+        <td class="small">
+          {% if m.group_names %}
+            {% for g in m.group_names.split(', ') %}
+            <span class="badge text-bg-secondary me-1">{{ g }}</span>
+            {% endfor %}
+          {% else %}
+          <span class="text-body-tertiary">&mdash;</span>
+          {% endif %}
+        </td>
+        <td class="text-end fw-semibold">
+          {% set total = (m.confirmed_count or 0) + (m.probable_count or 0) %}
+          {% if total %}<a href="/staff/{{ m.id }}" class="text-decoration-none">{{ total }}</a>{% else %}<span class="text-muted">&mdash;</span>{% endif %}
+        </td>
+        <td class="text-end">
+          {% if m.confirmed_count %}
+          <a href="/staff/{{ m.id }}" class="badge text-bg-success text-decoration-none">{{ m.confirmed_count }}</a>
+          {% else %}
+          <span class="text-muted">&mdash;</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          {% if m.probable_count %}
+          <a href="/staff/{{ m.id }}" class="badge text-bg-warning text-decoration-none">{{ m.probable_count }}</a>
+          {% else %}
+          <span class="text-muted">&mdash;</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          {% if m.pending_count %}
+          <a href="/staff/{{ m.id }}/review" class="badge text-bg-warning text-decoration-none">{{ m.pending_count }}</a>
+          {% else %}
+          <span class="text-muted">&mdash;</span>
+          {% endif %}
+        </td>
+        <td class="text-end text-muted">
+          {% if m.total_score %}{{ '%g' % m.total_score }}{% else %}&mdash;{% endif %}
+        </td>
+        <td class="text-end text-muted">
+          {% if m.total_quartile_score %}{{ '%.2f' % m.total_quartile_score }}{% else %}&mdash;{% endif %}
+        </td>
+        <td class="text-end">
+          <a href="/staff/{{ m.id }}/edit" class="btn btn-sm btn-outline-secondary py-0"><i class="bi bi-pencil"></i></a>
+          <form method="post" action="/staff/{{ m.id }}/delete" class="d-inline"
+                onsubmit="return confirm('Remove {{ m.name | e }} from staff? Their confirmed papers will be kept in the database.')">
+            <button class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-person-x"></i></button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5 mb-4">
+  <i class="bi bi-people display-4 d-block mb-3 opacity-25"></i>
+  <p>No staff members added yet.</p>
+  <a href="/staff/add" class="btn btn-primary"><i class="bi bi-person-plus-fill me-1"></i>Add your first staff member</a>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <span class="fw-semibold"><i class="bi bi-tags me-1"></i>Groups</span>
+    <button class="btn btn-sm btn-link p-0 text-decoration-none" type="button"
+            data-bs-toggle="collapse" data-bs-target="#groupsPanel">
+      <i class="bi bi-chevron-down"></i>
+    </button>
+  </div>
+  <div class="collapse show" id="groupsPanel">
+    <div class="card-body py-2">
+      {% if all_groups %}
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        {% for g in all_groups %}
+        <div class="d-flex align-items-center gap-1">
+          <span class="badge text-bg-secondary fs-6 fw-normal">{{ g.name }}</span>
+          <form method="post" action="/staff/groups/{{ g.id }}/delete" class="d-inline"
+                onsubmit="return confirm('Delete group &ldquo;{{ g.name | e }}&rdquo;? Members will be unassigned but their papers are kept.')">
+            <button class="btn btn-sm btn-link text-danger p-0 ms-1" title="Delete group">
+              <i class="bi bi-x-circle"></i>
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted small mb-2">No groups yet. Groups let you filter the report by team or department.</p>
+      {% endif %}
+      <form method="post" action="/staff/groups" class="d-flex gap-2">
+        <input type="text" name="name" class="form-control form-control-sm" placeholder="New group name&hellip;" required style="max-width:220px">
+        <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-lg me-1"></i>Add group</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

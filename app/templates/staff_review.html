@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Review &mdash; {{ member.name }} &mdash; {{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .review-card { transition: opacity .25s, transform .25s; }
+  .review-card.removing { opacity: 0; transform: scaleY(0); max-height: 0; overflow: hidden; }
+  .match-author { background: var(--bs-warning-bg-subtle); border-radius: 3px; padding: 0 2px; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="/staff/{{ member.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <h3 class="mb-0">Review candidates &mdash; {{ member.name }}</h3>
+</div>
+
+{% if papers %}
+<p class="text-muted small mb-3">
+  <strong id="remainingCount">{{ papers | length }}</strong> paper{% if papers | length != 1 %}s{% endif %} awaiting review.
+  The highlighted author name is the matched entry for this staff member.
+  Confirm papers that genuinely belong to them; reject others.
+</p>
+
+<div id="reviewList">
+{% for p in papers %}
+<div class="card mb-2 review-card" id="card-{{ p.pmid }}" data-pmid="{{ p.pmid }}">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex justify-content-between align-items-start gap-3">
+      <div class="flex-grow-1 min-w-0">
+        <div class="fw-semibold small mb-1">
+          <a href="/paper/{{ p.pmid }}" target="_blank" class="text-decoration-none">{{ p.title | safe_title }}</a>
+        </div>
+        <div class="text-muted small mb-1">
+          <span class="me-2">{{ p.journal | clean_journal }}</span>
+          <span class="me-2">{{ (p.epub_date or p.pub_date or '')[:7] }}</span>
+          {% if p.scopus_quartile %}
+          <span class="badge badge-{{ p.scopus_quartile | lower }} me-2">{{ p.scopus_quartile }}</span>
+          {% endif %}
+          {% if p.doi %}
+          <a href="https://doi.org/{{ p.doi }}" target="_blank" rel="noopener noreferrer"
+             class="text-muted text-decoration-none me-2"><i class="bi bi-box-arrow-up-right"></i> DOI</a>
+          {% endif %}
+        </div>
+        <div class="small mb-1">
+          {% set authors_list = p.authors | from_json %}
+          {% for a in authors_list %}
+            {% if loop.index0 == p.matched_author_idx %}
+              <span class="match-author">{{ a | dim_initials | safe }}</span>
+            {% else %}
+              <span class="text-muted">{{ a | dim_initials | safe }}</span>
+            {% endif %}
+            {% if not loop.last %}<span class="text-body-tertiary">, </span>{% endif %}
+          {% endfor %}
+        </div>
+        {% if p.matched_affil %}
+        <div class="text-body-tertiary" style="font-size:.75rem">
+          <i class="bi bi-building me-1"></i>{{ p.matched_affil | truncate(120) }}
+        </div>
+        {% endif %}
+      </div>
+      <div class="d-flex flex-column gap-1 flex-shrink-0">
+        <button class="btn btn-sm btn-success confirm-btn" data-pmid="{{ p.pmid }}" title="Confirm — this paper belongs to {{ member.name }}">
+          <i class="bi bi-check-lg"></i> Confirm
+        </button>
+        <button class="btn btn-sm btn-outline-danger reject-btn" data-pmid="{{ p.pmid }}" title="Reject — this paper does not belong to {{ member.name }}">
+          <i class="bi bi-x-lg"></i> Reject
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<div id="allDoneMsg" class="text-center py-5 d-none">
+  <i class="bi bi-check-circle-fill text-success display-4 mb-3 d-block"></i>
+  <p class="fw-semibold">All done! All pending papers have been reviewed.</p>
+  <a href="/staff/{{ member.id }}" class="btn btn-primary">Back to profile</a>
+</div>
+
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-check-circle-fill display-4 d-block mb-3 text-success opacity-50"></i>
+  <p>No pending papers to review.</p>
+  <div class="d-flex gap-2 justify-content-center">
+    <a href="/staff/{{ member.id }}" class="btn btn-outline-secondary">Back to profile</a>
+    <form method="post" action="/staff/{{ member.id }}/refresh">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-arrow-clockwise me-1"></i>Fetch more from PubMed
+      </button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const staffId = {{ member.id }};
+  let remaining = {{ papers | length }};
+
+  function decide(pmid, action) {
+    const card = document.getElementById('card-' + pmid);
+    if (!card) return;
+    fetch('/staff/' + staffId + '/review/' + pmid, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    }).then(r => r.json()).then(data => {
+      if (data.ok) {
+        card.classList.add('removing');
+        setTimeout(() => {
+          card.remove();
+          remaining -= 1;
+          const counter = document.getElementById('remainingCount');
+          if (counter) counter.textContent = remaining;
+          if (remaining === 0) {
+            const list = document.getElementById('reviewList');
+            if (list) list.innerHTML = '';
+            const done = document.getElementById('allDoneMsg');
+            if (done) done.classList.remove('d-none');
+          }
+        }, 280);
+      }
+    }).catch(() => {});
+  }
+
+  document.addEventListener('click', function (e) {
+    const confirmBtn = e.target.closest('.confirm-btn');
+    if (confirmBtn) { decide(confirmBtn.dataset.pmid, 'confirm'); return; }
+    const rejectBtn = e.target.closest('.reject-btn');
+    if (rejectBtn) { decide(rejectBtn.dataset.pmid, 'reject'); return; }
+  });
+})();
+</script>
+{% endblock %}

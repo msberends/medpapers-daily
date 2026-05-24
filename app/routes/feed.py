@@ -583,6 +583,7 @@ async def mark_all_read(request: Request):
 @router.post("/feed/toggle-star/{pmid}")
 async def toggle_star(pmid: str, request: Request):
     user = require_auth(request)
+    new_val = 0
     with conn_ctx() as conn:
         row = conn.execute(
             "SELECT is_starred FROM user_papers WHERE user_id = ? AND pmid = ?",
@@ -594,6 +595,8 @@ async def toggle_star(pmid: str, request: Request):
                 "UPDATE user_papers SET is_starred = ? WHERE user_id = ? AND pmid = ?",
                 (new_val, user["user_id"], pmid),
             )
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"is_starred": new_val})
     referer = request.headers.get("referer", "/feed")
     return RedirectResponse(referer, status_code=303)
 
@@ -617,6 +620,89 @@ async def toggle_read(pmid: str, request: Request):
         return JSONResponse({"is_read": new_val})
     referer = request.headers.get("referer", "/feed")
     return RedirectResponse(referer, status_code=303)
+
+
+@router.post("/feed/recap")
+async def feed_recap(request: Request):
+    """Generate an LLM recap of a set of papers identified by their PMIDs."""
+    from app.llm import call_llm, DEFAULT_RECAP_PROMPT, get_provider_config
+    user = require_auth(request)
+    config = request.app.state.config
+
+    if not config.get("llm_allow_recap"):
+        return JSONResponse({"error": "The recap feature is not enabled."}, status_code=403)
+    provider_cfg = get_provider_config(config, "recap")
+    if not provider_cfg:
+        return JSONResponse({"error": "No LLM provider configured for recap."}, status_code=503)
+
+    form = await request.form()
+    pmids_raw = (form.get("pmids") or "").strip()
+    pmid_list = [p.strip() for p in pmids_raw.split(",") if p.strip()]
+
+    if not pmid_list:
+        return JSONResponse({"error": "No papers specified."}, status_code=400)
+
+    pmid_list = pmid_list[:100]
+
+    with conn_ctx() as conn:
+        ph = ",".join("?" * len(pmid_list))
+        rows = conn.execute(
+            f"""SELECT p.pmid, p.title, p.authors, p.scopus_quartile, p.abstract
+                FROM user_papers up
+                JOIN papers p ON p.pmid = up.pmid
+                WHERE up.user_id = ? AND up.pmid IN ({ph})""",
+            [user["user_id"]] + pmid_list,
+        ).fetchall()
+
+    if not rows:
+        return JSONResponse({"error": "No papers found."}, status_code=404)
+
+    base_url = (config.get("base_url") or "").rstrip("/")
+
+    def _first_lastname(authors_json: str) -> str:
+        try:
+            lst = json.loads(authors_json or "[]")
+        except Exception:
+            return "Unknown"
+        if not lst:
+            return "Unknown"
+        a = str(lst[0]).strip()
+        if "," in a:
+            return a.partition(",")[0].strip()
+        m = re.match(r'^(.*?)(\s+[A-Z]+(?:\s+[A-Z]+)*)$', a)
+        return m.group(1).strip() if m else a
+
+    paper_entries = []
+    for i, row in enumerate(rows, 1):
+        last = _first_lastname(row["authors"])
+        try:
+            n_authors = len(json.loads(row["authors"] or "[]"))
+        except Exception:
+            n_authors = 1
+        author_str = f"{last} et al." if n_authors > 1 else last
+        quartile = row["scopus_quartile"] or "Unranked"
+        abstract = (row["abstract"] or "No abstract available.")
+        if len(abstract) > 800:
+            abstract = abstract[:800] + "…"
+        title = re.sub(r"<[^>]+>", "", row["title"] or "")
+        paper_url = f"{base_url}/paper/{row['pmid']}"
+        paper_entries.append(
+            f"[{i}] {title}\n"
+            f"Authors: {author_str}\n"
+            f"Quartile: {quartile}\n"
+            f"Link: {paper_url}\n"
+            f"Abstract: {abstract}"
+        )
+
+    user_message = f"{len(rows)} paper(s) to summarise:\n\n" + "\n\n".join(paper_entries)
+    system_prompt = (config.get("llm_recap_prompt") or "").strip() or DEFAULT_RECAP_PROMPT
+
+    try:
+        import asyncio
+        summary = await asyncio.to_thread(call_llm, provider_cfg, system_prompt, user_message, max_tokens=1500)
+        return JSONResponse({"summary": summary.strip(), "paper_count": len(rows)})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @router.post("/feed/rate-paper/{pmid}")

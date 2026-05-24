@@ -63,17 +63,35 @@ STATUS_FILE   = Path(__file__).parent / "data" / "scopus_refresh_status.json"
 PAGE_SIZE     = 200
 REQUEST_DELAY = 0.4  # seconds; increase to 1.0 if you hit 429s
 
+# The Elsevier Serial Title API caps pagination at offset 10,000 per subj query.
+# All 4-letter codes are used as-is EXCEPT "MEDI" (Medicine), which alone has
+# more than 10,000 journals and silently drops the tail (e.g. The Lancet
+# Infectious Diseases). MEDI is replaced with its 40 granular 4-digit ASJC
+# sub-codes (2700–2739), each covering one specialty (e.g. 2725 = Infectious
+# Diseases) with far fewer journals. Journals appear under multiple sub-codes;
+# dedup by source-id handles overlap. The 4-letter codes for non-MEDI areas are
+# kept because the API rejects 4-digit codes for non-biomedical domains
+# (e.g. 15xx/Chemical Engineering → HTTP 400).
 SUBJECT_AREAS = [
     "AGRI",  # Agricultural and Biological Sciences
     "BIOC",  # Biochemistry, Genetics and Molecular Biology
-    "CENG",  # Chemical Engineering (incl. biomedical engineering)
+    "CENG",  # Chemical Engineering
     "CHEM",  # Chemistry
     "DENT",  # Dentistry
-    "ENVI",  # Environmental Science (incl. environmental health)
+    "ENVI",  # Environmental Science
     "HEAL",  # Health Professions
     "IMMU",  # Immunology and Microbiology
-    "MATE",  # Materials Science (incl. biomaterials)
-    "MEDI",  # Medicine
+    "MATE",  # Materials Science
+    # "MEDI" alone is capped at 10,000 by the API — the broad code is kept to
+    # preserve its arbitrary first-10,000 result set, while the 40 granular
+    # 27xx sub-codes are added alongside it to capture the tail that MEDI cuts
+    # off. Dedup by source-id handles the overlap between the two result sets.
+    "MEDI",
+    "2700", "2701", "2702", "2703", "2704", "2705", "2706", "2707",
+    "2708", "2709", "2710", "2711", "2712", "2713", "2714", "2715",
+    "2716", "2717", "2718", "2719", "2720", "2721", "2722", "2723",
+    "2724", "2725", "2726", "2727", "2728", "2729", "2730", "2731",
+    "2732", "2733", "2734", "2735", "2736", "2737", "2738", "2739",
     "NEUR",  # Neuroscience
     "NURS",  # Nursing
     "PHAR",  # Pharmacology, Toxicology and Pharmaceutics
@@ -215,6 +233,9 @@ def fetch_page(subj: str, start: int, count: int = PAGE_SIZE) -> dict:
             if resp.status_code == 401:
                 log.error("Unauthorised (401). Check API key / IP entitlement.")
                 sys.exit(1)
+            if resp.status_code == 400:
+                log.warning("Bad request (400) for subj=%s — code not accepted by API; skipping.", subj)
+                return {}
             log.warning(
                 "HTTP %d for subj=%s start=%d (attempt %d)",
                 resp.status_code, subj, start, attempt + 1,
@@ -267,6 +288,12 @@ def fetch_all() -> list:
             subj_total = None
             entries    = []
         first_pages[subj] = (entries, subj_total)
+        if subj_total is not None and subj_total >= 10000:
+            log.warning(
+                "  WARN: subj=%s reports %d results — API pagination cap reached; "
+                "journals beyond 10,000 will be missed. Sub-divide this code further.",
+                subj, subj_total,
+            )
         log.info("  estimated total: %s", subj_total)
         _write_status({"status": "running", "phase": "discovering",
                        "done": idx + 1, "total": n_subjects})

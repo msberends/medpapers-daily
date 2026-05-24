@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Publications Report &mdash; {{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <a href="/staff" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+    <h3 class="mb-0">Publications Report</h3>
+  </div>
+  {% if papers %}
+  <a href="/staff/report/export?staff_id={{ staff_id }}&group_id={{ group_id }}&year_from={{ year_from }}&year_to={{ year_to }}&min_quartile={{ min_quartile }}"
+     class="btn btn-sm btn-success">
+    <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export CSV
+  </a>
+  {% endif %}
+</div>
+
+<form method="get" action="/staff/report" class="row g-2 align-items-end mb-4">
+  <div class="col-sm-3">
+    <label class="form-label small fw-semibold mb-1">Staff member</label>
+    <select name="staff_id" class="form-select form-select-sm">
+      <option value="0" {% if not staff_id %}selected{% endif %}>All staff</option>
+      {% for m in all_members %}
+      <option value="{{ m.id }}" {% if staff_id == m.id %}selected{% endif %}>{{ m.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% if all_groups %}
+  <div class="col-sm-2">
+    <label class="form-label small fw-semibold mb-1">Group</label>
+    <select name="group_id" class="form-select form-select-sm">
+      <option value="0" {% if not group_id %}selected{% endif %}>All groups</option>
+      {% for g in all_groups %}
+      <option value="{{ g.id }}" {% if group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <div class="col-sm-2">
+    <label class="form-label small fw-semibold mb-1">From year</label>
+    <input type="number" name="year_from" class="form-control form-control-sm" value="{{ year_from or '' }}" placeholder="2020" min="1900" max="2100">
+  </div>
+  <div class="col-sm-2">
+    <label class="form-label small fw-semibold mb-1">To year</label>
+    <input type="number" name="year_to" class="form-control form-control-sm" value="{{ year_to or '' }}" placeholder="2025" min="1900" max="2100">
+  </div>
+  <div class="col-sm-2">
+    <label class="form-label small fw-semibold mb-1">Min quartile</label>
+    <select name="min_quartile" class="form-select form-select-sm">
+      <option value="" {% if not min_quartile %}selected{% endif %}>Any</option>
+      <option value="Q1" {% if min_quartile == 'Q1' %}selected{% endif %}>Q1 only</option>
+      <option value="Q2" {% if min_quartile == 'Q2' %}selected{% endif %}>Q1 &amp; Q2</option>
+      <option value="Q3" {% if min_quartile == 'Q3' %}selected{% endif %}>Q1 – Q3</option>
+    </select>
+  </div>
+  <div class="col-sm-1">
+    <button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+  </div>
+</form>
+
+{% if papers %}
+<p class="text-muted small mb-2"><strong>{{ papers | length }}</strong> publication{% if papers | length != 1 %}s{% endif %} found.</p>
+
+{% set current_staff = namespace(name='') %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle small">
+    <thead class="table-light">
+      <tr>
+        <th>Staff member</th>
+        <th style="width:40%">Title</th>
+        <th>Journal</th>
+        <th>Date</th>
+        <th class="text-center">Q</th>
+        <th class="text-end">CiteScore</th>
+        <th class="text-end">Percentile</th>
+        <th class="text-end">Score</th>
+        <th class="text-end">Quartile-score</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in papers %}
+      {% if p.staff_name != current_staff.name %}
+        {% set current_staff.name = p.staff_name %}
+        <tr class="table-secondary">
+          <td colspan="10" class="fw-semibold">
+            {{ p.staff_name }}
+            {% if p.groups %}<span class="text-muted fw-normal ms-2 small">&#183; {{ p.groups }}</span>{% endif %}
+            {% set st = staff_totals[p.staff_name] %}
+            {% if st.score %}<span class="badge text-bg-secondary fw-normal ms-3">Score: {{ '%g' % st.score }}</span>{% endif %}
+            {% if st.quartile_score %}<span class="badge text-bg-secondary fw-normal ms-1">Quartile-score: {{ '%.2f' % st.quartile_score }}</span>{% endif %}
+          </td>
+        </tr>
+      {% endif %}
+      <tr>
+        <td></td>
+        <td>
+          <a href="/paper/{{ p.pmid }}" class="text-decoration-none fw-semibold" target="_blank">{{ p.title | safe_title }}</a>
+          {% if p.paper_status == 'probable' %}<span class="badge text-bg-warning ms-1" title="Identity confirmed via search — not individually reviewed">Probable</span>{% endif %}
+          <div class="text-body-tertiary" style="font-size:.75rem">
+            {% set authors_list = p.authors | from_json %}
+            {% for a in authors_list[:4] %}{{ a | last_name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if authors_list | length > 4 %} et al.{% endif %}
+          </div>
+        </td>
+        <td class="text-muted">{{ p.journal | clean_journal }}</td>
+        <td class="text-nowrap text-muted">{{ (p.epub_date or p.pub_date or '')[:7] }}</td>
+        <td class="text-center">
+          {% if p.scopus_quartile %}
+          <span class="badge badge-{{ p.scopus_quartile | lower }}">{{ p.scopus_quartile }}</span>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td class="text-end text-nowrap text-muted">
+          {% if p.scopus_citescore is not none %}{{ "%.1f" | format(p.scopus_citescore) }}{% else %}—{% endif %}
+        </td>
+        <td class="text-end text-nowrap text-muted">
+          {% if p.scopus_percentile is not none %}{{ "%.0f" | format(p.scopus_percentile) }}{% else %}—{% endif %}
+        </td>
+        <td class="text-end text-nowrap">
+          {% if p.author_score is not none %}{{ '%g' % p.author_score }}{% else %}—{% endif %}
+        </td>
+        <td class="text-end text-nowrap">
+          {% if p.author_score is not none and p.scopus_citescore is not none and p.scopus_percentile is not none %}{{ '%g' % (p.author_score * p.scopus_percentile / 100) }}{% else %}—{% endif %}
+        </td>
+        <td class="text-nowrap">
+          {% if p.doi %}
+          <a href="https://doi.org/{{ p.doi }}" target="_blank" rel="noopener noreferrer"
+             class="btn btn-sm btn-outline-secondary py-0 px-1" title="Open DOI">
+            <i class="bi bi-box-arrow-up-right"></i>
+          </a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% elif all_members %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-search display-4 d-block mb-3 opacity-25"></i>
+  <p>No publications match the current filter.</p>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-people display-4 d-block mb-3 opacity-25"></i>
+  <p>No staff members added yet.</p>
+  <a href="/staff/add" class="btn btn-primary"><i class="bi bi-person-plus-fill me-1"></i>Add staff member</a>
+</div>
+{% endif %}
+{% endblock %}

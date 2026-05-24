@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}{% if member %}Edit {{ member.name }}{% else %}Add Staff Member{% endif %} &mdash; {{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-1">
+  <a href="/staff" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <h3 class="mb-0">{% if member %}Edit staff member{% else %}Add staff member{% endif %}</h3>
+</div>
+{% if not member %}
+<p class="text-muted mb-4">Each staff member is identified by their PubMed author name and a seed PMID — a PMID of any paper known to belong to them. PubMed&rsquo;s Computed Authors algorithm uses this to cluster <em>all</em> papers by that person. The easiest way to find the seed PMID is the <strong>Search online</strong> button in the Identity card below: enter the name, pick a paper you recognise, and the seed PMID (and ORCID, if available) are filled in automatically.</p>
+{% else %}
+<p class="text-muted mb-4">Changes to the name or identification fields take effect on the next refresh. Group memberships update immediately.</p>
+{% endif %}
+
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <form method="post" action="{% if member %}/staff/{{ member.id }}/edit{% else %}/staff/add{% endif %}">
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold"><i class="bi bi-person me-1"></i>Identity</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Display name <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control"
+                   value="{{ member.name if member else '' }}" required>
+            <div class="form-text">Shown in the publications list, report, and staff overview. Free-form — include a title or abbreviations as preferred.</div>
+          </div>
+          <div class="row">
+            <div class="col-sm-6 mb-3">
+              <label class="form-label fw-semibold">Last name <span class="text-danger">*</span></label>
+              <input type="text" name="author_last" id="field_author_last" class="form-control"
+                     value="{{ member.author_last if member else '' }}" required>
+              <div class="form-text">Exactly as it appears in PubMed author metadata. Comma-separate multiple surnames (e.g. <code>Berends, De Vries</code>) if the name appears in different forms.</div>
+            </div>
+            <div class="col-sm-6 mb-3">
+              <label class="form-label fw-semibold">Initials <span class="text-danger">*</span></label>
+              <input type="text" name="author_initials" id="field_author_initials" class="form-control"
+                     value="{{ member.author_initials if member else '' }}" required>
+              <div class="form-text">No spaces or dots (e.g. <code>MS</code>, not <code>M.S.</code>). Comma-separate multiple variants (e.g. <code>MS, MSB, M</code>) — all are searched and matched.</div>
+            </div>
+          </div>
+          <div class="border-top pt-3">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="searchOnlineBtn"
+                    onclick="searchIdentityOnline()">
+              <i class="bi bi-search me-1"></i>Search online
+            </button>
+            <div class="form-text mt-2">
+              Searches PubMed for up to 5 recent papers by this name. Click <strong>This is them</strong> on any paper you recognise — the seed PMID and ORCID (if found) are filled in automatically, and all papers fetched for this person will be loaded as <span class="badge text-bg-warning">Probable</span>. Probable papers are included in reports without needing per-paper review. On the profile page you can click any orange badge to promote a paper to confirmed.
+            </div>
+            <div id="identitySearchResults" class="mt-2" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold"><i class="bi bi-fingerprint me-1"></i>PubMed author identification</div>
+        <div class="card-body">
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Seed PMID(s) — <code>cauthor_id</code></label>
+            <input type="text" name="seed_pmids" id="field_seed_pmids" class="form-control font-monospace"
+                   value="{{ member.seed_pmids if member else '' }}">
+            <div class="form-text mt-2">
+              PubMed disambiguates authors with the same name using its Computed Authors algorithm, seeded by a PMID of a paper known to belong to this person. The <strong>Search online</strong> button above is the easiest way to find and confirm this.
+              To find it manually: open PubMed, search for the author, and click their name in any result — the URL will contain <code>cauthor_id=<strong>XXXXXXXX</strong></code>.
+              Authors with common names or who publish across multiple research areas may appear in more than one cluster; enter all relevant IDs separated by commas.
+              If left blank, the app falls back to a plain name search, which may include papers by other people with the same name.
+            </div>
+          </div>
+          <div class="mb-0">
+            <label class="form-label fw-semibold">ORCID</label>
+            <input type="text" name="orcid" id="field_orcid" class="form-control font-monospace"
+                   value="{{ member.orcid if member else '' }}">
+            <div class="form-text mt-2">
+              The author&rsquo;s 16-digit ORCID iD (e.g. <code>0000-0001-2345-6789</code>). When provided, ORCID is used alongside the seed PMIDs for disambiguation, and is also used during cron fetching as a stable, name-independent identifier.
+              Not all PubMed records include ORCID — seed PMIDs remain the primary source of disambiguation.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if all_groups %}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold"><i class="bi bi-tags me-1"></i>Groups</div>
+        <div class="card-body">
+          <div class="form-text mb-3">Assign this person to one or more groups. Groups can be used to filter the publications report (e.g. by research line, department team, or grant). Manage groups from the <a href="/staff">staff overview</a>.</div>
+          <div class="d-flex flex-wrap gap-3">
+            {% for g in all_groups %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="group_ids"
+                     value="{{ g.id }}" id="grp_{{ g.id }}"
+                     {% if g.id in member_group_ids %}checked{% endif %}>
+              <label class="form-check-label" for="grp_{{ g.id }}">{{ g.name }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <input type="hidden" name="identity_mode" id="identityModeInput" value="">
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          {% if member %}<i class="bi bi-check-lg me-1"></i>Save changes{% else %}<i class="bi bi-person-plus-fill me-1"></i>Add &amp; fetch papers{% endif %}
+        </button>
+        <a href="/staff{% if member %}/{{ member.id }}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+let _idLast = '', _idInitials = '', _idOffset = 0;
+
+function _buildPaperCard(p) {
+  const lastsLower = _idLast.split(',').map(s => s.trim().toLowerCase());
+  const initsFirst = _idInitials.split(',').map(s => s.trim()[0]?.toLowerCase()).filter(Boolean);
+  const orcidBadge = p.orcid
+    ? ' <span class="badge text-bg-success ms-1" title="' + esc(p.orcid) + '"><i class="bi bi-person-badge"></i> ORCID</span>'
+    : '';
+  const authorStr = p.authors.map(a => {
+    const [ln, rest] = a.split(', ');
+    const match = ln && lastsLower.includes(ln.toLowerCase())
+                  && rest && initsFirst.some(c => rest.toLowerCase().startsWith(c));
+    return match ? '<strong>' + esc(a) + '</strong>' : esc(a);
+  }).join('; ');
+  return '<div class="card card-body py-2 px-3 mb-2 small">'
+    + '<div class="fw-semibold mb-1">' + esc(p.title) + '</div>'
+    + '<div class="text-muted mb-1">' + esc(p.journal) + (p.year ? ' &middot; ' + esc(p.year) : '') + orcidBadge + '</div>'
+    + '<div class="text-body-tertiary mb-2" style="font-size:.8em">' + authorStr + '</div>'
+    + '<div class="d-flex gap-2">'
+    + '<button type="button" class="btn btn-sm btn-warning identity-pick-btn"'
+    + ' data-pmid="' + esc(String(p.pmid)) + '" data-orcid="' + esc(p.orcid || '') + '">'
+    + '<i class="bi bi-person-check me-1"></i>This is them</button>'
+    + '<a href="https://pubmed.ncbi.nlm.nih.gov/' + esc(String(p.pmid)) + '/" target="_blank" rel="noopener"'
+    + ' class="btn btn-sm btn-outline-secondary">'
+    + '<i class="bi bi-box-arrow-up-right me-1"></i>Open in PubMed</a>'
+    + '</div></div>';
+}
+
+function _appendPapers(papers, has_more) {
+  const list = document.getElementById('identityResultsList');
+  const oldBtn = document.getElementById('identityLoadMoreBtn');
+  if (oldBtn) oldBtn.remove();
+  for (const p of papers) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = _buildPaperCard(p);
+    const card = wrap.firstElementChild;
+    card.querySelector('.identity-pick-btn').addEventListener('click', function () {
+      confirmIdentity(this.dataset.pmid, this.dataset.orcid);
+    });
+    list.appendChild(card);
+  }
+  if (has_more) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'identityLoadMoreBtn';
+    btn.className = 'btn btn-sm btn-outline-secondary w-100 mt-1';
+    btn.textContent = 'Load more';
+    btn.addEventListener('click', loadMoreIdentityResults);
+    list.appendChild(btn);
+  }
+}
+
+async function _fetchIdentityPage(offset) {
+  const resp = await fetch('/staff/search-identity?last=' + encodeURIComponent(_idLast)
+    + '&initials=' + encodeURIComponent(_idInitials) + '&offset=' + offset);
+  return resp.json();
+}
+
+async function searchIdentityOnline() {
+  _idLast = document.getElementById('field_author_last').value.trim();
+  _idInitials = document.getElementById('field_author_initials').value.trim();
+  if (!_idLast || !_idInitials) { alert('Please enter last name and initials first.'); return; }
+  _idOffset = 0;
+  const btn = document.getElementById('searchOnlineBtn');
+  const container = document.getElementById('identitySearchResults');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Searching&hellip;';
+  container.style.display = '';
+  container.innerHTML = '';
+  try {
+    const data = await _fetchIdentityPage(0);
+    if (data.error) {
+      container.innerHTML = '<div class="alert alert-danger py-2 small">' + esc(data.error) + '</div>';
+      return;
+    }
+    if (!data.papers || data.papers.length === 0) {
+      container.innerHTML = '<div class="alert alert-warning py-2 small">No papers found for <strong>' + esc(_idLast + ' ' + _idInitials) + '</strong> in PubMed.</div>';
+      return;
+    }
+    container.innerHTML = '<p class="small text-muted mb-2">Papers by <strong>' + esc(_idLast + ' ' + _idInitials) + '</strong> — click the one you recognise to confirm identity:</p>'
+      + '<div id="identityResultsList"></div>';
+    _idOffset = data.papers.length;
+    _appendPapers(data.papers, data.has_more);
+  } catch (e) {
+    container.innerHTML = '<div class="alert alert-danger py-2 small">Search failed: ' + esc(e.message) + '</div>';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-search me-1"></i>Search online';
+  }
+}
+
+async function loadMoreIdentityResults() {
+  const loadBtn = document.getElementById('identityLoadMoreBtn');
+  if (loadBtn) { loadBtn.disabled = true; loadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading&hellip;'; }
+  try {
+    const data = await _fetchIdentityPage(_idOffset);
+    if (data.error || !data.papers || data.papers.length === 0) { if (loadBtn) loadBtn.remove(); return; }
+    _idOffset += data.papers.length;
+    _appendPapers(data.papers, data.has_more);
+  } catch (e) {
+    if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = 'Load more'; }
+  }
+}
+
+function _applyIdentity(pmid, orcid) {
+  document.getElementById('field_seed_pmids').value = pmid;
+  if (orcid && !document.getElementById('field_orcid').value.trim()) {
+    document.getElementById('field_orcid').value = orcid;
+  }
+}
+
+function confirmIdentity(pmid, orcid) {
+  _applyIdentity(pmid, orcid);
+  document.getElementById('identityModeInput').value = 'probable';
+
+  // Briefly highlight the filled fields so the user sees what changed
+  const seedField = document.getElementById('field_seed_pmids');
+  const orcidField = document.getElementById('field_orcid');
+  [seedField, orcid ? orcidField : null].forEach(el => {
+    if (!el) return;
+    el.style.transition = 'background-color 0.3s';
+    el.style.backgroundColor = 'var(--bs-warning-bg-subtle)';
+    setTimeout(() => { el.style.backgroundColor = ''; }, 1800);
+  });
+  const orcidNote = orcid ? ' ORCID filled.' : '';
+  document.getElementById('identitySearchResults').innerHTML =
+    '<div class="d-flex align-items-center gap-2 small text-success mt-1">'
+    + '<i class="bi bi-check-circle-fill"></i>'
+    + '<span>Seed PMID <code>' + esc(pmid) + '</code> filled.' + orcidNote + ' Now click <strong>Add &amp; fetch papers</strong>.</span>'
+    + '<button type="button" class="btn btn-sm btn-link p-0 ms-auto text-muted" onclick="clearIdentitySearch()">Clear</button>'
+    + '</div>';
+}
+
+function clearIdentitySearch() {
+  document.getElementById('identityModeInput').value = '';
+  const c = document.getElementById('identitySearchResults');
+  c.style.display = 'none';
+  c.innerHTML = '';
+}
+</script>
+{% endblock %}

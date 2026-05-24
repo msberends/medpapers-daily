@@ -10,6 +10,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -19,6 +20,10 @@ from urllib.parse import urlparse, urlunparse
 import yaml
 
 BASE_DIR = Path(__file__).parent
+
+
+def _ts() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -398,6 +403,7 @@ def send_error_email(config: dict, to: str, subject: str, body: str):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    main_start = time.perf_counter()
     config = load_config()
     db_path = str(BASE_DIR / config.get("db_path", "data/paperdigest.db"))
     base_url = config.get("base_url", "https://papers.uscloud.nl").rstrip("/")
@@ -411,12 +417,13 @@ def main():
     today_str = today.strftime("%d %B %Y")
     cutoff = (today - timedelta(hours=24)).isoformat()
 
+    print(f"[email] {_ts()}  Starting digest run.")
     users = load_user_configs(config)
 
     for username, user_cfg in users:
         if not should_fetch_today(user_cfg):
             schedule = user_cfg.get("fetch_schedule", "daily")
-            print(f"[email] {username}: skipping (schedule={schedule})")
+            print(f"[email] {_ts()}  {username}: skipping (schedule={schedule}).")
             continue
 
         user_email = user_cfg.get("email", "")
@@ -427,6 +434,7 @@ def main():
         group_by_profile = user_cfg.get("email_group_by_profile", False)
         user_id = None
         display_name = username
+        user_start = time.perf_counter()
 
         try:
             with conn_ctx(db_path) as conn:
@@ -434,7 +442,7 @@ def main():
                     "SELECT id, display_name FROM users WHERE username = ?", (username,)
                 ).fetchone()
                 if row is None:
-                    print(f"[email] User {username} not in DB, skipping.")
+                    print(f"[email] {_ts()}  User {username} not in DB, skipping.")
                     continue
                 user_id = row["id"]
                 display_name = row["display_name"] or username
@@ -466,7 +474,7 @@ def main():
 
             if not papers:
                 if suppress_empty:
-                    print(f"[email] {username}: no new papers, suppressing email.")
+                    print(f"[email] {_ts()}  {username}: no new papers, suppressing email.")
                     continue
                 # Send nothing-new confirmation
                 nothing_subject = f"[{app_name}] No new papers today, {today_str}"
@@ -479,7 +487,8 @@ def main():
                            f"<p>{nothing_body.replace(chr(10), '<br>')}</p>",
                            nothing_body)
                 _log_mail(db_path, user_id, user_email, nothing_subject, "sent")
-                print(f"[email] {username}: sent nothing-new notification.")
+                user_elapsed = time.perf_counter() - user_start
+                print(f"[email] {_ts()}  {username}: sent nothing-new notification ({user_elapsed:.1f} sec).")
                 continue
 
             html = build_html_digest(papers, mesh_topic_map, mesh_topic_colours, base_url, username, today_str, config, group_by_profile)
@@ -505,17 +514,22 @@ def main():
                     f"UPDATE user_papers SET emailed_at = ? WHERE user_id = ? AND pmid IN ({placeholders})",
                     [today.isoformat(), user_id] + pmids,
                 )
-            print(f"[email] {username}: sent digest with {len(papers)} paper(s).")
+            user_elapsed = time.perf_counter() - user_start
+            print(f"[email] {_ts()}  {username}: sent digest with {len(papers)} paper(s) ({user_elapsed:.1f} sec).")
 
         except Exception:
             err = traceback.format_exc()
-            print(f"[email] ERROR for {username}:\n{err}", file=sys.stderr)
+            user_elapsed = time.perf_counter() - user_start
+            print(f"[email] {_ts()}  ERROR for {username} after {user_elapsed:.1f} sec:\n{err}", file=sys.stderr)
             _log_mail(db_path, user_id, user_email, "digest", "error", err[:2000])
             if user_email:
                 send_error_email(
                     config, user_email, "Email digest error",
                     f"{app_name} email digest failed for {username}:\n\n{err}",
                 )
+
+    total_elapsed = time.perf_counter() - main_start
+    print(f"[email] {_ts()}  Done. Total time: {total_elapsed:.1f} sec.")
 
 
 if __name__ == "__main__":

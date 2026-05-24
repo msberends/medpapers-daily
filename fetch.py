@@ -2,8 +2,6 @@
 """
 Standalone cron script: fetch new papers from PubMed, filter by Scopus
 quartile, and store them in the SQLite database.
-
-Invoked directly; does NOT import from app/.
 """
 import csv
 import html as _html
@@ -21,6 +19,10 @@ import requests
 import yaml
 
 BASE_DIR = Path(__file__).parent
+
+
+def _ts() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # ── Config loading ──────────────────────────────────────────────────────────
@@ -111,10 +113,6 @@ def conn_ctx(db_path: str):
 
 # ── Scopus loading ────────────────────────────────────────────────────────────
 
-def _norm_issn(issn: str) -> str:
-    return issn.replace("-", "").strip().upper()
-
-
 def _parse_float(raw: str) -> float | None:
     raw = raw.strip()
     if not raw:
@@ -125,18 +123,19 @@ def _parse_float(raw: str) -> float | None:
         return None
 
 
-def load_scopus() -> dict[str, tuple[str, float | None, float | None, str | None, str | None]]:
-    """Returns ISSN (hyphen-free) -> (quartile, citescore, percentile, publisher, title).
+_SCOPUS_EXTENDED = BASE_DIR / "data" / "scopus_extended.csv"
+_EXTENDED_FIELDNAMES = ["issn", "eIssn", "title", "publisher", "quartile",
+                        "citescore", "percentile"]
 
-    Reads data/scopus_journals.csv produced by fetch_scopus_journals.py.
-    Columns used: issn, eIssn, quartile (numeric 1-4), citescore, percentile, publisher, title.
-    """
-    mapping: dict[str, tuple[str, float | None, float | None, str | None, str | None]] = {}
-    p = BASE_DIR / "data" / "scopus_journals.csv"
-    if not p.exists():
-        print(f"[fetch] WARNING: {p} not found. Quartile filtering disabled.")
-        return mapping
-    with open(p, encoding="utf-8") as f:
+
+def _load_csv_into_mapping(
+    path: Path,
+    mapping: dict[str, tuple],
+) -> None:
+    """Parse one Scopus CSV file and populate mapping in-place."""
+    if not path.exists():
+        return
+    with open(path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             try:
@@ -157,7 +156,132 @@ def load_scopus() -> dict[str, tuple[str, float | None, float | None, str | None
                         norm = _norm_issn(raw_issn)
                         if norm not in mapping:
                             mapping[norm] = (quartile, citescore, percentile, publisher, title)
+
+
+def load_scopus() -> dict[str, tuple[str, float | None, float | None, str | None, str | None]]:
+    """Returns ISSN (hyphen-free) -> (quartile, citescore, percentile, publisher, title).
+
+    Reads the main scopus_journals.csv (produced by fetch_scopus_journals.py) and the
+    supplementary scopus_extended.csv (ISSN lookups accumulated by this script at fetch
+    time for any journal not covered by the main sweep).
+    """
+    mapping: dict[str, tuple[str, float | None, float | None, str | None, str | None]] = {}
+    p = BASE_DIR / "data" / "scopus_journals.csv"
+    if not p.exists():
+        print(f"[fetch] {_ts()}  WARNING: {p} not found. Quartile filtering disabled.")
+        return mapping
+    _load_csv_into_mapping(p, mapping)
+    # Overlay any individually-resolved journals discovered at fetch time.
+    _load_csv_into_mapping(_SCOPUS_EXTENDED, mapping)
     return mapping
+
+
+def scopus_lookup_by_issn(
+    issn: str,
+    api_key: str,
+    mapping: dict[str, tuple],
+) -> tuple | None:
+    """Query the Elsevier Serial Title API for a single ISSN and update the mapping.
+
+    The Elsevier Serial Title API returns results for any valid ISSN regardless of
+    subject-area ordering or the 10,000-result pagination cap that afflicts broad
+    subject queries. This is therefore the only reliable way to resolve journals
+    that fall in the invisible tail of a capped subject result set (e.g. MEDI).
+
+    On success the result is written to scopus_extended.csv so subsequent fetch
+    runs read it from disk without making another API call.
+    """
+    if not api_key or not issn:
+        return None
+    norm = _norm_issn(issn)
+    if norm in mapping:
+        return mapping[norm]
+    url = "https://api.elsevier.com/content/serial/title"
+    try:
+        r = requests.get(
+            url,
+            params={"issn": issn, "view": "CITESCORE"},
+            headers={"Accept": "application/json", "X-ELS-APIKey": api_key},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return None
+        entries = r.json().get("serial-metadata-response", {}).get("entry", [])
+        if isinstance(entries, dict):
+            entries = [entries]
+        if not entries:
+            return None
+        entry = entries[0]
+        csyl = entry.get("citeScoreYearInfoList", {})
+        cs_year = csyl.get("citeScoreCurrentMetricYear")
+        if not cs_year:
+            return None
+
+        # Derive best percentile (same logic as fetch_scopus_journals.py)
+        best_pct = None
+        for yi in ([csyl.get("citeScoreYearInfo")] if isinstance(csyl.get("citeScoreYearInfo"), dict)
+                   else (csyl.get("citeScoreYearInfo") or [])):
+            if yi.get("@year") != cs_year or yi.get("@status") != "Complete":
+                continue
+            for ci_block in ([csyl_ci] if isinstance(
+                (csyl_ci := yi.get("citeScoreInformationList", [])), dict) else csyl_ci):
+                for ci in ([ci_block.get("citeScoreInfo")] if isinstance(
+                    ci_block.get("citeScoreInfo"), dict) else (ci_block.get("citeScoreInfo") or [])):
+                    for sr in ([ci.get("citeScoreSubjectRank")] if isinstance(
+                        ci.get("citeScoreSubjectRank"), dict)
+                        else (ci.get("citeScoreSubjectRank") or [])):
+                        try:
+                            pct = float(sr.get("percentile", -1))
+                        except (TypeError, ValueError):
+                            pct = -1
+                        if pct > (best_pct if best_pct is not None else -1):
+                            best_pct = pct
+
+        if best_pct is None:
+            return None
+
+        q_num = (1 if best_pct >= 75 else 2 if best_pct >= 50 else 3 if best_pct >= 25 else 4)
+        quartile   = f"Q{q_num}"
+        citescore  = csyl.get("citeScoreCurrentMetric")
+        publisher  = (entry.get("dc:publisher") or "").strip() or None
+        title      = (entry.get("dc:title")     or "").strip() or None
+        print_issn = (entry.get("prism:issn")   or "").strip()
+        e_issn     = (entry.get("prism:eIssn")  or "").strip()
+
+        try:
+            citescore_f: float | None = float(citescore) if citescore else None
+        except (TypeError, ValueError):
+            citescore_f = None
+
+        result: tuple = (quartile, citescore_f, best_pct, publisher, title)
+
+        # Update in-memory mapping for both ISSNs
+        for raw in (print_issn, e_issn):
+            n = _norm_issn(raw)
+            if raw and n not in mapping:
+                mapping[n] = result
+
+        # Persist to extended CSV so future fetches don't need another API call
+        write_header = not _SCOPUS_EXTENDED.exists()
+        with open(_SCOPUS_EXTENDED, "a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=_EXTENDED_FIELDNAMES, extrasaction="ignore")
+            if write_header:
+                writer.writeheader()
+            writer.writerow({
+                "issn":       print_issn,
+                "eIssn":      e_issn,
+                "title":      title or "",
+                "publisher":  publisher or "",
+                "quartile":   q_num,
+                "citescore":  citescore_f if citescore_f is not None else "",
+                "percentile": best_pct,
+            })
+        print(f"[fetch] {_ts()}  Scopus extended: resolved {issn} → {title!r} {quartile}")
+        return result
+
+    except Exception as e:
+        print(f"[fetch] {_ts()}  Scopus ISSN lookup failed for {issn}: {e}", file=sys.stderr)
+        return None
 
 
 # ── PubMed fetching ───────────────────────────────────────────────────────────
@@ -168,197 +292,13 @@ def _date_range(lookback_days: int) -> tuple[str, str]:
     return str(start).replace("-", "/"), str(today).replace("-", "/")
 
 
-def search_pubmed(query: str, mindate: str, maxdate: str,
-                  api_key: str, retmax: int = 200) -> list[str]:
-    params = {
-        "db": "pubmed",
-        "term": query,
-        "mindate": mindate,
-        "maxdate": maxdate,
-        "datetype": "edat",
-        "retmax": retmax,
-        "retmode": "json",
-        "api_key": api_key,
-    }
-    url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-    r = requests.get(url, params=params, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-    return data.get("esearchresult", {}).get("idlist", [])
-
-
-def fetch_pubmed_records(pmids: list[str], api_key: str) -> ET.Element:
-    ids = ",".join(pmids)
-    params = {
-        "db": "pubmed",
-        "id": ids,
-        "rettype": "xml",
-        "retmode": "xml",
-        "api_key": api_key,
-    }
-    url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-    r = requests.get(url, params=params, timeout=60)
-    r.raise_for_status()
-    return ET.fromstring(r.content)
-
-
-def _text(el, path: str, default: str = "") -> str:
-    node = el.find(path)
-    return _html.unescape(node.text.strip()) if node is not None and node.text else default
-
-
-def _html_text(el) -> str:
-    """Return element text with <i> children converted to <em>, all text HTML-escaped."""
-    if el is None:
-        return ""
-    parts = []
-    if el.text:
-        parts.append(_html.escape(_html.unescape(el.text)))
-    for child in el:
-        tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-        inner = _html.escape(_html.unescape("".join(child.itertext())))
-        parts.append(f"<em>{inner}</em>" if tag == "i" else inner)
-        if child.tail:
-            parts.append(_html.escape(_html.unescape(child.tail)))
-    return "".join(parts).strip()
-
-
-def parse_article(article_set_child: ET.Element) -> dict | None:
-    """Parse a single PubmedArticle XML element into a dict."""
-    medline = article_set_child.find(".//MedlineCitation")
-    if medline is None:
-        return None
-
-    pmid_el = medline.find("PMID")
-    if pmid_el is None or not pmid_el.text:
-        return None
-    pmid = pmid_el.text.strip()
-
-    art = medline.find("Article")
-    if art is None:
-        return None
-
-    title = _html_text(art.find("ArticleTitle"))
-    abstract_sections = []
-    for node in art.findall(".//AbstractText"):
-        text = _html.unescape("".join(node.itertext()).strip())
-        if not text:
-            continue
-        raw_label = (node.get("Label") or "").strip()
-        label = raw_label.title() if raw_label else ""
-        abstract_sections.append({"label": label, "text": text})
-    abstract = " ".join(s["text"] for s in abstract_sections)
-    has_labels = any(s["label"] for s in abstract_sections)
-    abstract_structured = json.dumps(abstract_sections) if has_labels else None
-
-    # Authors + affiliations
-    authors = []
-    author_affil_raw = []  # per-author list of affiliation strings
-    for auth in art.findall(".//Author"):
-        ln = _text(auth, "LastName")
-        fn = _text(auth, "ForeName") or _text(auth, "Initials")
-        affils = [
-            _html.unescape(el.text.strip())
-            for el in auth.findall("AffiliationInfo/Affiliation")
-            if el.text
-        ]
-        if ln:
-            authors.append(f"{ln}, {fn}".strip(", "))
-            author_affil_raw.append(affils)
-        else:
-            cn = _text(auth, "CollectiveName")
-            if cn:
-                authors.append(cn)
-                author_affil_raw.append(affils)
-
-    # Deduplicate affiliations, preserving order
-    aff_list: list[str] = []
-    aff_index: dict[str, int] = {}
-    for affils in author_affil_raw:
-        for a in affils:
-            if a not in aff_index:
-                aff_index[a] = len(aff_list)
-                aff_list.append(a)
-    author_aff = [[aff_index[a] for a in affils] for affils in author_affil_raw]
-    affiliations = json.dumps({"aff_list": aff_list, "author_aff": author_aff}) if aff_list else None
-
-    # Journal
-    journal_el = art.find("Journal")
-    journal_name = ""
-    iso_abbreviation = ""
-    issn = ""
-    if journal_el is not None:
-        iso_abbreviation = _text(journal_el, "ISOAbbreviation") or ""
-        journal_name = _text(journal_el, "Title") or iso_abbreviation
-        # prefer print ISSN, fall back to electronic
-        issn_el = journal_el.find("ISSN[@IssnType='Print']")
-        if issn_el is None:
-            issn_el = journal_el.find("ISSN")
-        if issn_el is not None and issn_el.text:
-            issn = issn_el.text.strip()
-
-    # Publication date (journal issue date, may be in the future)
-    pub_date = ""
-    pub_date_el = art.find(".//PubDate")
-    if pub_date_el is not None:
-        year = _text(pub_date_el, "Year")
-        month = _text(pub_date_el, "Month")
-        day = _text(pub_date_el, "Day")
-        med_date = _text(pub_date_el, "MedlineDate")
-        if year:
-            pub_date = f"{year}-{month[:3] if month else ''}-{day}".strip("-")
-        elif med_date:
-            pub_date = med_date
-
-    # Epub date (electronic publication, usually earlier than print)
-    epub_date = ""
-    for date_el in art.findall(".//ArticleDate"):
-        if date_el.get("DateType") == "Electronic":
-            y = _text(date_el, "Year")
-            m = _text(date_el, "Month")
-            d = _text(date_el, "Day")
-            if y and m and d:
-                epub_date = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
-            break
-
-    # DOI
-    doi = ""
-    for id_el in article_set_child.findall(".//ArticleId"):
-        if id_el.get("IdType") == "doi":
-            doi = (id_el.text or "").strip()
-            break
-
-    # MeSH terms
-    mesh_terms = [
-        _html.unescape(node.text.strip())
-        for node in medline.findall(".//MeshHeading/DescriptorName")
-        if node.text
-    ]
-
-    # Author-provided keywords (often present before MeSH indexing is complete).
-    # KeywordList is a child of MedlineCitation, not of Article.
-    keywords = [
-        _html.unescape(node.text.strip())
-        for node in medline.findall(".//KeywordList/Keyword")
-        if node.text
-    ]
-
-    return {
-        "pmid": pmid,
-        "title": title,
-        "authors": json.dumps(authors),
-        "affiliations": affiliations,
-        "journal": journal_name,
-        "iso_abbreviation": iso_abbreviation or None,
-        "issn": issn,
-        "pub_date": pub_date,
-        "epub_date": epub_date,
-        "abstract": abstract,
-        "abstract_structured": abstract_structured,
-        "doi": doi,
-        "mesh_terms": json.dumps(mesh_terms),
-        "keywords": json.dumps(keywords),
-    }
+from app.pubmed import (  # noqa: E402 — imported after BASE_DIR is set
+    search_pubmed,
+    fetch_pubmed_records,
+    parse_article,
+    upsert_paper,
+    _norm_issn,
+)
 
 
 # ── Unpaywall ─────────────────────────────────────────────────────────────────
@@ -411,16 +351,19 @@ def send_error_email(config: dict, db_path: str, user_id: int,
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    main_start = time.perf_counter()
     config = load_config()
     api_key = config.get("ncbi_api_key", "")
     ncbi_email = config.get("ncbi_email", "anonymous@example.com")
+    elsevier_api_key = config.get("elsevier_api_key", "")
     db_path = str(BASE_DIR / config.get("db_path", "data/paperdigest.db"))
     scopus = load_scopus()
     now_iso = datetime.now(timezone.utc).isoformat()
 
+    print(f"[fetch] {_ts()}  Starting fetch.")
     users = load_user_configs(config)
     if not users:
-        print("[fetch] No users with fetch_enabled found.")
+        print(f"[fetch] {_ts()}  No users with fetch_enabled found.")
         return
 
     # Ensure DB tables exist
@@ -450,7 +393,7 @@ def main():
                     )
                     updated += 1
         if updated:
-            print(f"[fetch] Backfilled Scopus fields for {updated} papers")
+            print(f"[fetch] {_ts()}  Backfilled Scopus fields for {updated} papers.")
 
     # Sync journal names from Scopus — runs on every fetch so a CSV refresh propagates automatically
     if scopus:
@@ -468,7 +411,7 @@ def main():
                                      (scopus_title, row["pmid"]))
                         updated += 1
         if updated:
-            print(f"[fetch] Updated journal names from Scopus for {updated} papers")
+            print(f"[fetch] {_ts()}  Updated journal names from Scopus for {updated} papers.")
 
     # Backfill titles that were truncated by old XML parsing (text before first <i> child only)
     with conn_ctx(db_path) as conn:
@@ -478,7 +421,7 @@ def main():
             ).fetchall()
         ]
     if short_pmids:
-        print(f"[fetch] Re-fetching titles for {len(short_pmids)} potentially truncated papers")
+        print(f"[fetch] {_ts()}  Re-fetching titles for {len(short_pmids)} potentially truncated papers.")
         try:
             xml_root = fetch_pubmed_records(short_pmids, api_key)
             with conn_ctx(db_path) as conn:
@@ -490,7 +433,7 @@ def main():
                             (rec["title"], rec["pmid"]),
                         )
         except Exception as e:
-            print(f"[fetch] Title backfill failed: {e}", file=sys.stderr)
+            print(f"[fetch] {_ts()}  Title backfill failed: {e}", file=sys.stderr)
 
     for username, user_cfg in users:
         # Resolve user_id first so should_fetch_today can check fetch_log
@@ -503,13 +446,13 @@ def main():
         except Exception:
             pass
         if _uid_row is None:
-            print(f"[fetch] User {username} not in DB, skipping.")
+            print(f"[fetch] {_ts()}  User {username} not in DB, skipping.")
             continue
 
         _resolved_uid = _uid_row["id"]
         if not should_fetch_today(user_cfg, _resolved_uid, db_path):
             schedule = user_cfg.get("fetch_schedule", "daily")
-            print(f"[fetch] {username}: skipping (schedule={schedule})")
+            print(f"[fetch] {_ts()}  {username}: skipping (schedule={schedule}).")
             continue
 
         user_email = user_cfg.get("email", "")
@@ -522,6 +465,7 @@ def main():
         error_message = None
         profile_details: list[dict] = []
         user_id = _resolved_uid
+        user_start = time.perf_counter()
 
         try:
             with conn_ctx(db_path) as conn:
@@ -529,14 +473,14 @@ def main():
                     "SELECT id FROM users WHERE username = ?", (username,)
                 ).fetchone()
                 if row is None:
-                    print(f"[fetch] User {username} not in DB, skipping.")
+                    print(f"[fetch] {_ts()}  User {username} not in DB, skipping.")
                     continue
                 user_id = row["id"]
 
             for profile in profiles:
                 profile_name = profile.get("name", "unnamed")
                 if not profile.get("enabled", True):
-                    print(f"[fetch] {username}/{profile_name}: skipped (disabled)")
+                    print(f"[fetch] {_ts()}  {username}/{profile_name}: skipped (disabled).")
                     continue
                 query = profile.get("query", "").strip()
                 if not query:
@@ -557,18 +501,19 @@ def main():
                         (user_id, profile_name),
                     ).fetchone()
                     sp_id = sp_row["id"] if sp_row else None
-                print(f"[fetch] {username}/{profile_name}: querying PubMed ({mindate} to {maxdate})")
+                print(f"[fetch] {_ts()}  {username}/{profile_name}: querying PubMed ({mindate} to {maxdate}).")
 
                 pf_found = 0
                 pf_new = 0
                 pf_filtered = 0
                 pf_error = None
+                profile_start = time.perf_counter()
 
                 try:
                     pmids = search_pubmed(query, mindate, maxdate, api_key)
                 except Exception as e:
                     pf_error = str(e)
-                    print(f"[fetch] esearch error for {profile_name}: {e}", file=sys.stderr)
+                    print(f"[fetch] {_ts()}  esearch error for {profile_name}: {e}", file=sys.stderr)
                     profile_details.append({
                         "profile": profile_name,
                         "found": 0, "new": 0, "filtered": 0,
@@ -578,7 +523,8 @@ def main():
 
                 pf_found = len(pmids)
                 if not pmids:
-                    print(f"[fetch] {username}/{profile_name}: 0 results")
+                    pf_elapsed = time.perf_counter() - profile_start
+                    print(f"[fetch] {_ts()}  {username}/{profile_name}: 0 results ({pf_elapsed:.1f} sec).")
                     profile_details.append({
                         "profile": profile_name,
                         "found": 0, "new": 0, "filtered": 0,
@@ -591,7 +537,7 @@ def main():
                     try:
                         xml_root = fetch_pubmed_records(batch, api_key)
                     except Exception as e:
-                        print(f"[fetch] efetch error: {e}", file=sys.stderr)
+                        print(f"[fetch] {_ts()}  efetch error: {e}", file=sys.stderr)
                         continue
                     time.sleep(0.12)  # stay under rate limit
 
@@ -602,6 +548,8 @@ def main():
 
                         norm_issn = _norm_issn(record["issn"])
                         scopus_data = scopus.get(norm_issn)
+                        if scopus_data is None and record["issn"] and elsevier_api_key:
+                            scopus_data = scopus_lookup_by_issn(record["issn"], elsevier_api_key, scopus)
                         quartile, citescore, percentile, publisher, scopus_title = scopus_data if scopus_data else (None, None, None, None, None)
                         record["scopus_quartile"]   = quartile
                         record["scopus_citescore"]  = citescore
@@ -669,9 +617,11 @@ def main():
                                 (user_id, record["pmid"], sp_id, now_iso),
                             )
 
+                pf_elapsed = time.perf_counter() - profile_start
                 print(
-                    f"[fetch] {username}/{profile_name}: "
-                    f"found={pf_found}, filtered={pf_filtered}, new={pf_new}"
+                    f"[fetch] {_ts()}  {username}/{profile_name}: "
+                    f"found={pf_found}, filtered={pf_filtered}, new={pf_new} "
+                    f"({pf_elapsed:.1f} sec)."
                 )
                 profile_details.append({
                     "profile": profile_name,
@@ -684,7 +634,7 @@ def main():
             import traceback
             run_status = "error"
             error_message = traceback.format_exc()
-            print(f"[fetch] FATAL ERROR for {username}:\n{error_message}", file=sys.stderr)
+            print(f"[fetch] {_ts()}  FATAL ERROR for {username}:\n{error_message}", file=sys.stderr)
             if user_email and user_id is not None:
                 send_error_email(
                     config, db_path, user_id, user_email, "Fetch error",
@@ -706,15 +656,110 @@ def main():
                          run_status, error_message, json.dumps(profile_details)),
                     )
             except Exception as e:
-                print(f"[fetch] Could not write fetch_log: {e}", file=sys.stderr)
+                print(f"[fetch] {_ts()}  Could not write fetch_log: {e}", file=sys.stderr)
 
+        user_elapsed = time.perf_counter() - user_start
         print(
-            f"[fetch] {username}: found={total_found}, new={total_new}, "
-            f"status={run_status}"
+            f"[fetch] {_ts()}  {username}: found={total_found}, new={total_new}, "
+            f"status={run_status}, time: {user_elapsed:.1f} sec."
         )
 
+    _auto_fetch_staff_papers(config, db_path, scopus)
     _launch_llm_highlights(config)
     _clean_expired_sessions(db_path)
+    total_elapsed = time.perf_counter() - main_start
+    print(f"[fetch] {_ts()}  Done. Total time: {total_elapsed:.1f} sec.")
+
+
+def _auto_fetch_staff_papers(config: dict, db_path: str, scopus: dict) -> None:
+    """Fetch and auto-confirm new papers for active staff who already have confirmed publications.
+
+    Uses a date-limited PubMed name/ORCID search (not the full Computed Authors API) so that
+    only recently published papers are retrieved on each cron run. New PMIDs not already in
+    staff_papers are inserted as 'confirmed' — no manual review required for established staff.
+    """
+    api_key = config.get("ncbi_api_key", "")
+    lookback = int(config.get("staff_fetch_lookback_days", 30))
+    mindate, maxdate = _date_range(lookback)
+
+    with conn_ctx(db_path) as conn:
+        members = conn.execute(
+            """SELECT s.* FROM staff s
+               WHERE s.active = 1
+               AND (SELECT COUNT(*) FROM staff_papers sp
+                    WHERE sp.staff_id = s.id AND sp.status = 'confirmed') > 0
+               ORDER BY s.name"""
+        ).fetchall()
+
+    if not members:
+        return
+
+    print(f"[fetch] {_ts()}  Staff auto-fetch: {len(members)} member(s), {lookback}-day window.")
+    total_new = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for member in members:
+        m = dict(member)
+        with conn_ctx(db_path) as conn:
+            already = {
+                r["pmid"] for r in conn.execute(
+                    "SELECT pmid FROM staff_papers WHERE staff_id = ?", (m["id"],)
+                ).fetchall()
+            }
+
+        if m.get("orcid"):
+            query = f"{m['orcid']}[auid]"
+        else:
+            query = f"{m['author_last']} {m['author_initials']}[au]"
+
+        try:
+            candidate_pmids = search_pubmed(query, mindate, maxdate, api_key, retmax=200)
+        except Exception as e:
+            print(f"[fetch] {_ts()}  Staff auto-fetch: search failed for {m['name']}: {e}", file=sys.stderr)
+            continue
+
+        new_pmids = [p for p in candidate_pmids if p not in already]
+        if not new_pmids:
+            continue
+
+        member_new = 0
+        for i in range(0, len(new_pmids), 200):
+            batch = new_pmids[i : i + 200]
+            try:
+                xml_root = fetch_pubmed_records(batch, api_key)
+            except Exception as e:
+                print(f"[fetch] {_ts()}  Staff auto-fetch: efetch failed for {m['name']}: {e}", file=sys.stderr)
+                continue
+            time.sleep(0.12)
+
+            for article_el in xml_root.findall(".//PubmedArticle"):
+                record = parse_article(article_el)
+                if record is None:
+                    continue
+                sd = scopus.get(_norm_issn(record["issn"]))
+                record["scopus_quartile"]   = sd[0] if sd else None
+                record["scopus_citescore"]  = sd[1] if sd else None
+                record["scopus_percentile"] = sd[2] if sd else None
+                record["publisher"]         = sd[3] if sd else None
+                if sd and sd[4]:
+                    record["journal"] = sd[4]
+
+                with conn_ctx(db_path) as conn:
+                    upsert_paper(conn, record, scopus)
+                    result = conn.execute(
+                        """INSERT OR IGNORE INTO staff_papers (staff_id, pmid, status, reviewed_at)
+                           VALUES (?, ?, 'confirmed', ?)""",
+                        (m["id"], record["pmid"], now_iso),
+                    )
+                    if result.rowcount:
+                        member_new += 1
+
+        if member_new:
+            print(f"[fetch] {_ts()}  Staff auto-fetch: {m['name']}: {member_new} new paper(s) confirmed.")
+        total_new += member_new
+
+    msg = f"{total_new} total new paper(s) confirmed." if total_new else "no new papers found."
+    print(f"[fetch] {_ts()}  Staff auto-fetch: {msg}")
 
 
 def _clean_expired_sessions(db_path: str):
@@ -725,9 +770,9 @@ def _clean_expired_sessions(db_path: str):
                 "DELETE FROM sessions WHERE expires_at < datetime('now')"
             ).rowcount
         if deleted:
-            print(f"[fetch] Cleaned {deleted} expired session(s).")
+            print(f"[fetch] {_ts()}  Cleaned {deleted} expired session(s).")
     except Exception as e:
-        print(f"[fetch] Could not clean sessions: {e}", file=sys.stderr)
+        print(f"[fetch] {_ts()}  Could not clean sessions: {e}", file=sys.stderr)
 
 
 def _launch_llm_highlights(config: dict):
@@ -747,9 +792,9 @@ def _launch_llm_highlights(config: dict):
                 stderr=log_f,
                 cwd=str(BASE_DIR),
             )
-        print("[fetch] LLM highlights generation queued in background.")
+        print(f"[fetch] {_ts()}  LLM highlights generation queued in background.")
     except Exception as e:
-        print(f"[fetch] Could not start LLM highlights: {e}", file=sys.stderr)
+        print(f"[fetch] {_ts()}  Could not start LLM highlights: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import html as _html
 import os
 import re
 import zoneinfo
@@ -20,7 +21,7 @@ from app.auth import (
     create_session, delete_session, get_current_user, record_failed_login,
     record_successful_login, verify_password, LoginRequired,
 )
-from app.routes import admin, feed, folders, journals, logs, paper, settings
+from app.routes import admin, feed, folders, journals, logs, paper, settings, staff as staff_routes
 from app.themes import get_theme_url, favicon_href, VALID_THEMES
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -146,7 +147,7 @@ _CSP = (
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "img-src 'self' data:; "
     "font-src 'self' https://cdn.jsdelivr.net data:; "
-    "connect-src 'self'; "
+    "connect-src 'self' https://openrouter.ai; "
     "frame-ancestors 'none';"
 )
 
@@ -216,7 +217,7 @@ def _startup(app: FastAPI):
     app.state.templates.env.filters["inline_md"] = inline_md
 
     def fix_decimal(text: str) -> str:
-        return re.sub(r'(\d)\xb7(\d)', r'\1.\2', str(text))
+        return re.sub(r'(\d)\xb7(\d)', r'\1.\2', _html.unescape(str(text)))
 
     app.state.templates.env.filters["fix_decimal"] = fix_decimal
 
@@ -271,7 +272,7 @@ def _startup(app: FastAPI):
     def safe_title(text: str) -> "markupsafe.Markup":
         """Escape HTML but restore a safe allow-list of tags (no attributes)."""
         from markupsafe import escape, Markup
-        escaped = str(escape(text or ""))
+        escaped = str(escape(_html.unescape(text or "")))
 
         def _restore(m: re.Match) -> str:
             slash, tag = m.group(1), m.group(2).lower()
@@ -335,6 +336,7 @@ app.include_router(settings.router)
 app.include_router(admin.router)
 app.include_router(logs.router)
 app.include_router(journals.router)
+app.include_router(staff_routes.router)
 
 
 @app.get("/", response_class=HTMLResponse)

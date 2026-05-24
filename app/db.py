@@ -136,6 +136,47 @@ def _create_tables(conn: sqlite3.Connection):
     conn.commit()
 
 
+def _score_authorship(authors_json: str, last: str, initials: str) -> float | None:
+    """Compute authorship score: 1st/last=2, 2nd/2nd-last=1, middle=0.5."""
+    import json as _j
+    try:
+        authors = _j.loads(authors_json or "[]")
+    except Exception:
+        return None
+    lasts = [v.strip().lower() for v in (last or "").split(",") if v.strip()]
+    inits  = [v.strip().lower() for v in (initials or "").split(",") if v.strip()]
+    idx = None
+    for i, author in enumerate(authors):
+        parts = author.split(",", 1)
+        if not parts or parts[0].strip().lower() not in lasts:
+            continue
+        forename = parts[1].strip() if len(parts) > 1 else ""
+        words = forename.split()
+        if len(words) == 1 and len(words[0]) <= 5 and words[0].replace(".", "").upper() == words[0].replace(".", ""):
+            stored = words[0].replace(".", "").lower()
+        else:
+            stored = "".join(w[0].lower() for w in words if w)
+        if any(stored == cfg for cfg in inits):
+            idx = i
+            break
+    if idx is None:
+        for i, author in enumerate(authors):
+            parts = author.split(",", 1)
+            if parts and parts[0].strip().lower() in lasts:
+                idx = i
+                break
+    if idx is None:
+        return None
+    n = len(authors)
+    if n == 0:
+        return None
+    if idx == 0 or idx == n - 1:
+        return 2.0
+    if idx == 1 or idx == n - 2:
+        return 1.0
+    return 0.5
+
+
 def _drop_col(conn: sqlite3.Connection, table: str, col: str):
     existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
     if col not in existing:
@@ -289,5 +330,62 @@ def _migrate(conn: sqlite3.Connection):
             FROM user_papers
             WHERE search_profile_id IS NOT NULL
         """)
+
+    # Staff publication tracker
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS staff (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT    NOT NULL,
+            author_last     TEXT    NOT NULL,
+            author_initials TEXT    NOT NULL,
+            seed_pmids      TEXT,
+            orcid           TEXT,
+            department      TEXT,
+            active          INTEGER NOT NULL DEFAULT 1,
+            created_at      TEXT    NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS staff_papers (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            staff_id    INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+            pmid        TEXT    NOT NULL REFERENCES papers(pmid),
+            status      TEXT    NOT NULL DEFAULT 'pending',
+            reviewed_at TEXT,
+            reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE(staff_id, pmid)
+        );
+        CREATE TABLE IF NOT EXISTS staff_groups (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL UNIQUE,
+            created_at TEXT    NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS staff_group_members (
+            group_id INTEGER NOT NULL REFERENCES staff_groups(id) ON DELETE CASCADE,
+            staff_id INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+            PRIMARY KEY (group_id, staff_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_staff_papers_status
+            ON staff_papers(staff_id, status);
+    """)
+
+    staff_cols = {r[1] for r in conn.execute("PRAGMA table_info(staff)").fetchall()}
+    if "identity_confidence" not in staff_cols:
+        conn.execute("ALTER TABLE staff ADD COLUMN identity_confidence TEXT")
+
+    sp_cols = {r[1] for r in conn.execute("PRAGMA table_info(staff_papers)").fetchall()}
+    if "author_score" not in sp_cols:
+        conn.execute("ALTER TABLE staff_papers ADD COLUMN author_score REAL")
+        rows = conn.execute("""
+            SELECT sp.staff_id, sp.pmid, p.authors, s.author_last, s.author_initials
+            FROM staff_papers sp
+            JOIN papers p ON p.pmid = sp.pmid
+            JOIN staff s ON s.id = sp.staff_id
+        """).fetchall()
+        for row in rows:
+            score = _score_authorship(row[2], row[3], row[4])
+            if score is not None:
+                conn.execute(
+                    "UPDATE staff_papers SET author_score=? WHERE staff_id=? AND pmid=?",
+                    (score, row[0], row[1]),
+                )
 
     conn.commit()

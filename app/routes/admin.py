@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from app.llm import DEFAULT_HIGHLIGHTS_PROMPT
+from app.llm import DEFAULT_HIGHLIGHTS_PROMPT, DEFAULT_RECAP_PROMPT
 
 from app.routes.settings import _enrich_profiles, _sync_profiles_to_db
 
@@ -55,6 +55,47 @@ from app.user_config import load_user_cfg as _load_user_cfg, save_user_cfg as _s
 router = APIRouter()
 
 
+def _load_unindexed_journals(scopus_path: Path) -> list[dict]:
+    """Returns journals from fetched papers that are absent from the Scopus CSV.
+
+    Two categories:
+    - 'no_issn': paper has no ISSN in PubMed — cannot match against Scopus.
+    - 'missing': ISSN present but not found in Scopus — journal is unranked/unlisted.
+    """
+    known_issns: set[str] = set()
+    if scopus_path.exists():
+        with open(scopus_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                for field in (row.get("issn") or "", row.get("eIssn") or ""):
+                    for raw in field.split(","):
+                        norm = raw.replace("-", "").strip().upper()
+                        if norm:
+                            known_issns.add(norm)
+
+    with conn_ctx() as conn:
+        rows = conn.execute(
+            """SELECT journal, issn, iso_abbreviation, COUNT(*) AS paper_count
+               FROM papers
+               GROUP BY journal, issn
+               ORDER BY paper_count DESC"""
+        ).fetchall()
+
+    result = []
+    for row in rows:
+        issn = (row["issn"] or "").strip()
+        norm = issn.replace("-", "").upper() if issn else ""
+        if norm and norm in known_issns:
+            continue
+        result.append({
+            "journal": row["journal"],
+            "issn": issn or None,
+            "iso_abbreviation": row["iso_abbreviation"],
+            "paper_count": row["paper_count"],
+            "reason": "no_issn" if not issn else "missing",
+        })
+    return result
+
+
 def _load_scopus_stats(scopus_path: Path) -> dict:
     if not scopus_path.exists():
         return {"mtime": None, "total": 0, "quartile_counts": {}, "preview": []}
@@ -99,6 +140,31 @@ def _load_llm_status(base_dir: Path) -> dict:
 
 
 _ADMIN_PAPERS_PAGE_SIZE = 100
+
+
+def _build_providers_display(config: dict) -> list[dict]:
+    """Return the provider list for the admin template (api_key stripped, has_key added).
+
+    Handles both the new llm_providers list format and the old single-provider top-level
+    keys so existing configs keep working without re-entry after the migration.
+    """
+    providers = config.get("llm_providers") or []
+    if providers:
+        return [
+            {**{k: v for k, v in p.items() if k != "api_key"}, "has_key": bool(p.get("api_key"))}
+            for p in providers
+        ]
+    # Backward compatibility: synthesise a display entry from old top-level keys.
+    if config.get("llm_provider"):
+        return [{
+            "name": "Default",
+            "provider": config.get("llm_provider", ""),
+            "model": config.get("llm_model", ""),
+            "ollama_url": config.get("llm_ollama_url", "http://localhost:11434"),
+            "timeout": config.get("llm_timeout", 120),
+            "has_key": bool(config.get("llm_api_key")),
+        }]
+    return []
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -152,6 +218,7 @@ async def admin_page(
         ).fetchone()[0]
 
     llm_status = _load_llm_status(BASE_DIR)
+    unindexed_journals = _load_unindexed_journals(scopus_path)
 
     return request.app.state.templates.TemplateResponse(request, "admin.html", {
         "user": user,
@@ -170,8 +237,10 @@ async def admin_page(
         "scopus_stats": scopus_stats,
         "llm_pending": llm_pending,
         "llm_status": llm_status,
-        "llm_has_api_key": bool(config.get("llm_api_key", "")),
         "llm_default_prompt": DEFAULT_HIGHLIGHTS_PROMPT,
+        "llm_default_recap_prompt": DEFAULT_RECAP_PROMPT,
+        "llm_providers_display": _build_providers_display(config),
+        "unindexed_journals": unindexed_journals,
     })
 
 
@@ -263,7 +332,7 @@ async def save_scopus_key(request: Request):
         config["elsevier_api_key"] = key
     _save_config(BASE_DIR / "config.yaml", config)
     request.app.state.config = config
-    return flash_redirect("/admin#tab-scopus", "Scopus API key saved.")
+    return flash_redirect("/admin#tab-journals", "Scopus API key saved.")
 
 
 @router.post("/admin/run-scopus-refresh")
@@ -281,9 +350,9 @@ async def run_scopus_refresh(request: Request):
                 stderr=log_f,
                 cwd=str(BASE_DIR),
             )
-        return flash_redirect("/admin#tab-scopus", "Journal data refresh started in the background. Check Logs for progress.", "info")
+        return flash_redirect("/admin#tab-journals", "Journal data refresh started in the background. Check Logs for progress.", "info")
     except Exception as e:
-        return flash_redirect("/admin#tab-scopus", str(e), "danger")
+        return flash_redirect("/admin#tab-journals", str(e), "danger")
 
 
 @router.get("/admin/scopus-refresh-status")
@@ -306,7 +375,7 @@ async def reset_scopus_status(request: Request):
         status_path.unlink(missing_ok=True)
     except Exception:
         pass
-    return flash_redirect("/admin#tab-scopus", "Scopus status reset.")
+    return flash_redirect("/admin#tab-journals", "Scopus status reset.")
 
 
 @router.post("/admin/run-recategorise")
@@ -314,7 +383,7 @@ async def run_recategorise(request: Request):
     require_admin(request)
     csv_path = BASE_DIR / "data" / "scopus_journals.csv"
     if not csv_path.exists():
-        return flash_redirect("/admin#tab-scopus", "No journal data yet. Run a refresh first.", "danger")
+        return flash_redirect("/admin#tab-journals", "No journal data yet. Run a refresh first.", "danger")
     mapping: dict[str, tuple] = {}
     with open(csv_path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
@@ -367,7 +436,7 @@ async def run_recategorise(request: Request):
                            scopus_percentile = NULL WHERE pmid = ?""",
                     (paper["pmid"],),
                 )
-    return flash_redirect("/admin#tab-scopus", f"Rankings re-applied to {updated} paper(s).")
+    return flash_redirect("/admin#tab-journals", f"Rankings re-applied to {updated} paper(s).")
 
 
 @router.post("/admin/create-user")
@@ -607,28 +676,51 @@ async def save_llm_config(request: Request):
     form = await request.form()
     config = request.app.state.config
 
-    provider = (form.get("llm_provider") or "").strip()
-    new_api_key = (form.get("llm_api_key") or "").strip()
-    model = (form.get("llm_model") or "").strip()
-    ollama_url = (form.get("llm_ollama_url") or "").strip()
-    prompt = (form.get("llm_prompt") or "").strip()
-    allow_opt = "llm_allow_profile_optimisation" in form
-    allow_topic_suggestions = "llm_allow_topic_suggestions" in form
+    # ── Providers ──────────────────────────────────────────────────────────────
     try:
-        timeout = max(10, int(form.get("llm_timeout") or 120))
+        new_providers_data = json.loads(form.get("providers_json") or "[]")
+        new_keys = json.loads(form.get("p_keys_json") or "[]")
     except (ValueError, TypeError):
-        timeout = 120
+        new_providers_data, new_keys = [], []
 
-    config["llm_provider"] = provider
-    config["llm_model"] = model
-    config["llm_ollama_url"] = ollama_url or "http://localhost:11434"
-    config["llm_timeout"] = timeout
-    config["llm_prompt"] = prompt
-    config["llm_allow_profile_optimisation"] = allow_opt
-    config["llm_allow_topic_suggestions"] = allow_topic_suggestions
-    # Only overwrite the stored key when a non-empty value is submitted
-    if new_api_key:
-        config["llm_api_key"] = new_api_key
+    existing_providers = config.get("llm_providers") or []
+    existing_by_name = {p.get("name", ""): p for p in existing_providers}
+
+    final_providers = []
+    for i, pd in enumerate(new_providers_data):
+        name = (pd.get("name") or f"Provider {i + 1}").strip()
+        new_key = (new_keys[i] if i < len(new_keys) else "").strip()
+        if not new_key:
+            new_key = existing_by_name.get(name, {}).get("api_key", "")
+        try:
+            timeout = max(10, int(pd.get("timeout") or 120))
+        except (ValueError, TypeError):
+            timeout = 120
+        final_providers.append({
+            "name": name,
+            "provider": (pd.get("provider") or "").strip(),
+            "model": (pd.get("model") or "").strip(),
+            "api_key": new_key,
+            "ollama_url": (pd.get("ollama_url") or "http://localhost:11434").strip(),
+            "timeout": timeout,
+        })
+
+    # ── Action assignments ─────────────────────────────────────────────────────
+    for action in ("highlights", "profile_optimisation", "topic_suggestions", "recap"):
+        key = f"llm_action_{action}"
+        config[key] = (form.get(key) or "").strip()
+
+    # ── Prompts & feature flags ────────────────────────────────────────────────
+    config["llm_prompt"] = (form.get("llm_prompt") or "").strip()
+    config["llm_recap_prompt"] = (form.get("llm_recap_prompt") or "").strip()
+    config["llm_allow_profile_optimisation"] = "llm_allow_profile_optimisation" in form
+    config["llm_allow_topic_suggestions"] = "llm_allow_topic_suggestions" in form
+    config["llm_allow_recap"] = "llm_allow_recap" in form
+    config["llm_providers"] = final_providers
+
+    # Remove old single-provider keys so there is no ambiguity
+    for old_key in ("llm_provider", "llm_model", "llm_api_key", "llm_ollama_url", "llm_timeout"):
+        config.pop(old_key, None)
 
     _save_config(BASE_DIR / "config.yaml", config)
     request.app.state.config = config
@@ -638,19 +730,43 @@ async def save_llm_config(request: Request):
 @router.post("/admin/test-llm")
 async def test_llm(request: Request):
     from fastapi.responses import JSONResponse
+    import asyncio
     require_admin(request)
     config = request.app.state.config
-    if not config.get("llm_provider"):
+    form = await request.form()
+    provider_name = (form.get("provider_name") or "").strip()
+
+    from app.llm import call_llm, get_provider_config
+    providers = config.get("llm_providers") or []
+    if providers:
+        provider_data = None
+        if provider_name:
+            for p in providers:
+                if p.get("name") == provider_name:
+                    provider_data = p
+                    break
+        if provider_data is None:
+            provider_data = providers[0]
+        provider_cfg = {
+            "llm_provider": provider_data.get("provider", ""),
+            "llm_model": provider_data.get("model", ""),
+            "llm_api_key": provider_data.get("api_key", ""),
+            "llm_ollama_url": provider_data.get("ollama_url", "http://localhost:11434"),
+            "llm_timeout": 30,
+        }
+    else:
+        provider_cfg = get_provider_config(config, "highlights") or {}
+
+    if not provider_cfg.get("llm_provider"):
         return JSONResponse({"ok": False, "error": "No LLM provider configured."})
-    if not config.get("llm_model"):
+    if not provider_cfg.get("llm_model"):
         return JSONResponse({"ok": False, "error": "No model name configured."})
-    from app.llm import call_llm
+
     try:
-        response = call_llm(
-            config,
-            system_prompt="You are a helpful assistant.",
-            user_message="Reply with exactly one word: OK",
-            timeout=30,
+        response = await asyncio.to_thread(
+            call_llm, provider_cfg,
+            "", "Respond only and precisely the text: Connection successful",
+            30,
         )
         return JSONResponse({"ok": True, "response": response.strip()})
     except Exception as e:
@@ -661,7 +777,7 @@ async def test_llm(request: Request):
 async def run_llm_highlights(request: Request):
     require_admin(request)
     config = request.app.state.config
-    if not config.get("llm_provider"):
+    if not (config.get("llm_providers") or config.get("llm_provider")):
         return flash_redirect("/admin#tab-llm", "No LLM provider configured.", "danger")
     venv_python = BASE_DIR / "venv" / "bin" / "python"
     llm_script = BASE_DIR / "llm_highlights.py"

@@ -132,8 +132,7 @@
     {% endif %}
 
     {% if up %}
-    <form method="post" action="/paper/{{ paper.pmid }}/mark-read" class="d-inline" id="markReadForm">
-      <input type="hidden" name="is_read" id="markReadValue" value="{{ '0' if up.is_read else '1' }}">
+    <form method="post" action="/feed/toggle-read/{{ paper.pmid }}" class="d-inline" id="markReadForm">
       <button type="submit" class="btn btn-outline-secondary btn-sm" id="markReadBtn">
         {% if up.is_read %}
           <i class="bi bi-envelope me-1"></i>Mark unread
@@ -142,14 +141,11 @@
         {% endif %}
       </button>
     </form>
-    <form method="post" action="/paper/{{ paper.pmid }}/star" class="d-inline">
-      {% if up.is_starred %}
-        <input type="hidden" name="is_starred" value="0">
-        <button type="submit" class="btn btn-warning btn-sm"><i class="bi bi-star-fill me-1"></i>Unstar</button>
-      {% else %}
-        <input type="hidden" name="is_starred" value="1">
-        <button type="submit" class="btn btn-outline-warning btn-sm"><i class="bi bi-star me-1"></i>Star</button>
-      {% endif %}
+    <form method="post" action="/feed/toggle-star/{{ paper.pmid }}" class="d-inline" id="starForm">
+      <button type="submit" id="starBtn"
+              class="btn btn-sm {% if up.is_starred %}btn-warning{% else %}btn-outline-warning{% endif %}">
+        <i class="bi {% if up.is_starred %}bi-star-fill{% else %}bi-star{% endif %} me-1"></i>{% if up.is_starred %}Unstar{% else %}Star{% endif %}
+      </button>
     </form>
     {% endif %}
 
@@ -273,26 +269,25 @@
       </p>
       {% if up %}
       <p class="small text-muted mb-2">Rate how well this paper matches what you are looking for. Your rating contributes to the relevance score for {{ 'each of these profiles' if matched_profiles | length > 1 else 'this profile' }} and helps you spot searches that need tweaking.</p>
-      <div class="d-flex flex-column align-items-start gap-1">
+      <div class="d-flex flex-column align-items-start gap-1" id="ratingWidget"
+           data-relevance="{{ up.relevance if up.relevance is not none else '' }}">
         <div class="d-flex gap-2">
-          <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
+          <form method="post" action="/feed/rate-paper/{{ paper.pmid }}" id="ratingUpForm">
             <input type="hidden" name="relevance" value="{{ 0 if up.relevance == 1 else 1 }}">
-            <button type="submit"
+            <button type="submit" id="ratingUpBtn"
                     class="btn btn-sm {% if up.relevance == 1 %}btn-success{% else %}btn-outline-success{% endif %}">
               <i class="bi {% if up.relevance == 1 %}bi-hand-thumbs-up-fill{% else %}bi-hand-thumbs-up{% endif %} me-1"></i>Relevant
             </button>
           </form>
-          <form method="post" action="/feed/rate-paper/{{ paper.pmid }}">
+          <form method="post" action="/feed/rate-paper/{{ paper.pmid }}" id="ratingDownForm">
             <input type="hidden" name="relevance" value="{{ 0 if up.relevance == -1 else -1 }}">
-            <button type="submit"
+            <button type="submit" id="ratingDownBtn"
                     class="btn btn-sm {% if up.relevance == -1 %}btn-danger{% else %}btn-outline-danger{% endif %}">
               <i class="bi {% if up.relevance == -1 %}bi-hand-thumbs-down-fill{% else %}bi-hand-thumbs-down{% endif %} me-1"></i>Not relevant
             </button>
           </form>
         </div>
-        {% if up.relevance is not none %}
-        <span class="small text-muted">Click again to clear</span>
-        {% endif %}
+        <span id="ratingClearHint" class="small text-muted{% if up.relevance is none %} d-none{% endif %}">Click again to clear</span>
       </div>
       {% endif %}
     </div>
@@ -321,28 +316,57 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 });
 
-document.getElementById('markReadForm').addEventListener('submit', function (e) {
+document.getElementById('markReadForm')?.addEventListener('submit', function (e) {
   e.preventDefault();
-  const input = document.getElementById('markReadValue');
-  const btn   = document.getElementById('markReadBtn');
-  const markingUnread = input.value === '0';
-
+  const btn = document.getElementById('markReadBtn');
   btn.disabled = true;
-  fetch(this.action, { method: 'POST', body: new FormData(this) })
-    .then(function (r) {
-      if (!r.ok) throw new Error();
-      if (markingUnread) {
-        input.value   = '1';
-        btn.innerHTML = '<i class="bi bi-envelope-open me-1"></i>Mark read';
-      } else {
-        input.value   = '0';
-        btn.innerHTML = '<i class="bi bi-envelope me-1"></i>Mark unread';
-      }
-    })
-    .catch(function () {
-      document.getElementById('markReadForm').submit();
-    })
-    .finally(function () { btn.disabled = false; });
+  fetch(this.action, { method: 'POST', headers: { 'Accept': 'application/json' }, body: new FormData(this) })
+    .then(r => r.json()).then(data => {
+      const isRead = data.is_read === 1;
+      btn.innerHTML = isRead
+        ? '<i class="bi bi-envelope me-1"></i>Mark unread'
+        : '<i class="bi bi-envelope-open me-1"></i>Mark read';
+    }).catch(() => { this.submit(); })
+      .finally(() => { btn.disabled = false; });
+});
+
+document.getElementById('starForm')?.addEventListener('submit', function (e) {
+  e.preventDefault();
+  const btn = document.getElementById('starBtn');
+  btn.disabled = true;
+  fetch(this.action, { method: 'POST', headers: { 'Accept': 'application/json' }, body: new FormData(this) })
+    .then(r => r.json()).then(data => {
+      const isStarred = data.is_starred === 1;
+      btn.className = `btn btn-sm ${isStarred ? 'btn-warning' : 'btn-outline-warning'}`;
+      btn.innerHTML = `<i class="bi ${isStarred ? 'bi-star-fill' : 'bi-star'} me-1"></i>${isStarred ? 'Unstar' : 'Star'}`;
+    }).catch(() => { this.submit(); })
+      .finally(() => { btn.disabled = false; });
+});
+
+function updatePaperRating(newRelevance) {
+  const widget = document.getElementById('ratingWidget');
+  if (!widget) return;
+  widget.dataset.relevance = newRelevance !== null ? String(newRelevance) : '';
+  const upActive = newRelevance === 1;
+  const downActive = newRelevance === -1;
+  const upBtn = document.getElementById('ratingUpBtn');
+  const downBtn = document.getElementById('ratingDownBtn');
+  upBtn.className = `btn btn-sm ${upActive ? 'btn-success' : 'btn-outline-success'}`;
+  upBtn.innerHTML = `<i class="bi ${upActive ? 'bi-hand-thumbs-up-fill' : 'bi-hand-thumbs-up'} me-1"></i>Relevant`;
+  document.querySelector('#ratingUpForm input[name=relevance]').value = upActive ? 0 : 1;
+  downBtn.className = `btn btn-sm ${downActive ? 'btn-danger' : 'btn-outline-danger'}`;
+  downBtn.innerHTML = `<i class="bi ${downActive ? 'bi-hand-thumbs-down-fill' : 'bi-hand-thumbs-down'} me-1"></i>Not relevant`;
+  document.querySelector('#ratingDownForm input[name=relevance]').value = downActive ? 0 : -1;
+  document.getElementById('ratingClearHint')?.classList.toggle('d-none', newRelevance === null);
+}
+
+['ratingUpForm', 'ratingDownForm'].forEach(id => {
+  document.getElementById(id)?.addEventListener('submit', function (e) {
+    e.preventDefault();
+    fetch(this.action, { method: 'POST', headers: { 'Accept': 'application/json' }, body: new FormData(this) })
+      .then(r => r.json()).then(data => { updatePaperRating(data.relevance); })
+      .catch(() => { this.submit(); });
+  });
 });
 </script>
 {% endblock %}

@@ -11,25 +11,36 @@ from app.db import conn_ctx
 
 router = APIRouter()
 PAGE_SIZE = 50
+MAIL_PAGE_SIZE = 50
+LOG_PAGE_LINES = 100
 BASE_DIR = Path(__file__).parent.parent.parent
-LOG_TAIL = 300  # lines to show for raw log files
 
 
-def _tail_log(path: Path, n: int = LOG_TAIL) -> str:
+def _page_log(path: Path, page: int = 1, per_page: int = LOG_PAGE_LINES) -> tuple[str, int, int]:
+    """Return (text, total_lines, total_pages). Page 1 is the most recent lines."""
     if not path.exists():
-        return ""
+        return "", 0, 0
     try:
         lines = path.read_text(errors="replace").splitlines()
-        return "\n".join(lines[-n:])
+        total = len(lines)
+        if total == 0:
+            return "", 0, 0
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        end = total - (page - 1) * per_page
+        start = max(0, end - per_page)
+        return "\n".join(lines[start:end]), total, total_pages
     except Exception:
-        return ""
+        return "", 0, 0
 
 
 @router.get("/logs", response_class=HTMLResponse)
 async def logs_page(request: Request, page: int = 1, filter_user_id: int = 0,
+                    mail_page: int = 1, llm_page: int = 1, scopus_page: int = 1,
                     llm_started: str = "", error: str = ""):
     user = require_auth(request)
     offset = (page - 1) * PAGE_SIZE
+    mail_offset = (mail_page - 1) * MAIL_PAGE_SIZE
 
     with conn_ctx() as conn:
         if user["is_admin"]:
@@ -47,12 +58,15 @@ async def logs_page(request: Request, page: int = 1, filter_user_id: int = 0,
                        ORDER BY fl.run_at DESC LIMIT ? OFFSET ?""",
                     (uid_filter, PAGE_SIZE, offset),
                 ).fetchall()
+                mail_total = conn.execute(
+                    "SELECT COUNT(*) FROM mail_log WHERE user_id = ?", (uid_filter,)
+                ).fetchone()[0]
                 mail_rows = conn.execute(
                     """SELECT ml.*, u.username FROM mail_log ml
                        LEFT JOIN users u ON u.id = ml.user_id
                        WHERE ml.user_id = ?
-                       ORDER BY ml.sent_at DESC LIMIT 100""",
-                    (uid_filter,),
+                       ORDER BY ml.sent_at DESC LIMIT ? OFFSET ?""",
+                    (uid_filter, MAIL_PAGE_SIZE, mail_offset),
                 ).fetchall()
             else:
                 total = conn.execute("SELECT COUNT(*) FROM fetch_log").fetchone()[0]
@@ -62,10 +76,12 @@ async def logs_page(request: Request, page: int = 1, filter_user_id: int = 0,
                        ORDER BY fl.run_at DESC LIMIT ? OFFSET ?""",
                     (PAGE_SIZE, offset),
                 ).fetchall()
+                mail_total = conn.execute("SELECT COUNT(*) FROM mail_log").fetchone()[0]
                 mail_rows = conn.execute(
                     """SELECT ml.*, u.username FROM mail_log ml
                        LEFT JOIN users u ON u.id = ml.user_id
-                       ORDER BY ml.sent_at DESC LIMIT 100""",
+                       ORDER BY ml.sent_at DESC LIMIT ? OFFSET ?""",
+                    (MAIL_PAGE_SIZE, mail_offset),
                 ).fetchall()
 
             all_users = conn.execute(
@@ -83,19 +99,29 @@ async def logs_page(request: Request, page: int = 1, filter_user_id: int = 0,
                    ORDER BY fl.run_at DESC LIMIT ? OFFSET ?""",
                 (uid, PAGE_SIZE, offset),
             ).fetchall()
+            mail_total = conn.execute(
+                "SELECT COUNT(*) FROM mail_log WHERE user_id = ?", (uid,)
+            ).fetchone()[0]
             mail_rows = conn.execute(
                 """SELECT ml.*, u.username FROM mail_log ml
                    LEFT JOIN users u ON u.id = ml.user_id
                    WHERE ml.user_id = ?
-                   ORDER BY ml.sent_at DESC LIMIT 100""",
-                (uid,),
+                   ORDER BY ml.sent_at DESC LIMIT ? OFFSET ?""",
+                (uid, MAIL_PAGE_SIZE, mail_offset),
             ).fetchall()
             all_users = []
 
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
 
-    scopus_log = _tail_log(BASE_DIR / "logs" / "scopus.log") if user["is_admin"] else ""
-    llm_log = _tail_log(BASE_DIR / "logs" / "llm.log") if user["is_admin"] else ""
+    scopus_log, scopus_total_lines, scopus_total_pages = ("", 0, 0)
+    llm_log, llm_total_lines, llm_total_pages = ("", 0, 0)
+    if user["is_admin"]:
+        scopus_log, scopus_total_lines, scopus_total_pages = _page_log(
+            BASE_DIR / "logs" / "scopus.log", scopus_page
+        )
+        llm_log, llm_total_lines, llm_total_pages = _page_log(
+            BASE_DIR / "logs" / "llm.log", llm_page
+        )
 
     llm_status: dict = {"status": "idle"}
     llm_pending = 0
@@ -111,6 +137,8 @@ async def logs_page(request: Request, page: int = 1, filter_user_id: int = 0,
                 "SELECT COUNT(*) FROM papers WHERE highlights IS NULL AND abstract IS NOT NULL AND abstract != ''"
             ).fetchone()[0]
 
+    mail_total_pages = max(1, (mail_total + MAIL_PAGE_SIZE - 1) // MAIL_PAGE_SIZE)
+
     return request.app.state.templates.TemplateResponse(request, "logs.html", {
         "user": user,
         "logs": [dict(r) for r in fetch_rows],
@@ -122,6 +150,15 @@ async def logs_page(request: Request, page: int = 1, filter_user_id: int = 0,
         "page": page,
         "total_pages": total_pages,
         "total": total,
+        "mail_page": mail_page,
+        "mail_total": mail_total,
+        "mail_total_pages": mail_total_pages,
+        "llm_page": llm_page,
+        "llm_total_lines": llm_total_lines,
+        "llm_total_pages": llm_total_pages,
+        "scopus_page": scopus_page,
+        "scopus_total_lines": scopus_total_lines,
+        "scopus_total_pages": scopus_total_pages,
         "filter_user_id": filter_user_id,
         "all_users": [dict(u) for u in all_users],
         "config": request.app.state.config,

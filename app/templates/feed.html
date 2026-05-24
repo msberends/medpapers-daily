@@ -15,6 +15,8 @@
   .inline-abs { max-height: 360px; overflow-y: auto; }
   .inline-abs .abs-accent { border-left: 3px solid var(--bs-primary); padding-left: .6rem; }
   .inline-abs .abs-accent-label { font-weight: 600; color: var(--bs-primary); min-width: 88px; flex-shrink: 0; font-size: .82em; padding-top: .1rem; }
+  #recapText { color: var(--bs-secondary-color); }
+  #recapText strong { font-weight: inherit; color: var(--bs-body-color); }
 </style>
 {% endblock %}
 
@@ -139,7 +141,7 @@
           <a href="/feed?view=starred&quartile={{ quartile }}&date_filter={{ date_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&search={{ search }}&sort={{ sort }}"
              class="list-group-item list-group-item-action py-2 {% if view == 'starred' %}active{% endif %}">
             <i class="bi bi-star-fill text-warning me-1"></i> Starred
-            {% if starred_count %}<span class="badge text-bg-secondary float-end">{{ starred_count }}</span>{% endif %}
+            <span id="starredBadge" class="badge text-bg-secondary float-end{% if not starred_count %} d-none{% endif %}">{{ starred_count }}</span>
           </a>
           {% for f in folders %}
           <a href="/feed?view=folder&folder_id={{ f.id }}&quartile={{ quartile }}&date_filter={{ date_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&search={{ search }}&sort={{ sort }}"
@@ -282,6 +284,12 @@
             <i class="bi bi-download"></i> Open in EndNote
           </button>
           {% endif %}
+          {% if config.get('llm_allow_recap') and (config.get('llm_providers') or config.get('llm_provider')) %}
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="startRecap('selected')"
+                  title="Generate an LLM summary of the selected papers">
+            <i class="bi bi-stars me-1"></i>Get a recap
+          </button>
+          {% endif %}
           <button type="button" class="btn btn-sm btn-outline-dark ms-auto" onclick="selectAll()">
             Select all ({{ papers | length }})
           </button>
@@ -310,7 +318,7 @@
     {% endif %}
 
     {% if view == 'unread' and papers %}
-    <div class="d-flex justify-content-end mb-2">
+    <div id="markAllReadWrapper" class="d-flex justify-content-end gap-2 mb-2">
       <form method="post" action="/feed/mark-all-read">
         <input type="hidden" name="view" value="{{ view }}">
         <input type="hidden" name="quartile" value="{{ quartile }}">
@@ -320,10 +328,28 @@
         {% if search %}<input type="hidden" name="search" value="{{ search }}">{% endif %}
         {% if profile_id %}<input type="hidden" name="profile_id" value="{{ profile_id }}">{% endif %}
         <button type="submit" class="btn btn-sm btn-outline-secondary"
-                onclick="return confirm('Mark all {{ total }} paper(s) in this view as read?')">
-          <i class="bi bi-envelope-open me-1"></i>Mark all as read ({{ total }})
+                onclick="var n=document.getElementById('markAllReadCount'); return confirm('Mark all ' + (n ? n.textContent : '{{ total }}') + ' paper(s) in this view as read?')">
+          <i class="bi bi-envelope-open me-1"></i>Mark all as read (<span id="markAllReadCount">{{ total }}</span>)
         </button>
       </form>
+      {% if config.get('llm_allow_recap') and (config.get('llm_providers') or config.get('llm_provider')) %}
+      <button type="button" class="btn btn-sm btn-outline-primary" id="recapAllBtn"
+              onclick="startRecap('all')" title="Generate an LLM summary of all papers in this view">
+        <i class="bi bi-stars me-1"></i>Get a recap
+      </button>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if view == 'unread' and (papers or unread_count == 0) %}
+    <div id="allCaughtUpBox" class="card border-0 bg-body-secondary mb-3{% if papers %} d-none{% endif %}">
+      <div class="card-body py-4 px-4">
+        <h6 class="mb-3"><i class="bi bi-check2-all me-2"></i>You are all caught up</h6>
+        <p class="mb-2">All <strong>{{ total_user_papers }}</strong> paper(s) in your library have been read. Switch to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>All papers</strong></a> to browse your full library, or come back after the next scheduled fetch.{% if unrated_count > 0 %} In the meantime, why not take a moment to <a href="/feed?view=unrated&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>rate the relevance</strong></a> of some papers?{% endif %}</p>
+        {% if config.get('fetch_schedule_time') %}
+        <p class="mb-0 text-muted small"><i class="bi bi-clock me-1"></i>Next fetch scheduled at {{ config.get('fetch_schedule_time') }}.</p>
+        {% endif %}
+      </div>
     </div>
     {% endif %}
 
@@ -347,18 +373,7 @@
           <p class="mb-0"><strong>Quartile filtering:</strong> if journal quartile filtering is enabled in your <a href="/settings">Settings</a>, papers from lower-ranked journals are dropped automatically. This also requires journal ranking data to be loaded by your administrator — until then, all papers appear as Unranked and none are filtered out.</p>
         </div>
       </div>
-      {% elif view == 'unread' and unread_count == 0 %}
-      {# ── All papers have been read ── #}
-      <div class="card border-0 bg-body-secondary mb-3">
-        <div class="card-body py-4 px-4">
-          <h6 class="mb-3"><i class="bi bi-check2-all me-2"></i>You are all caught up</h6>
-          <p class="mb-2">All <strong>{{ total_user_papers }}</strong> paper(s) in your library have been read. Switch to <a href="/feed?view=all&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>All papers</strong></a> to browse your full library, or come back after the next scheduled fetch.{% if unrated_count > 0 %} In the meantime, why not take a moment to <a href="/feed?view=unrated&quartile={{ quartile }}&date_filter={{ date_filter }}&sort={{ sort }}"><strong>rate the relevance</strong></a> of some papers?{% endif %}</p>
-          {% if config.get('fetch_schedule_time') %}
-          <p class="mb-0 text-muted small"><i class="bi bi-clock me-1"></i>Next fetch scheduled at {{ config.get('fetch_schedule_time') }}.</p>
-          {% endif %}
-        </div>
-      </div>
-      {% else %}
+      {% elif not (view == 'unread' and unread_count == 0) %}
       {# ── This user has papers, but current filters exclude all of them ── #}
       <div class="card border-0 bg-body-secondary mb-3">
         <div class="card-body py-4 px-4">
@@ -391,7 +406,8 @@
         </div>
       {% endif %}
     {% endif %}
-    <div class="card paper-card mb-2 {% if paper.is_read %}paper-read{% else %}paper-unread{% endif %}">
+    <div class="card paper-card mb-2 {% if paper.is_read %}paper-read{% else %}paper-unread{% endif %}"
+         data-relevance="{{ paper.relevance if paper.relevance is not none else '' }}">
       <div class="card-body py-2 px-3">
         <div class="d-flex align-items-start gap-2">
           <input type="checkbox" class="form-check-input mt-1 paper-cb flex-shrink-0"
@@ -495,10 +511,11 @@
             </div>
           </div>
           <div class="flex-shrink-0 d-flex flex-column align-items-center gap-1">
-            <form method="post" action="/feed/toggle-star/{{ paper.pmid }}">
+            <form method="post" action="/feed/toggle-star/{{ paper.pmid }}"
+                  class="toggle-star-form" data-pmid="{{ paper.pmid }}" data-is-starred="{{ 1 if paper.is_starred else 0 }}">
               {% set _star_label = 'Unstar this paper' if paper.is_starred else 'Star this paper' %}
               <button type="submit" class="btn btn-sm btn-link p-0 {% if paper.is_starred %}text-warning{% else %}text-muted{% endif %}"
-                      title="{{ _star_label }}" aria-label="{{ _star_label }}">
+                      title="{{ _star_label }}" aria-label="{{ _star_label }}" style="font-size:.8em">
                 <i class="bi {% if paper.is_starred %}bi-star-fill{% else %}bi-star{% endif %}"></i>
               </button>
             </form>
@@ -520,7 +537,7 @@
               <input type="hidden" name="relevance" value="{{ 0 if paper.relevance == 1 else 1 }}">
               {% set _up_label = 'Clear relevance rating' if paper.relevance == 1 else 'Mark as relevant for this search profile' %}
               <button type="submit" data-pmid="{{ paper.pmid }}" data-rating="up"
-                      class="btn btn-sm btn-link p-0 {% if paper.relevance == 1 %}text-success{% else %}text-muted opacity-50{% endif %}"
+                      class="btn btn-sm btn-link p-0 {% if paper.relevance == 1 %}text-success{% else %}text-muted{% endif %}"
                       title="{{ _up_label }}" aria-label="{{ _up_label }}" style="font-size:.8em">
                 <i class="bi {% if paper.relevance == 1 %}bi-hand-thumbs-up-fill{% else %}bi-hand-thumbs-up{% endif %}"></i>
               </button>
@@ -529,7 +546,7 @@
               <input type="hidden" name="relevance" value="{{ 0 if paper.relevance == -1 else -1 }}">
               {% set _down_label = 'Clear relevance rating' if paper.relevance == -1 else 'Mark as not relevant for this search profile' %}
               <button type="submit" data-pmid="{{ paper.pmid }}" data-rating="down"
-                      class="btn btn-sm btn-link p-0 {% if paper.relevance == -1 %}text-danger{% else %}text-muted opacity-50{% endif %}"
+                      class="btn btn-sm btn-link p-0 {% if paper.relevance == -1 %}text-danger{% else %}text-muted{% endif %}"
                       title="{{ _down_label }}" aria-label="{{ _down_label }}" style="font-size:.8em">
                 <i class="bi {% if paper.relevance == -1 %}bi-hand-thumbs-down-fill{% else %}bi-hand-thumbs-down{% endif %}"></i>
               </button>
@@ -577,6 +594,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
 <script>
 const VIEW = "{{ view }}";
 const _mobileMq = window.matchMedia('(max-width: 575px)');
@@ -669,80 +687,159 @@ function updateRatingButtons(pmid, relevance) {
   const downActive = relevance === -1;
   upBtn.classList.toggle('text-success', upActive);
   upBtn.classList.toggle('text-muted', !upActive);
-  upBtn.classList.toggle('opacity-50', !upActive);
   upBtn.querySelector('i').className = `bi ${upActive ? 'bi-hand-thumbs-up-fill' : 'bi-hand-thumbs-up'}`;
   upBtn.closest('form').querySelector('input[name=relevance]').value = upActive ? 0 : 1;
   downBtn.classList.toggle('text-danger', downActive);
   downBtn.classList.toggle('text-muted', !downActive);
-  downBtn.classList.toggle('opacity-50', !downActive);
   downBtn.querySelector('i').className = `bi ${downActive ? 'bi-hand-thumbs-down-fill' : 'bi-hand-thumbs-down'}`;
   downBtn.closest('form').querySelector('input[name=relevance]').value = downActive ? 0 : -1;
 }
 
+function updateBadge(id, delta) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const n = Math.max(0, (parseInt(el.textContent) || 0) + delta);
+  el.textContent = n;
+  el.classList.toggle('d-none', n === 0);
+}
+
+function fadeOutCard(card) {
+  if (!card) return;
+  card.style.transition = 'opacity 0.3s';
+  card.style.opacity = '0';
+  setTimeout(() => card.remove(), 300);
+}
+
 document.addEventListener('submit', function (e) {
   const form = e.target;
+
+  // ── Toggle Read ────────────────────────────────────────────────────────────
   if (form.classList.contains('toggle-read-form')) {
     e.preventDefault();
-    const pmid = form.dataset.pmid;
-    fetch(form.action, {
-      method: 'POST',
-      body: new FormData(form),
-      headers: { 'Accept': 'application/json' },
-    }).then(r => r.json()).then(data => {
-      if (VIEW === 'unread' && data.is_read === 1) {
-        const card = form.closest('.paper-card');
-        if (card) {
-          card.style.transition = 'opacity 0.3s';
-          card.style.opacity = '0';
-          setTimeout(() => card.remove(), 300);
-        }
-        const badge = document.getElementById('unreadBadge');
-        if (badge) {
-          const n = Math.max(0, parseInt(badge.textContent) - 1);
-          badge.textContent = n;
-          badge.classList.toggle('d-none', n === 0);
-        }
-      } else {
-        const btn = form.querySelector('button');
-        const icon = form.querySelector('i');
+    fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'Accept': 'application/json' } })
+      .then(r => r.json()).then(data => {
         const isRead = data.is_read === 1;
-        form.dataset.isRead = isRead ? '1' : '0';
-        btn.title = isRead ? 'Mark unread' : 'Mark read';
-        icon.className = `bi ${isRead ? 'bi-envelope-open' : 'bi-envelope'}`;
         const card = form.closest('.paper-card');
-        if (card) {
-          card.classList.toggle('paper-read', isRead);
-          card.classList.toggle('paper-unread', !isRead);
+        updateBadge('unreadBadge', isRead ? -1 : 1);
+        if (VIEW === 'unread' && isRead) {
+          fadeOutCard(card);
+          const markAllCount = document.getElementById('markAllReadCount');
+          if (markAllCount) {
+            const m = Math.max(0, parseInt(markAllCount.textContent) - 1);
+            markAllCount.textContent = m;
+            if (m === 0) {
+              document.getElementById('markAllReadWrapper')?.remove();
+              document.getElementById('allCaughtUpBox')?.classList.remove('d-none');
+            }
+          }
+        } else {
+          form.dataset.isRead = isRead ? '1' : '0';
+          const btn = form.querySelector('button');
+          const icon = form.querySelector('i');
+          btn.title = isRead ? 'Mark as unread' : 'Mark as read';
+          btn.setAttribute('aria-label', btn.title);
+          icon.className = `bi ${isRead ? 'bi-envelope-open' : 'bi-envelope'}`;
+          if (card) {
+            card.classList.toggle('paper-read', isRead);
+            card.classList.toggle('paper-unread', !isRead);
+          }
         }
-      }
-    }).catch(() => { form.submit(); });
+      }).catch(() => { form.submit(); });
     return;
   }
+
+  // ── Toggle Star ────────────────────────────────────────────────────────────
+  if (form.classList.contains('toggle-star-form')) {
+    e.preventDefault();
+    fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'Accept': 'application/json' } })
+      .then(r => r.json()).then(data => {
+        const isStarred = data.is_starred === 1;
+        const card = form.closest('.paper-card');
+        updateBadge('starredBadge', isStarred ? 1 : -1);
+        if (VIEW === 'starred' && !isStarred) {
+          fadeOutCard(card);
+        } else {
+          form.dataset.isStarred = isStarred ? '1' : '0';
+          const btn = form.querySelector('button');
+          const icon = form.querySelector('i');
+          const label = isStarred ? 'Unstar this paper' : 'Star this paper';
+          btn.title = label;
+          btn.setAttribute('aria-label', label);
+          btn.classList.toggle('text-warning', isStarred);
+          btn.classList.toggle('text-muted', !isStarred);
+          icon.className = `bi ${isStarred ? 'bi-star-fill' : 'bi-star'}`;
+        }
+      }).catch(() => { form.submit(); });
+    return;
+  }
+
+  // ── Rate Paper ─────────────────────────────────────────────────────────────
   if (!form.classList.contains('rating-form')) return;
   e.preventDefault();
   const pmid = form.querySelector('button[data-rating]').dataset.pmid;
-  fetch(form.action, {
-    method: 'POST',
-    body: new FormData(form),
-    headers: { 'Accept': 'application/json' },
-  }).then(r => r.json()).then(data => {
-    updateRatingButtons(pmid, data.relevance);
-    if (VIEW === 'unrated' && data.relevance !== null) {
-      const card = document.querySelector(`button[data-rating="up"][data-pmid="${pmid}"]`)?.closest('.paper-card');
-      if (card) {
-        card.style.transition = 'opacity 0.3s';
-        card.style.opacity = '0';
-        setTimeout(() => card.remove(), 300);
-      }
-      const badge = document.getElementById('unratedBadge');
-      if (badge) {
-        const n = Math.max(0, parseInt(badge.textContent) - 1);
-        badge.textContent = n;
-        badge.classList.toggle('d-none', n === 0);
-      }
-    }
-  }).catch(() => { form.submit(); });
+  const card = form.closest('.paper-card');
+  const prevStr = card ? card.dataset.relevance : '';
+  const prevRelevance = prevStr === '1' ? 1 : prevStr === '-1' ? -1 : null;
+  fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'Accept': 'application/json' } })
+    .then(r => r.json()).then(data => {
+      const newRelevance = data.relevance;
+      if (card) card.dataset.relevance = newRelevance !== null ? String(newRelevance) : '';
+      updateRatingButtons(pmid, newRelevance);
+      if (prevRelevance === null && newRelevance !== null) updateBadge('unratedBadge', -1);
+      else if (prevRelevance !== null && newRelevance === null) updateBadge('unratedBadge', 1);
+      if (VIEW === 'unrated' && newRelevance !== null) fadeOutCard(card);
+    }).catch(() => { form.submit(); });
 });
+
+// ── Feed Recap ─────────────────────────────────────────────────────────────
+async function startRecap(mode) {
+  let pmids;
+  if (mode === 'selected') {
+    const checks = document.querySelectorAll('.paper-cb:checked');
+    pmids = Array.from(checks).map(c => c.dataset.pmid);
+    if (!pmids.length) { alert('Select at least one paper first.'); return; }
+  } else {
+    pmids = Array.from(document.querySelectorAll('.paper-cb')).map(c => c.dataset.pmid);
+    if (!pmids.length) { alert('No papers to recap.'); return; }
+  }
+
+  const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('recapModal'));
+  modal.show();
+
+  const n = pmids.length;
+  document.getElementById('recapLoadingText').textContent =
+    `Generating recap for ${n} paper${n !== 1 ? 's' : ''}…`;
+  document.getElementById('recapLoading').classList.remove('d-none');
+  document.getElementById('recapError').classList.add('d-none');
+  document.getElementById('recapText').innerHTML = '';
+  document.getElementById('recapDisclaimer').classList.add('d-none');
+
+  const fd = new FormData();
+  fd.append('pmids', pmids.join(','));
+
+  try {
+    const resp = await fetch('/feed/recap', { method: 'POST', body: fd });
+    const data = await resp.json();
+    document.getElementById('recapLoading').classList.add('d-none');
+    if (data.error) {
+      const errEl = document.getElementById('recapError');
+      errEl.textContent = data.error;
+      errEl.classList.remove('d-none');
+    } else {
+      const recapEl = document.getElementById('recapText');
+      recapEl.innerHTML = marked.parse(data.summary);
+      recapEl.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+      const disc = document.getElementById('recapDisclaimer');
+      disc.textContent = `LLM-generated based on the abstract${n !== 1 ? 's' : ''} of ${n} selected paper${n !== 1 ? 's' : ''}.`;
+      disc.classList.remove('d-none');
+    }
+  } catch (err) {
+    document.getElementById('recapLoading').classList.add('d-none');
+    const errEl = document.getElementById('recapError');
+    errEl.textContent = 'Request failed: ' + String(err);
+    errEl.classList.remove('d-none');
+  }
+}
 
 // ── Keyboard shortcuts (I-18) ────────────────────────────────────────────────
 (function () {
@@ -795,6 +892,27 @@ document.addEventListener('submit', function (e) {
   });
 })();
 </script>
+
+{# Recap modal #}
+<div class="modal fade" id="recapModal" tabindex="-1" aria-labelledby="recapModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="recapModalLabel"><i class="bi bi-stars me-1"></i>Feed Recap</h6>
+        <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="recapLoading" class="text-center py-4 d-none">
+          <div class="spinner-border spinner-border-sm me-2 text-primary" role="status" aria-hidden="true"></div>
+          <span id="recapLoadingText" class="text-muted">Generating recap&hellip;</span>
+        </div>
+        <div id="recapError" class="alert alert-danger d-none py-2"></div>
+        <div id="recapText" style="line-height:1.7"></div>
+        <p id="recapDisclaimer" class="text-muted small mt-4 mb-0 d-none" style="font-size:.78em"></p>
+      </div>
+    </div>
+  </div>
+</div>
 
 {# Keyboard shortcuts help modal #}
 <div class="modal fade" id="kbShortcutsModal" tabindex="-1" aria-labelledby="kbShortcutsLabel" aria-hidden="true">

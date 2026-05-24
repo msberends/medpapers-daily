@@ -1,6 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Logs &mdash; {{ config.get('app_name', 'MedPapers Daily') }}{% endblock %}
 
+{#
+  Windowed pagination bar.
+  which = one of 'fetch'|'mail'|'llm'|'scopus' — determines which page param varies.
+  cur / total_p = current page / total pages for that tab.
+  All four page values are passed in so every link preserves the full URL state.
+  tab = hash fragment (e.g. 'tab-mail') so the browser restores the active tab.
+#}
+{% macro paginator(which, cur, total_p, fp, mp, lp, sp, tab) %}
+{% if total_p > 1 %}
+{% set base = '/logs?filter_user_id=' ~ filter_user_id %}
+{% macro href(n) %}
+  {%- if which == 'fetch' -%}{{ base }}&page={{ n }}&mail_page={{ mp }}&llm_page={{ lp }}&scopus_page={{ sp }}#{{ tab }}
+  {%- elif which == 'mail' -%}{{ base }}&page={{ fp }}&mail_page={{ n }}&llm_page={{ lp }}&scopus_page={{ sp }}#{{ tab }}
+  {%- elif which == 'llm' -%}{{ base }}&page={{ fp }}&mail_page={{ mp }}&llm_page={{ n }}&scopus_page={{ sp }}#{{ tab }}
+  {%- else -%}{{ base }}&page={{ fp }}&mail_page={{ mp }}&llm_page={{ lp }}&scopus_page={{ n }}#{{ tab }}
+  {%- endif -%}
+{% endmacro %}
+<nav>
+  <ul class="pagination pagination-sm justify-content-center mt-2">
+    <li class="page-item {% if cur <= 1 %}disabled{% endif %}">
+      <a class="page-link" href="{{ href(cur - 1) }}">&lsaquo;</a>
+    </li>
+    {% set ws = [1, cur - 2] | max %}
+    {% set we = [total_p, cur + 2] | min %}
+    {% if ws > 1 %}
+      <li class="page-item"><a class="page-link" href="{{ href(1) }}">1</a></li>
+      {% if ws > 2 %}<li class="page-item disabled"><span class="page-link">&hellip;</span></li>{% endif %}
+    {% endif %}
+    {% for n in range(ws, we + 1) %}
+    <li class="page-item {% if n == cur %}active{% endif %}">
+      <a class="page-link" href="{{ href(n) }}">{{ n }}</a>
+    </li>
+    {% endfor %}
+    {% if we < total_p %}
+      {% if we < total_p - 1 %}<li class="page-item disabled"><span class="page-link">&hellip;</span></li>{% endif %}
+      <li class="page-item"><a class="page-link" href="{{ href(total_p) }}">{{ total_p }}</a></li>
+    {% endif %}
+    <li class="page-item {% if cur >= total_p %}disabled{% endif %}">
+      <a class="page-link" href="{{ href(cur + 1) }}">&rsaquo;</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
 <div class="row justify-content-center">
 <div class="col-lg-11">
@@ -62,6 +107,7 @@
 
     {# ── Fetch tab ── #}
     <div class="tab-pane fade show active" id="tab-fetch">
+      {{ paginator('fetch', page, total_pages, page, mail_page, llm_page, scopus_page, 'tab-fetch') }}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle">
           <thead class="table-light">
@@ -133,39 +179,11 @@
           </tbody>
         </table>
       </div>
-
-      {# Pagination — windowed (±2 pages around current, with ellipsis) #}
-      {% if total_pages > 1 %}
-      <nav>
-        <ul class="pagination pagination-sm justify-content-center">
-          <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-            <a class="page-link" href="/logs?page={{ page - 1 }}&filter_user_id={{ filter_user_id }}">&lsaquo;</a>
-          </li>
-          {% set win_start = [1, page - 2] | max %}
-          {% set win_end   = [total_pages, page + 2] | min %}
-          {% if win_start > 1 %}
-            <li class="page-item"><a class="page-link" href="/logs?page=1&filter_user_id={{ filter_user_id }}">1</a></li>
-            {% if win_start > 2 %}<li class="page-item disabled"><span class="page-link">&hellip;</span></li>{% endif %}
-          {% endif %}
-          {% for p in range(win_start, win_end + 1) %}
-          <li class="page-item {% if p == page %}active{% endif %}">
-            <a class="page-link" href="/logs?page={{ p }}&filter_user_id={{ filter_user_id }}">{{ p }}</a>
-          </li>
-          {% endfor %}
-          {% if win_end < total_pages %}
-            {% if win_end < total_pages - 1 %}<li class="page-item disabled"><span class="page-link">&hellip;</span></li>{% endif %}
-            <li class="page-item"><a class="page-link" href="/logs?page={{ total_pages }}&filter_user_id={{ filter_user_id }}">{{ total_pages }}</a></li>
-          {% endif %}
-          <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
-            <a class="page-link" href="/logs?page={{ page + 1 }}&filter_user_id={{ filter_user_id }}">&rsaquo;</a>
-          </li>
-        </ul>
-      </nav>
-      {% endif %}
     </div>
 
     {# ── Email tab ── #}
     <div class="tab-pane fade" id="tab-mail">
+      {{ paginator('mail', mail_page, mail_total_pages, page, mail_page, llm_page, scopus_page, 'tab-mail') }}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle">
           <thead class="table-light">
@@ -213,8 +231,11 @@
     {% if user.is_admin %}
     <div class="tab-pane fade" id="tab-scopus">
       {% if scopus_log %}
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="text-muted small">Page {{ scopus_page }} of {{ scopus_total_pages }} &mdash; {{ scopus_total_lines }} lines total in <code>logs/scopus.log</code>.</span>
+      </div>
+      {{ paginator('scopus', scopus_page, scopus_total_pages, page, mail_page, llm_page, scopus_page, 'tab-scopus') }}
       <pre class="small font-monospace p-3 rounded" style="background:var(--bs-tertiary-bg);max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">{{ scopus_log }}</pre>
-      <div class="text-muted small mt-1">Showing last {{ scopus_log.splitlines()|length }} lines of <code>logs/scopus.log</code>.</div>
       {% else %}
       <p class="text-muted small py-3">No harvest log yet. Run the journal harvest from Admin &rsaquo; Journal Rankings to generate one.</p>
       {% endif %}
@@ -261,8 +282,11 @@
       </div>
 
       {% if llm_log %}
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="text-muted small">Page {{ llm_page }} of {{ llm_total_pages }} &mdash; {{ llm_total_lines }} lines total in <code>logs/llm.log</code>.</span>
+      </div>
+      {{ paginator('llm', llm_page, llm_total_pages, page, mail_page, llm_page, scopus_page, 'tab-llm') }}
       <pre class="small font-monospace p-3 rounded" style="background:var(--bs-tertiary-bg);max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">{{ llm_log }}</pre>
-      <div class="text-muted small mt-1">Showing last {{ llm_log.splitlines()|length }} lines of <code>logs/llm.log</code>.</div>
       {% else %}
       <p class="text-muted small py-3">No LLM log yet. Run highlights generation to create one.</p>
       {% endif %}

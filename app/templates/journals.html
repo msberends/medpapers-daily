@@ -65,6 +65,10 @@
       <span id="journalCount" class="text-muted small text-nowrap"></span>
     </div>
   </div>
+  <div class="card-footer d-flex justify-content-between align-items-center py-2 flex-wrap gap-2 border-bottom-0 border-top">
+    <div id="journalPaginationInfoTop" class="small text-muted"></div>
+    <nav id="journalPaginationTop" aria-label="Journal pages top"></nav>
+  </div>
   <div class="table-responsive">
     <table class="table table-sm table-hover mb-0 align-middle">
       <thead class="table-light" style="position:sticky;top:0">
@@ -139,10 +143,12 @@ function loadJournals(page) {
 }
 
 function renderJournals(data) {
-  const body  = document.getElementById('journalTableBody');
-  const info  = document.getElementById('journalPaginationInfo');
-  const nav   = document.getElementById('journalPagination');
-  const count = document.getElementById('journalCount');
+  const body    = document.getElementById('journalTableBody');
+  const info    = document.getElementById('journalPaginationInfo');
+  const infoTop = document.getElementById('journalPaginationInfoTop');
+  const nav     = document.getElementById('journalPagination');
+  const navTop  = document.getElementById('journalPaginationTop');
+  const count   = document.getElementById('journalCount');
   if (!body) return;
 
   // Update sort indicators
@@ -155,8 +161,10 @@ function renderJournals(data) {
 
   if (!data.rows || !data.rows.length) {
     body.innerHTML = `<tr><td colspan="${showFeedCol ? 9 : 8}" class="text-center text-muted py-3">No journals found.</td></tr>`;
-    if (info)  info.textContent  = '';
-    if (nav)   nav.innerHTML     = '';
+    if (info)    info.textContent    = '';
+    if (infoTop) infoTop.textContent = '';
+    if (nav)     nav.innerHTML       = '';
+    if (navTop)  navTop.innerHTML    = '';
     if (count) count.textContent = '';
     return;
   }
@@ -189,11 +197,13 @@ function renderJournals(data) {
 
   const from = (data.page - 1) * data.per_page + 1;
   const to   = Math.min(data.page * data.per_page, data.total);
-  if (info)  info.textContent  = `Showing ${from.toLocaleString()}–${to.toLocaleString()} of ${data.total.toLocaleString()} journals`;
-  if (count) count.textContent = `${data.total.toLocaleString()} journals`;
+  const infoText = `Showing ${from.toLocaleString()}–${to.toLocaleString()} of ${data.total.toLocaleString()} journals`;
+  if (info)    info.textContent    = infoText;
+  if (infoTop) infoTop.textContent = infoText;
+  if (count)   count.textContent   = `${data.total.toLocaleString()} journals`;
 
-  if (nav) {
-    const cur = data.page, pages = data.pages;
+  const cur = data.page, pages = data.pages;
+  function buildPagination() {
     let html = '<ul class="pagination pagination-sm mb-0">';
     html += `<li class="page-item ${cur <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" onclick="loadJournals(${cur - 1});return false">‹</a></li>`;
     const visible = new Set([1, 2, cur - 1, cur, cur + 1, pages - 1, pages].filter(p => p >= 1 && p <= pages));
@@ -204,8 +214,10 @@ function renderJournals(data) {
       prev = p;
     }
     html += `<li class="page-item ${cur >= pages ? 'disabled' : ''}"><a class="page-link" href="#" onclick="loadJournals(${cur + 1});return false">›</a></li>`;
-    nav.innerHTML = html + '</ul>';
+    return html + '</ul>';
   }
+  if (nav)    nav.innerHTML    = buildPagination();
+  if (navTop) navTop.innerHTML = buildPagination();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

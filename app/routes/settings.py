@@ -150,11 +150,14 @@ async def settings_page(request: Request, tab: str = ""):
         for i, name in enumerate(topics_grouped)
     }
 
+    from app.llm import get_provider_config as _get_provider_cfg
     llm_available = bool(
-        admin_config.get("llm_provider") and admin_config.get("llm_allow_profile_optimisation")
+        _get_provider_cfg(admin_config, "profile_optimisation")
+        and admin_config.get("llm_allow_profile_optimisation")
     )
     llm_topic_available = bool(
-        admin_config.get("llm_provider") and admin_config.get("llm_allow_topic_suggestions")
+        _get_provider_cfg(admin_config, "topic_suggestions")
+        and admin_config.get("llm_allow_topic_suggestions")
     )
 
     return request.app.state.templates.TemplateResponse(request, "settings.html", {
@@ -420,10 +423,10 @@ def _parse_llm_query_response(text: str) -> dict | None:
 async def run_profile_llm(profile_id: int, request: Request):
     user = require_auth(request)
     config = request.app.state.config
-    if not (config.get("llm_provider") and config.get("llm_allow_profile_optimisation")):
+    from app.llm import call_llm, get_provider_config
+    provider_cfg = get_provider_config(config, "profile_optimisation")
+    if not (provider_cfg and config.get("llm_allow_profile_optimisation")):
         return JSONResponse({"error": "LLM not available for this feature."}, status_code=403)
-
-    from app.llm import call_llm
 
     with conn_ctx() as conn:
         profile = conn.execute(
@@ -450,7 +453,7 @@ async def run_profile_llm(profile_id: int, request: Request):
     prompt = _build_prompt(profile["name"], profile["query"], relevant, not_relevant)
     try:
         import asyncio
-        response = await asyncio.to_thread(call_llm, config, "", prompt)
+        response = await asyncio.to_thread(call_llm, provider_cfg, "", prompt)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     parsed = _parse_llm_query_response(response)
@@ -542,10 +545,10 @@ def _parse_topic_suggestions(text: str, valid_topics: set[str],
 async def suggest_topic_terms(request: Request):
     user = require_auth(request)
     config = request.app.state.config
-    if not (config.get("llm_provider") and config.get("llm_allow_topic_suggestions")):
+    from app.llm import call_llm, get_provider_config
+    provider_cfg = get_provider_config(config, "topic_suggestions")
+    if not (provider_cfg and config.get("llm_allow_topic_suggestions")):
         return JSONResponse({"error": "LLM topic suggestions are not enabled."}, status_code=403)
-
-    from app.llm import call_llm
 
     try:
         body = await request.json()
@@ -588,7 +591,7 @@ async def suggest_topic_terms(request: Request):
     prompt = _build_topic_suggestions_prompt(topics, unassigned)
     try:
         import asyncio
-        response = await asyncio.to_thread(call_llm, config, "", prompt)
+        response = await asyncio.to_thread(call_llm, provider_cfg, "", prompt)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

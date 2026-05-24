@@ -21,7 +21,7 @@
   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-app">Application</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-fetch">Fetch</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-email">Email</a></li>
-  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-scopus">Journal Rankings</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-journals">Journals</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-publishers">Publishers</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-llm">LLM</a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-users">Users</a></li>
@@ -266,9 +266,11 @@
 <form id="runDigestForm" method="post" action="/admin/run-digest"
       onsubmit="return confirm('Send the email digest now for all users? It will run in the background.')"></form>
 
-{# ── Journal Rankings ── (outside config form) #}
+{# ── Journals ── (outside config form) #}
 <div class="tab-content">
-  <div class="tab-pane fade" id="tab-scopus">
+  <div class="tab-pane fade" id="tab-journals">
+
+    <h5 class="mb-3">Rankings</h5>
 
     <div class="tip-box p-3 mb-3" style="max-width:640px">
       <p class="fw-semibold small mb-1"><i class="bi bi-info-circle me-1"></i>About journal ranking data</p>
@@ -376,6 +378,71 @@
       <i class="bi bi-journals me-1"></i>Browse all ranked journals in the <a href="/journals">Journal Rankings</a> page.
     </p>
     {% endif %}
+
+    <hr class="my-4">
+    <h5 class="mb-3">
+      Unindexed
+      {% if unindexed_journals %}
+      <span class="badge text-bg-warning ms-1 fs-6">{{ unindexed_journals | length }}</span>
+      {% endif %}
+    </h5>
+
+    <p class="text-muted small mb-3">
+      Journals that appear in your fetched papers but are absent from the Scopus CSV.
+      Papers in these journals receive no quartile, so quartile filtering cannot apply to them.
+      Use this list to identify gaps in coverage or to decide whether to refresh the Scopus data.
+    </p>
+
+    {% set no_issn_count = unindexed_journals | selectattr('reason', 'equalto', 'no_issn') | list | length %}
+    {% set missing_count = unindexed_journals | selectattr('reason', 'equalto', 'missing') | list | length %}
+
+    {% if not unindexed_journals %}
+    <p class="text-muted">All journals in your database are indexed in the Scopus CSV. Nothing to show.</p>
+    {% else %}
+    <div class="d-flex gap-3 mb-3 flex-wrap">
+      <span class="badge text-bg-secondary fs-6">{{ unindexed_journals | length }} unindexed journal{{ 's' if unindexed_journals | length != 1 }}</span>
+      {% if missing_count %}
+      <span class="badge text-bg-warning fs-6">{{ missing_count }} ISSN not in Scopus</span>
+      {% endif %}
+      {% if no_issn_count %}
+      <span class="badge text-bg-secondary fs-6">{{ no_issn_count }} no ISSN in PubMed</span>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Journal</th>
+              <th>Abbreviation</th>
+              <th>ISSN</th>
+              <th class="text-end">Papers</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for j in unindexed_journals %}
+          <tr>
+            <td class="small">{{ j.journal }}</td>
+            <td class="small text-muted">{{ j.iso_abbreviation or '—' }}</td>
+            <td class="small text-muted font-monospace">{{ j.issn or '—' }}</td>
+            <td class="small text-end text-muted">{{ j.paper_count }}</td>
+            <td>
+              {% if j.reason == 'no_issn' %}
+              <span class="badge text-bg-secondary">No ISSN</span>
+              {% else %}
+              <span class="badge text-bg-warning">Not in Scopus</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
   </div>
 
   {# ── Publishers ── #}
@@ -432,87 +499,74 @@
   {# ── LLM ── #}
   <div class="tab-pane fade" id="tab-llm">
 
-    <div class="tip-box p-3 mb-3" style="max-width:680px">
+    <div class="tip-box p-3 mb-4">
       <p class="fw-semibold small mb-1"><i class="bi bi-stars me-1"></i>LLM integration</p>
-      <p class="small mb-1">Configure one LLM provider and it powers three features:</p>
+      <p class="small mb-1">Configure one or more LLM providers below, then assign each action to the provider that should handle it. Four actions are supported:</p>
       <ul class="small mb-0">
-        <li><strong>Abstract Highlights</strong> — up to 5 bullet-point highlights are generated automatically for each paper's abstract and shown on the paper page.</li>
-        <li><strong>Search Profile improvement</strong> — users can send a prompt built from their rated papers to the LLM to get query improvement suggestions (optional, enabled per feature below).</li>
-        <li><strong>Topic term suggestions</strong> — users can ask the LLM to suggest which of their unassigned MeSH terms and author keywords belong to which topics, then confirm before anything is applied (optional, enabled per feature below).</li>
+        <li><strong>Abstract Highlights</strong> — up to 5 bullet-point highlights generated automatically from each paper's abstract.</li>
+        <li><strong>Search Profile Improvement</strong> — sends rated papers to get query improvement suggestions (requires user access toggle).</li>
+        <li><strong>Topic Term Suggestions</strong> — suggests MeSH-term-to-topic assignments for confirmation (requires user access toggle).</li>
+        <li><strong>Feed Recap</strong> — synthesises selected feed papers into a prioritised briefing (requires user access toggle).</li>
       </ul>
     </div>
 
-    {# Generate/reset use separate POST targets — buttons inside the save form link to these via form= #}
     <form id="runHighlightsForm" method="post" action="/admin/run-llm-highlights"
           onsubmit="return confirm('Regenerate LLM highlights for all papers with abstracts? This will overwrite existing highlights and run in the background.')"></form>
     <form id="resetLlmStatusForm" method="post" action="/admin/reset-llm-status"
           onsubmit="return confirm('Clear the stuck status file? This will not stop any running process — only the progress indicator will be reset.')"></form>
 
-    <form method="post" action="/admin/save-llm-config" style="max-width:680px">
+    <form method="post" action="/admin/save-llm-config" id="llmConfigForm" onsubmit="serializeLlmProviders()">
+      <input type="hidden" id="providersJson" name="providers_json" value="[]">
+      <input type="hidden" id="pKeysJson" name="p_keys_json" value="[]">
 
+      {# ── Providers ── #}
       <div class="card mb-3">
-        <div class="card-header fw-semibold"><i class="bi bi-cpu me-1"></i>Connection Settings</div>
-        <div class="card-body row g-3">
-          <div class="col-md-4">
-            <label class="form-label">Provider</label>
-            <select name="llm_provider" id="llmProvider" class="form-select" onchange="updateLlmFields()">
-              <option value="" {% if not config.get('llm_provider') %}selected{% endif %}>Disabled</option>
-              <option value="claude" {% if config.get('llm_provider') == 'claude' %}selected{% endif %}>Claude (Anthropic)</option>
-              <option value="chatgpt" {% if config.get('llm_provider') == 'chatgpt' %}selected{% endif %}>ChatGPT (OpenAI)</option>
-              <option value="ollama" {% if config.get('llm_provider') == 'ollama' %}selected{% endif %}>Ollama (local)</option>
-            </select>
-          </div>
-          <div class="col-md-8">
-            <label class="form-label">Model <span id="llmModelLink" class="fw-normal text-muted small"></span></label>
-            <input type="text" name="llm_model" id="llmModel" class="form-control font-monospace"
-                   value="{{ config.get('llm_model', '') }}"
-                   placeholder="e.g. claude-sonnet-4-6">
-            <div class="form-text" id="llmModelHint">Enter the exact model identifier for your chosen provider.</div>
-          </div>
-          <div class="col-md-8" id="llmApiKeyRow">
-            <label class="form-label">API key</label>
-            <input type="password" name="llm_api_key" class="form-control font-monospace"
-                   placeholder="Paste your API key here" autocomplete="off">
-            {% if llm_has_api_key %}
-            <div class="form-text text-success"><i class="bi bi-lock-fill me-1"></i>A key is currently stored. Paste a new one to replace it.</div>
-            {% else %}
-            <div class="form-text text-warning"><i class="bi bi-exclamation-triangle me-1"></i>No API key stored yet.</div>
-            {% endif %}
-          </div>
-          <div class="col-md-8" id="llmOllamaRow">
-            <label class="form-label">Ollama base URL</label>
-            <input type="url" name="llm_ollama_url" class="form-control font-monospace"
-                   value="{{ config.get('llm_ollama_url', 'http://localhost:11434') }}"
-                   placeholder="http://localhost:11434">
-            <div class="form-text">The URL where your Ollama instance is running. Must be reachable from this server.</div>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Request timeout (seconds)</label>
-            <input type="number" name="llm_timeout" class="form-control" min="10" max="600"
-                   value="{{ config.get('llm_timeout', 120) }}">
-            <div class="form-text">Increase for large local models that are slow to respond. Default: 120.</div>
-          </div>
-          <div class="col-12 pt-1">
-            <div class="d-flex align-items-center gap-3 flex-wrap">
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="llmTestBtn"
-                      onclick="testLlm()"
-                      {% if not config.get('llm_provider') or not config.get('llm_model') %}
-                      disabled title="Save a provider and model first"
-                      {% endif %}>
-                <i class="bi bi-plug me-1"></i>Test connection
-              </button>
-              <span id="llmTestResult" class="small"></span>
+        <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-cpu me-1"></i>Providers</span>
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="llmAddProvider()">
+            <i class="bi bi-plus-circle me-1"></i>Add provider
+          </button>
+        </div>
+        <div class="card-body p-2" id="llmProvidersContainer">
+        </div>
+      </div>
+
+      {# ── Action assignments ── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold"><i class="bi bi-diagram-3 me-1"></i>Action Assignments</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">Choose which provider handles each LLM action. <em>First available</em> uses the first provider in the list above.</p>
+          <div class="row g-3">
+            {% for action_key, action_label in [
+                ('highlights', 'Abstract Highlights'),
+                ('profile_optimisation', 'Search Profile Improvement'),
+                ('topic_suggestions', 'Topic Term Suggestions'),
+                ('recap', 'Feed Recap'),
+            ] %}
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold mb-1">{{ action_label }}</label>
+              <select name="llm_action_{{ action_key }}" class="form-select form-select-sm llm-action-select"
+                      id="llmAction_{{ action_key }}">
+                <option value="">— First available —</option>
+                {% for p in llm_providers_display %}
+                <option value="{{ p.name }}"
+                        {% if config.get('llm_action_' ~ action_key) == p.name %}selected{% endif %}>
+                  {{ p.name }}
+                </option>
+                {% endfor %}
+              </select>
             </div>
-            <div class="form-text mt-1">Sends a minimal request to verify the provider, model, and credentials are working. Save your settings before testing.</div>
+            {% endfor %}
           </div>
         </div>
       </div>
 
+      {# ── Abstract Highlights ── #}
       <div class="card mb-3">
         <div class="card-header fw-semibold"><i class="bi bi-file-text me-1"></i>Abstract Highlights</div>
         <div class="card-body">
           <p class="fw-semibold small mb-1">System prompt</p>
-          <p class="text-muted small mb-2">Sent as the <strong>system prompt</strong> on every highlights request. The paper's abstract is sent as the user message. Keep instructions clear and specific; the default works well for most models.</p>
+          <p class="text-muted small mb-2">Sent as the <strong>system prompt</strong> on every highlights request. The paper's abstract is sent as the user message.</p>
           <textarea name="llm_prompt" class="form-control font-monospace" rows="7"
                     style="font-size:.85em"
                     placeholder="{{ llm_default_prompt }}">{{ config.get('llm_prompt', '') }}</textarea>
@@ -522,17 +576,13 @@
           {% set ls = llm_status %}
           {% if ls.status == 'error' %}
           <div class="alert alert-danger py-2 mb-3">
-            <i class="bi bi-exclamation-triangle me-1"></i>Last run encountered an error:
-            <code class="ms-1">{{ ls.last_error }}</code>
+            <i class="bi bi-exclamation-triangle me-1"></i>Last run encountered an error: <code class="ms-1">{{ ls.last_error }}</code>
           </div>
           {% elif ls.status == 'done' and ls.finished_at %}
           <div class="alert alert-success py-2 mb-3">
             <i class="bi bi-check-circle me-1"></i>
-            Last run: {{ ls.finished_at | to_local }} &mdash;
-            {{ ls.processed }} processed, {{ ls.errors }} error(s).
-            {% if ls.last_error %}
-            <span class="text-muted small ms-2">Last error: {{ ls.last_error }}</span>
-            {% endif %}
+            Last run: {{ ls.finished_at | to_local }} &mdash; {{ ls.processed }} processed, {{ ls.errors }} error(s).
+            {% if ls.last_error %}<span class="text-muted small ms-2">Last error: {{ ls.last_error }}</span>{% endif %}
           </div>
           {% endif %}
 
@@ -550,18 +600,13 @@
           </div>
 
           <p id="llmPendingText" class="text-muted small mb-3">
-            {% if llm_pending %}
-            <strong id="llmPendingCount">{{ llm_pending }}</strong> paper{{ 's' if llm_pending != 1 else '' }} in the database
-            {{ 'have' if llm_pending != 1 else 'has' }} no highlights yet.
-            {% else %}
-            All papers with abstracts already have highlights.
-            {% endif %}
+            {% if llm_pending %}<strong id="llmPendingCount">{{ llm_pending }}</strong> paper{{ 's' if llm_pending != 1 else '' }} in the database {{ 'have' if llm_pending != 1 else 'has' }} no highlights yet.
+            {% else %}All papers with abstracts already have highlights.{% endif %}
             Highlights are also generated automatically in the background after each fetch run.
           </p>
 
           <div class="d-flex align-items-center gap-2 flex-wrap">
             <button type="submit" form="runHighlightsForm" id="btnRunLlm" class="btn btn-outline-secondary"
-                    {% if not config.get('llm_provider') %}disabled title="Configure a provider first"{% endif %}
                     {% if ls.status == 'running' %}disabled title="Generation is already running"{% endif %}>
               <i class="bi bi-play-circle me-1"></i>Generate highlights now
             </button>
@@ -569,29 +614,45 @@
               <i class="bi bi-x-circle me-1"></i>Reset stuck status
             </button>
           </div>
-          <div class="form-text mt-2">Generation runs in the background. Check <a href="/logs">Logs</a> (<code>llm.log</code>) for progress. The progress bar updates automatically while this tab is open. Use <em>Reset stuck status</em> if the bar is stuck after a crash.</div>
+          <div class="form-text mt-2">Generation runs in the background. Check <a href="/logs">Logs</a> (<code>llm.log</code>) for progress. Use <em>Reset stuck status</em> if the bar is stuck after a crash.</div>
         </div>
       </div>
 
+      {# ── Feed Recap ── #}
+      <div class="card mb-3">
+        <div class="card-header fw-semibold"><i class="bi bi-stars me-1"></i>Feed Recap</div>
+        <div class="card-body">
+          <p class="fw-semibold small mb-1">Recap prompt</p>
+          <p class="text-muted small mb-2">Sent as the <strong>system prompt</strong> when a user requests a recap of their feed papers. The paper list — titles, authors, quartile, and abstracts — is sent as the user message.</p>
+          <textarea name="llm_recap_prompt" class="form-control font-monospace" rows="9"
+                    style="font-size:.85em"
+                    placeholder="{{ llm_default_recap_prompt }}">{{ config.get('llm_recap_prompt', '') }}</textarea>
+          <div class="form-text">Leave blank to use the built-in default prompt.</div>
+        </div>
+      </div>
+
+      {# ── User access ── #}
       <div class="card mb-3">
         <div class="card-header fw-semibold"><i class="bi bi-people me-1"></i>User access</div>
         <div class="card-body">
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" name="llm_allow_profile_optimisation"
                    id="llmAllowOpt" {% if config.get('llm_allow_profile_optimisation') %}checked{% endif %}>
-            <label class="form-check-label fw-medium" for="llmAllowOpt">
-              Allow users to run their Search Profile improvement prompts through the configured LLM
-            </label>
+            <label class="form-check-label fw-medium" for="llmAllowOpt">Allow Search Profile improvement via LLM</label>
           </div>
-          <div class="form-text ms-4 ps-1">When enabled, a <strong>Run with LLM</strong> button appears in the Search Profile improvement modal (Settings &rsaquo; Search Profiles). Users can send their query-improvement prompt directly to the LLM rather than copying it to an external tool. The full prompt — including their rated paper titles and MeSH terms — is sent to the provider.</div>
-          <div class="form-check form-switch mt-3">
+          <div class="form-text ms-4 ps-1 mb-3">A <strong>Run with LLM</strong> button appears in the Search Profile improvement modal. The full prompt — rated paper titles and MeSH terms — is sent to the assigned provider.</div>
+          <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" name="llm_allow_topic_suggestions"
                    id="llmAllowTopicSuggestions" {% if config.get('llm_allow_topic_suggestions') %}checked{% endif %}>
-            <label class="form-check-label fw-medium" for="llmAllowTopicSuggestions">
-              Allow users to auto-assign terms to topics using the configured LLM
-            </label>
+            <label class="form-check-label fw-medium" for="llmAllowTopicSuggestions">Allow topic term suggestions via LLM</label>
           </div>
-          <div class="form-text ms-4 ps-1">When enabled, a <strong>Suggest terms with LLM</strong> button appears in the Topics settings tab. The LLM is shown the user's topic names and their unassigned MeSH terms and author keywords, and suggests which terms belong to which topics. Suggestions are shown for the user to confirm before any changes are applied.</div>
+          <div class="form-text ms-4 ps-1 mb-3">A <strong>Suggest terms with LLM</strong> button appears in the Topics settings tab. Suggestions are shown for confirmation before any changes are applied.</div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="llm_allow_recap"
+                   id="llmAllowRecap" {% if config.get('llm_allow_recap') %}checked{% endif %}>
+            <label class="form-check-label fw-medium" for="llmAllowRecap">Allow feed recap via LLM</label>
+          </div>
+          <div class="form-text ms-4 ps-1">A <i class="bi bi-stars"></i> <strong>Get a recap</strong> button appears next to <em>Mark all as read</em> and in the bulk selection bar. Up to 100 paper abstracts are sent per request.</div>
         </div>
       </div>
 
@@ -766,6 +827,7 @@
 
     </div>
   </div>
+
 </div>
 
 {% endblock %}
@@ -801,7 +863,7 @@ if (hash) {
   if (tab) tab.click();
 }
 
-// ── LLM provider field toggling ───────────────────────────────────────────
+// ── Multi-provider LLM management ─────────────────────────────────────────
 
 const LLM_MODEL_LINKS = {
   claude:  '<a href="https://docs.anthropic.com/en/docs/about-claude/models/overview" target="_blank" rel="noopener" class="small">Browse models</a>',
@@ -813,53 +875,206 @@ const LLM_MODEL_HINTS = {
   chatgpt: 'e.g. gpt-4o, gpt-4o-mini',
   ollama:  'e.g. llama3.2, mistral, gemma3',
 };
+const LLM_PROVIDER_LABELS = { claude: 'Claude (Anthropic)', chatgpt: 'ChatGPT (OpenAI)', ollama: 'Ollama (local)' };
 
-function updateLlmFields() {
-  const provider = document.getElementById('llmProvider').value;
-  const apiKeyRow  = document.getElementById('llmApiKeyRow');
-  const ollamaRow  = document.getElementById('llmOllamaRow');
-  const modelHint  = document.getElementById('llmModelHint');
-  const modelLink  = document.getElementById('llmModelLink');
-  const modelInput = document.getElementById('llmModel');
+// Populated from server; api_key is never sent to client — only has_key (bool)
+let llmProviders = {{ llm_providers_display | tojson }};
 
-  apiKeyRow.style.display  = (provider === 'ollama' || !provider) ? 'none' : '';
-  ollamaRow.style.display  = provider === 'ollama' ? '' : 'none';
-  modelHint.textContent    = LLM_MODEL_HINTS[provider] || 'Enter the exact model identifier.';
-  modelLink.innerHTML      = LLM_MODEL_LINKS[provider] || '';
-  modelInput.placeholder   = LLM_MODEL_HINTS[provider]
-    ? LLM_MODEL_HINTS[provider].split(',')[0].replace('e.g. ', '')
-    : '';
+function llmRenderProviders() {
+  const container = document.getElementById('llmProvidersContainer');
+  if (!llmProviders.length) {
+    container.innerHTML = '<p class="text-muted small p-2 mb-0">No providers configured yet. Click <strong>Add provider</strong> to add one.</p>';
+    llmUpdateActionDropdowns();
+    return;
+  }
+  container.innerHTML = llmProviders.map((p, i) => llmProviderCard(p, i)).join('');
+  llmProviders.forEach((p, i) => llmUpdateProviderFields(i));
+  llmProviders.forEach((_, i) => llmUpdateModelInfo(i));
+  llmUpdateActionDropdowns();
 }
-updateLlmFields();
 
-// ── LLM connection test ───────────────────────────────────────────────────
+function llmProviderCard(p, i) {
+  const opts = ['claude','chatgpt','ollama'].map(t =>
+    `<option value="${t}" ${p.provider === t ? 'selected' : ''}>${LLM_PROVIDER_LABELS[t]}</option>`
+  ).join('');
+  const keyHint = p.has_key
+    ? '<div class="form-text text-success py-0"><i class="bi bi-lock-fill me-1"></i>A key is stored. Paste to replace.</div>'
+    : '<div class="form-text text-warning py-0"><i class="bi bi-exclamation-triangle me-1"></i>No key stored yet.</div>';
+  return `<div class="card mb-2 border-0 bg-body-secondary" id="llm-p-card-${i}">
+  <div class="card-body row g-2 py-2 align-items-start">
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Name</label>
+      <input type="text" class="form-control form-control-sm" value="${escapeHtml(p.name)}"
+             oninput="llmProviders[${i}].name=this.value; llmUpdateActionDropdowns()" placeholder="e.g. Claude Fast">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Provider</label>
+      <select class="form-select form-select-sm" id="llm-p-type-${i}"
+              onchange="llmProviders[${i}].provider=this.value; llmUpdateProviderFields(${i})">
+        ${opts}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label small fw-semibold mb-1">Model <span id="llm-p-mlink-${i}" class="fw-normal text-muted"></span></label>
+      <input type="text" class="form-control form-control-sm font-monospace" id="llm-p-model-${i}"
+             value="${escapeHtml(p.model)}" oninput="llmProviders[${i}].model=this.value; llmUpdateModelInfo(${i})">
+      <div id="llm-p-info-${i}" class="form-text mt-1 mb-0"></div>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Timeout (s)</label>
+      <input type="number" class="form-control form-control-sm" min="10" max="600"
+             value="${p.timeout || 120}" oninput="llmProviders[${i}].timeout=parseInt(this.value)||120">
+    </div>
+    <div class="col-md-8" id="llm-p-keyrow-${i}">
+      <label class="form-label small fw-semibold mb-1">API key</label>
+      <input type="password" class="form-control form-control-sm font-monospace llm-p-key"
+             id="llm-p-key-${i}" autocomplete="off" placeholder="${p.has_key ? 'Leave blank to keep existing key' : 'Paste API key here'}">
+      ${keyHint}
+    </div>
+    <div class="col-md-8" id="llm-p-urlrow-${i}">
+      <label class="form-label small fw-semibold mb-1">Ollama base URL</label>
+      <input type="url" class="form-control form-control-sm font-monospace"
+             value="${escapeHtml(p.ollama_url || 'http://localhost:11434')}"
+             oninput="llmProviders[${i}].ollama_url=this.value">
+    </div>
+    <div class="col-12 d-flex align-items-center gap-2 pt-1">
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="llmTestProvider(${i})">
+        <i class="bi bi-plug me-1"></i>Test
+      </button>
+      <span id="llm-p-test-${i}" class="small"></span>
+      <button type="button" class="btn btn-sm btn-outline-danger ms-auto" onclick="llmDeleteProvider(${i})">
+        <i class="bi bi-trash me-1"></i>Remove
+      </button>
+    </div>
+  </div>
+</div>`;
+}
 
-async function testLlm() {
-  const btn = document.getElementById('llmTestBtn');
-  const result = document.getElementById('llmTestResult');
+function llmUpdateProviderFields(i) {
+  const ptype = (document.getElementById(`llm-p-type-${i}`) || {}).value || llmProviders[i].provider;
+  const isOllama = ptype === 'ollama';
+  const keyRow = document.getElementById(`llm-p-keyrow-${i}`);
+  const urlRow = document.getElementById(`llm-p-urlrow-${i}`);
+  const mlink  = document.getElementById(`llm-p-mlink-${i}`);
+  const minput = document.getElementById(`llm-p-model-${i}`);
+  if (keyRow) keyRow.style.display = isOllama ? 'none' : '';
+  if (urlRow) urlRow.style.display = isOllama ? '' : 'none';
+  if (mlink)  mlink.innerHTML = LLM_MODEL_LINKS[ptype] || '';
+  if (minput) minput.placeholder = (LLM_MODEL_HINTS[ptype] || '').split(',')[0].replace('e.g. ', '');
+  llmUpdateModelInfo(i);
+}
+
+function llmUpdateActionDropdowns() {
+  document.querySelectorAll('.llm-action-select').forEach(sel => {
+    const cur = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    llmProviders.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name; opt.textContent = p.name;
+      if (p.name === cur) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    // Restore selection if name still exists
+    if (!Array.from(sel.options).some(o => o.value === cur)) sel.value = '';
+  });
+}
+
+function llmAddProvider() {
+  llmProviders.push({ name: 'New Provider', provider: 'ollama', model: '', has_key: false, ollama_url: 'http://localhost:11434', timeout: 120 });
+  llmRenderProviders();
+  // Scroll last card into view
+  const cards = document.querySelectorAll('#llmProvidersContainer .card');
+  if (cards.length) cards[cards.length - 1].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function llmDeleteProvider(i) {
+  const name = llmProviders[i].name || `Provider ${i + 1}`;
+  if (!confirm(`Remove provider "${name}"? This cannot be undone until you save.`)) return;
+  llmProviders.splice(i, 1);
+  llmRenderProviders();
+}
+
+async function llmTestProvider(i) {
+  const btn = document.querySelector(`#llm-p-card-${i} .btn-outline-secondary`);
+  const resultEl = document.getElementById(`llm-p-test-${i}`);
   const origHtml = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Testing…';
-  result.innerHTML = '';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+  resultEl.innerHTML = '';
+  const fd = new FormData();
+  fd.append('provider_name', llmProviders[i].name);
   try {
-    const resp = await fetch('/admin/test-llm', {method: 'POST'});
+    const resp = await fetch('/admin/test-llm', { method: 'POST', body: fd });
     const data = await resp.json();
     if (data.ok) {
-      result.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i><span class="text-success">Connected. Response: <em>' + escapeHtml(data.response) + '</em></span>';
+      resultEl.innerHTML = `<i class="bi bi-check-circle-fill text-success me-1"></i><span class="text-success">OK: <em>${escapeHtml(data.response)}</em></span>`;
     } else {
-      result.innerHTML = '<i class="bi bi-x-circle-fill text-danger me-1"></i><span class="text-danger">' + escapeHtml(data.error) + '</span>';
+      resultEl.innerHTML = `<i class="bi bi-x-circle-fill text-danger me-1"></i><span class="text-danger">${escapeHtml(data.error)}</span>`;
     }
   } catch (err) {
-    result.innerHTML = '<i class="bi bi-x-circle-fill text-danger me-1"></i><span class="text-danger">Request failed: ' + escapeHtml(String(err)) + '</span>';
+    resultEl.innerHTML = `<i class="bi bi-x-circle-fill text-danger me-1"></i><span class="text-danger">Request failed</span>`;
   } finally {
     btn.disabled = false;
     btn.innerHTML = origHtml;
   }
 }
 
+function serializeLlmProviders() {
+  const keys = llmProviders.map((_, i) => {
+    const inp = document.getElementById(`llm-p-key-${i}`);
+    return inp ? inp.value.trim() : '';
+  });
+  document.getElementById('providersJson').value = JSON.stringify(
+    llmProviders.map(p => ({ name: p.name, provider: p.provider, model: p.model, ollama_url: p.ollama_url, timeout: p.timeout }))
+  );
+  document.getElementById('pKeysJson').value = JSON.stringify(keys);
+}
+
 function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+const LLM_OR_PREFIXES = { chatgpt: 'openai', claude: 'anthropic' };
+let openrouterModels = {};
+
+async function fetchOpenrouterModels() {
+  try {
+    const r = await fetch('https://openrouter.ai/api/v1/models');
+    const d = await r.json();
+    openrouterModels = Object.fromEntries((d.data || []).map(m => [m.id, m]));
+  } catch (_) {}
+  llmProviders.forEach((_, i) => llmUpdateModelInfo(i));
+}
+
+function llmUpdateModelInfo(i) {
+  const el = document.getElementById(`llm-p-info-${i}`);
+  if (!el) return;
+  const prefix = LLM_OR_PREFIXES[llmProviders[i].provider];
+  const model  = (llmProviders[i].model || '').trim();
+  if (!prefix || !model) { el.innerHTML = ''; return; }
+  const info = openrouterModels[`${prefix}/${model}`];
+  if (!info) { el.innerHTML = ''; return; }
+  const ctx = info.context_length ? Math.round(info.context_length / 1000) + 'k' : '';
+  const fmtP = v => {
+    const n = parseFloat(v) * 1e6;
+    if (!isFinite(n) || n <= 0) return '';
+    const s = n.toFixed(2);
+    return '$' + (s.endsWith('.00') ? s.slice(0, -3) : s);
+  };
+  const inp = fmtP(info.pricing?.prompt);
+  const out = fmtP(info.pricing?.completion);
+  const created = info.created
+    ? new Date(info.created * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '';
+  const parts = [];
+  if (ctx)     parts.push(`Context: <strong>${ctx}</strong>`);
+  if (inp)     parts.push(`Input/1M: <strong>${inp}</strong>`);
+  if (out)     parts.push(`Output/1M: <strong>${out}</strong>`);
+  if (created) parts.push(`Released: <strong>${created}</strong>`);
+  el.innerHTML = parts.join(' &middot; ');
+}
+
+document.addEventListener('DOMContentLoaded', () => { llmRenderProviders(); fetchOpenrouterModels(); });
 
 // ── LLM highlights status polling ─────────────────────────────────────────
 
@@ -1069,7 +1284,7 @@ function pollRefreshStatus() {
 // Start polling when the Journal Rankings tab is shown
 document.querySelectorAll('[data-bs-toggle="tab"]').forEach(el => {
   el.addEventListener('shown.bs.tab', e => {
-    if (e.target.getAttribute('href') === '#tab-scopus') startRefreshPoll();
+    if (e.target.getAttribute('href') === '#tab-journals') startRefreshPoll();
     else stopRefreshPoll();
   });
 });
@@ -1077,7 +1292,7 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(el => {
 // Auto-start polling if we land on the scopus tab
 document.addEventListener('DOMContentLoaded', () => {
   const active = document.querySelector('.tab-pane.show.active');
-  if (active && active.id === 'tab-scopus') startRefreshPoll();
+  if (active && active.id === 'tab-journals') startRefreshPoll();
 });
 </script>
 {% endblock %}

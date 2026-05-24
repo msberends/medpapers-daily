@@ -18,7 +18,11 @@ import yaml
 BASE_DIR = Path(__file__).parent
 sys.path.insert(0, str(BASE_DIR))
 
-from app.llm import call_llm, parse_highlights, DEFAULT_HIGHLIGHTS_PROMPT
+
+def _ts() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+from app.llm import call_llm, parse_highlights, DEFAULT_HIGHLIGHTS_PROMPT, get_provider_config
 
 STATUS_PATH = BASE_DIR / "data" / "llm_status.json"
 PID_PATH = BASE_DIR / "data" / "llm.pid"
@@ -73,10 +77,11 @@ def main():
     with open(config_path) as f:
         config = yaml.safe_load(f) or {}
 
-    provider = config.get("llm_provider", "")
-    if not provider:
-        print("[llm] No LLM provider configured. Exiting.", file=sys.stderr, flush=True)
+    provider_cfg = get_provider_config(config, "highlights")
+    if not provider_cfg:
+        print("[llm] No LLM provider configured for highlights. Exiting.", file=sys.stderr, flush=True)
         return
+    provider = provider_cfg.get("llm_provider", "")
 
     if not _acquire_lock():
         print("[llm] Another instance is already running. Exiting.", file=sys.stderr, flush=True)
@@ -96,6 +101,8 @@ def main():
     processed = 0
     errors = 0
     last_error = None
+    run_start = time.perf_counter()
+    started_iso = datetime.now(timezone.utc).isoformat()
 
     try:
         with _conn_ctx(db_path) as conn:
@@ -113,11 +120,11 @@ def main():
                 ).fetchall()
 
         total = len(papers)
-        model = (config.get("llm_model") or "").strip()
-        print(f"[llm] Starting — provider={provider}, model={model}, papers={total} (force={force}).", flush=True)
+        model = (provider_cfg.get("llm_model") or "").strip()
+        print(f"[llm] {_ts()}  Starting — provider={provider}, model={model}, papers={total} (force={force}).", flush=True)
         _write_status({
             "status": "running",
-            "started_at": datetime.now(timezone.utc).isoformat(),
+            "started_at": started_iso,
             "total": total,
             "processed": 0,
             "errors": 0,
@@ -126,38 +133,42 @@ def main():
         for row in papers:
             pmid = row["pmid"]
             abstract = row["abstract"]
+            paper_start = time.perf_counter()
             try:
                 try:
-                    response = call_llm(config, system_prompt, f"Abstract:\n{abstract}")
+                    response = call_llm(provider_cfg, system_prompt, f"Abstract:\n{abstract}")
                 except Exception as first_err:
-                    print(f"[llm] {pmid}: retrying after error — {first_err}", file=sys.stderr, flush=True)
+                    print(f"[llm] {_ts()}  {pmid}: retrying after error — {first_err}", file=sys.stderr, flush=True)
                     time.sleep(2)
-                    response = call_llm(config, system_prompt, f"Abstract:\n{abstract}")
+                    response = call_llm(provider_cfg, system_prompt, f"Abstract:\n{abstract}")
                 highlights = parse_highlights(response)
                 with _conn_ctx(db_path) as conn:
                     conn.execute(
                         "UPDATE papers SET highlights = ? WHERE pmid = ?",
                         (json.dumps(highlights), pmid),
                     )
+                elapsed = time.perf_counter() - paper_start
                 processed += 1
-                print(f"[llm] {pmid}: {len(highlights)} highlight(s).", flush=True)
+                print(f"[llm] {_ts()}  {pmid}: {len(highlights)} highlight(s) in {elapsed:.1f} sec.", flush=True)
                 time.sleep(1)
             except Exception as e:
+                elapsed = time.perf_counter() - paper_start
                 errors += 1
                 last_error = str(e)
-                print(f"[llm] {pmid}: error — {e}", file=sys.stderr, flush=True)
+                print(f"[llm] {_ts()}  {pmid}: error after {elapsed:.1f} sec — {e}", file=sys.stderr, flush=True)
 
             _write_status({
                 "status": "running",
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": started_iso,
                 "total": total,
                 "processed": processed,
                 "errors": errors,
             })
 
     except Exception as e:
+        total_elapsed = time.perf_counter() - run_start
         last_error = str(e)
-        print(f"[llm] Fatal error: {e}", file=sys.stderr, flush=True)
+        print(f"[llm] {_ts()}  Fatal error after {total_elapsed:.1f} sec: {e}", file=sys.stderr, flush=True)
         _write_status({
             "status": "error",
             "finished_at": datetime.now(timezone.utc).isoformat(),
@@ -168,6 +179,7 @@ def main():
         _release_lock()
         return
 
+    total_elapsed = time.perf_counter() - run_start
     _write_status({
         "status": "done",
         "finished_at": datetime.now(timezone.utc).isoformat(),
@@ -176,7 +188,11 @@ def main():
         "errors": errors,
         "last_error": last_error,
     })
-    print(f"[llm] Done — provider={provider}, model={model}, processed={processed}, errors={errors}.", flush=True)
+    print(
+        f"[llm] {_ts()}  Done — provider={provider}, model={model}, "
+        f"processed={processed}, errors={errors}, total time: {total_elapsed:.1f} sec.",
+        flush=True,
+    )
     _release_lock()
 
 

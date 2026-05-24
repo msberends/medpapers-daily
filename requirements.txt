@@ -7,5 +7,4 @@ pyyaml
 ruamel.yaml
 biopython
 requests
-anthropic
 aiofiles

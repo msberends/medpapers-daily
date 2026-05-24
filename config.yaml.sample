@@ -47,26 +47,33 @@ bootstrap_theme: yeti   # any Bootswatch theme name (Bootswatch palette)
 # Per-user dark/light mode is set in each user's settings page (stored in users/<username>.yaml as theme_mode)
 timezone: UTC           # IANA timezone, e.g. Europe/Amsterdam
 
-# LLM integration — abstract highlights and search profile suggestions
-# Set llm_provider to 'claude', 'chatgpt', or 'ollama' to enable. Leave blank to disable.
-# Model lists: Claude → https://docs.anthropic.com/en/docs/about-claude/models/overview
+# LLM integration — configure one or more providers, then assign each action to a provider.
+# Supported provider values: 'claude', 'chatgpt', 'ollama'
+# Model lists: Claude  → https://docs.anthropic.com/en/docs/about-claude/models/overview
 #              ChatGPT → https://platform.openai.com/docs/models
-#              Ollama → run 'ollama list' or see https://ollama.com/library
-llm_provider: ''
-llm_api_key: ''                          # Claude or OpenAI API key
-llm_ollama_url: 'http://localhost:11434' # Ollama base URL (ignored for claude/chatgpt)
-llm_model: ''                            # e.g. claude-sonnet-4-6, gpt-4o, llama3.2
-llm_timeout: 120                         # seconds to wait for a response (increase for large local models)
-# System prompt for abstract highlights. The abstract is sent as the user message.
-llm_prompt: |
-  You summarise scientific abstracts. When given an abstract, respond with up to
-  5 concise bullet-point highlights capturing the key findings, methods, and
-  conclusions. Each highlight is one short sentence. Return only the bullet
-  points, one per line, each starting with a dash (-). No introduction, no
-  numbering, no trailing commentary. Use British English spelling throughout
-  (e.g. -ise not -ize, colour not color).
+#              Ollama  → run 'ollama list' or see https://ollama.com/library
+llm_providers:
+  - name: 'Local model'         # Display name — used to assign actions below
+    provider: ollama
+    model: ''                   # e.g. gemma3:12b, llama3.2, mistral
+    api_key: ''                 # Not used for Ollama; required for claude/chatgpt
+    ollama_url: 'http://localhost:11434'
+    timeout: 120                # Seconds to wait; increase for large local models
+
+# Which provider (by name) handles each action. Leave blank to use the first available.
+llm_action_highlights: ''          # Abstract Highlights — runs after each fetch
+llm_action_profile_optimisation: '' # Search Profile Improvement
+llm_action_topic_suggestions: ''   # Topic Term Suggestions
+llm_action_recap: ''               # Feed Recap
+
+# System prompt for abstract highlights. Leave blank to use the built-in default.
+llm_prompt: ''
+# System prompt for the feed recap feature. Leave blank to use the built-in default.
+llm_recap_prompt: ''
+
 # Allow users to send their Search Profile improvement prompts through the LLM.
 llm_allow_profile_optimisation: false
 # Allow users to use the LLM to suggest term-to-topic assignments in their Topics settings.
-# Suggestions are shown for confirmation before any changes are applied.
 llm_allow_topic_suggestions: false
+# Allow users to generate an LLM recap of their feed papers.
+llm_allow_recap: false
