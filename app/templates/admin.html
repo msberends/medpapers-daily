@@ -512,6 +512,8 @@
 
     <form id="runHighlightsForm" method="post" action="/admin/run-llm-highlights"
           onsubmit="return confirm('Regenerate LLM highlights for all papers with abstracts? This will overwrite existing highlights and run in the background.')"></form>
+    <form id="runHighlightsMissingForm" method="post" action="/admin/run-llm-highlights-missing"
+          onsubmit="return confirm('Generate LLM highlights for papers that do not have them yet? Existing highlights will not be changed.')"></form>
     <form id="resetLlmStatusForm" method="post" action="/admin/reset-llm-status"
           onsubmit="return confirm('Clear the stuck status file? This will not stop any running process — only the progress indicator will be reset.')"></form>
 
@@ -606,9 +608,16 @@
           </p>
 
           <div class="d-flex align-items-center gap-2 flex-wrap">
+            {% if llm_pending %}
+            <button type="submit" form="runHighlightsMissingForm" id="btnRunLlmMissing" class="btn btn-outline-primary"
+                    {% if ls.status == 'running' %}disabled title="Generation is already running"{% endif %}>
+              <i class="bi bi-play-circle me-1"></i>Generate missing highlights
+              <span class="badge text-bg-primary ms-1">{{ llm_pending }}</span>
+            </button>
+            {% endif %}
             <button type="submit" form="runHighlightsForm" id="btnRunLlm" class="btn btn-outline-secondary"
                     {% if ls.status == 'running' %}disabled title="Generation is already running"{% endif %}>
-              <i class="bi bi-play-circle me-1"></i>Generate highlights now
+              <i class="bi bi-arrow-repeat me-1"></i>Regenerate all highlights
             </button>
             <button type="submit" form="resetLlmStatusForm" class="btn btn-sm btn-outline-danger">
               <i class="bi bi-x-circle me-1"></i>Reset stuck status

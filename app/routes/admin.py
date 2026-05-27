@@ -797,6 +797,30 @@ async def run_llm_highlights(request: Request):
         return flash_redirect("/admin#tab-llm", str(e), "danger")
 
 
+@router.post("/admin/run-llm-highlights-missing")
+async def run_llm_highlights_missing(request: Request):
+    require_admin(request)
+    config = request.app.state.config
+    from app.llm import get_provider_config
+    if get_provider_config(config, "highlights") is None:
+        return flash_redirect("/admin#tab-llm", "No LLM provider configured for highlights.", "danger")
+    venv_python = BASE_DIR / "venv" / "bin" / "python"
+    llm_script = BASE_DIR / "llm_highlights.py"
+    log_path = BASE_DIR / "logs" / "llm.log"
+    try:
+        log_path.parent.mkdir(exist_ok=True)
+        with open(log_path, "ab") as log_f:
+            subprocess.Popen(
+                [str(venv_python), "-u", str(llm_script)],
+                stdout=log_f,
+                stderr=log_f,
+                cwd=str(BASE_DIR),
+            )
+        return flash_redirect("/admin#tab-llm", "LLM highlights generation started for papers without highlights. Check Logs for progress.", "info")
+    except Exception as e:
+        return flash_redirect("/admin#tab-llm", str(e), "danger")
+
+
 @router.get("/admin/llm-status")
 async def llm_status(request: Request):
     require_admin(request)
