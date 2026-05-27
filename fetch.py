@@ -776,8 +776,9 @@ def _clean_expired_sessions(db_path: str):
 
 
 def _launch_llm_highlights(config: dict):
-    """Fire-and-forget: launch llm_highlights.py in the background if an LLM is configured."""
-    if not config.get("llm_provider"):
+    """Fire-and-forget: launch llm_highlights.py in the background if an LLM is configured for highlights."""
+    from app.llm import get_provider_config
+    if get_provider_config(config, "highlights") is None:
         return
     try:
         import subprocess

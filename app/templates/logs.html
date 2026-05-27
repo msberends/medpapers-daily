@@ -274,7 +274,7 @@
         <form method="post" action="/logs/run-llm-highlights"
               onsubmit="return confirm('Regenerate LLM highlights for all papers with abstracts? This will overwrite existing highlights and run in the background.')">
           <button type="submit" class="btn btn-sm btn-outline-secondary"
-                  {% if not config.get('llm_provider') %}disabled title="Configure a provider in Admin &rsaquo; LLM first"{% endif %}
+                  {% if not (config.get('llm_providers') or config.get('llm_provider')) %}disabled title="Configure a provider in Admin &rsaquo; LLM first"{% endif %}
                   {% if ls.status == 'running' %}disabled title="Generation is already running"{% endif %}>
             <i class="bi bi-play-circle me-1"></i>Generate highlights now
           </button>

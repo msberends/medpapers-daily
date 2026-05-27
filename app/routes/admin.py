@@ -777,8 +777,9 @@ async def test_llm(request: Request):
 async def run_llm_highlights(request: Request):
     require_admin(request)
     config = request.app.state.config
-    if not (config.get("llm_providers") or config.get("llm_provider")):
-        return flash_redirect("/admin#tab-llm", "No LLM provider configured.", "danger")
+    from app.llm import get_provider_config
+    if get_provider_config(config, "highlights") is None:
+        return flash_redirect("/admin#tab-llm", "No LLM provider configured for highlights.", "danger")
     venv_python = BASE_DIR / "venv" / "bin" / "python"
     llm_script = BASE_DIR / "llm_highlights.py"
     log_path = BASE_DIR / "logs" / "llm.log"

@@ -382,15 +382,20 @@ def _build_prompt(profile_name: str, query: str,
             return "  (none)\n"
         lines = []
         for i, p in enumerate(papers, 1):
-            mesh_str = ", ".join(p["mesh"]) if p["mesh"] else "no MeSH terms"
-            lines.append(f"  {i}. {p['title']}\n     MeSH: {mesh_str}")
+            mesh_str = ", ".join(p["mesh"]) if p["mesh"] else "none"
+            kw_str = ", ".join(p["keywords"]) if p.get("keywords") else "none"
+            lines.append(
+                f"  {i}. {p['title']}\n"
+                f"     MeSH: {mesh_str}\n"
+                f"     Author keywords: {kw_str}"
+            )
         return "\n".join(lines) + "\n"
 
     return (
         "You are a PubMed search query expert. I use an automated literature monitoring tool "
         "that fetches papers from PubMed using the search profile described below. "
         "I have rated some of the retrieved papers as relevant or not relevant. "
-        "Based on the titles and MeSH terms of those papers, suggest specific "
+        "Based on the titles, MeSH terms, and author keywords of those papers, suggest specific "
         "improvements to my PubMed query that would retrieve more of the relevant papers "
         "and fewer of the irrelevant ones.\n\n"
         f"SEARCH PROFILE NAME: {profile_name}\n\n"
@@ -437,7 +442,7 @@ async def run_profile_llm(profile_id: int, request: Request):
             from fastapi import HTTPException
             raise HTTPException(status_code=404)
         rows = conn.execute(
-            """SELECT p.title, p.mesh_terms, up.relevance
+            """SELECT p.title, p.mesh_terms, p.keywords, up.relevance
                FROM user_paper_profiles upp
                JOIN papers p ON p.pmid = upp.pmid
                JOIN user_papers up ON up.user_id = upp.user_id AND up.pmid = upp.pmid
@@ -448,7 +453,8 @@ async def run_profile_llm(profile_id: int, request: Request):
     relevant, not_relevant = [], []
     for row in rows:
         mesh = json.loads(row["mesh_terms"] or "[]")
-        entry = {"title": row["title"], "mesh": mesh}
+        keywords = json.loads(row["keywords"] or "[]")
+        entry = {"title": row["title"], "mesh": mesh, "keywords": keywords}
         (relevant if row["relevance"] == 1 else not_relevant).append(entry)
     prompt = _build_prompt(profile["name"], profile["query"], relevant, not_relevant)
     try:
@@ -477,7 +483,7 @@ async def profile_prompt(profile_id: int, request: Request):
             from fastapi import HTTPException
             raise HTTPException(status_code=404)
         rows = conn.execute(
-            """SELECT p.title, p.mesh_terms, up.relevance
+            """SELECT p.title, p.mesh_terms, p.keywords, up.relevance
                FROM user_paper_profiles upp
                JOIN papers p ON p.pmid = upp.pmid
                JOIN user_papers up ON up.user_id = upp.user_id AND up.pmid = upp.pmid
@@ -488,7 +494,8 @@ async def profile_prompt(profile_id: int, request: Request):
     relevant, not_relevant = [], []
     for row in rows:
         mesh = json.loads(row["mesh_terms"] or "[]")
-        entry = {"title": row["title"], "mesh": mesh}
+        keywords = json.loads(row["keywords"] or "[]")
+        entry = {"title": row["title"], "mesh": mesh, "keywords": keywords}
         (relevant if row["relevance"] == 1 else not_relevant).append(entry)
     prompt = _build_prompt(profile["name"], profile["query"], relevant, not_relevant)
     return JSONResponse({"prompt": prompt, "profile_name": profile["name"]})

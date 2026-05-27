@@ -171,9 +171,10 @@ async def logs_page(request: Request, page: int = 1, filter_user_id: int = 0,
 async def logs_run_llm_highlights(request: Request):
     require_admin(request)
     config = request.app.state.config
-    if not config.get("llm_provider"):
+    from app.llm import get_provider_config
+    if get_provider_config(config, "highlights") is None:
         return RedirectResponse(
-            "/logs?error=No+LLM+provider+configured#tab-llm", status_code=303
+            "/logs?error=No+LLM+provider+configured+for+highlights#tab-llm", status_code=303
         )
     venv_python = BASE_DIR / "venv" / "bin" / "python"
     llm_script = BASE_DIR / "llm_highlights.py"
