@@ -114,13 +114,14 @@ def call_llm(config: dict, system_prompt: str, user_message: str,
     elif provider == "ollama":
         import requests
         base_url = (config.get("llm_ollama_url") or "http://localhost:11434").rstrip("/")
+        keep_alive = (config.get("llm_ollama_keep_alive") or "5m").strip()
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_message})
         resp = requests.post(
             f"{base_url}/api/chat",
-            json={"model": model, "messages": messages, "stream": False},
+            json={"model": model, "messages": messages, "stream": False, "keep_alive": keep_alive},
             timeout=timeout,
         )
         resp.raise_for_status()
@@ -166,6 +167,7 @@ def get_provider_config(config: dict, action: str) -> dict | None:
         "llm_model": provider_data.get("model", ""),
         "llm_api_key": provider_data.get("api_key", ""),
         "llm_ollama_url": provider_data.get("ollama_url", "http://localhost:11434"),
+        "llm_ollama_keep_alive": provider_data.get("keep_alive", "5m"),
         "llm_timeout": provider_data.get("timeout", 120),
     }
 

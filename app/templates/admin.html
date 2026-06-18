@@ -940,11 +940,22 @@ function llmProviderCard(p, i) {
              id="llm-p-key-${i}" autocomplete="off" placeholder="${p.has_key ? 'Leave blank to keep existing key' : 'Paste API key here'}">
       ${keyHint}
     </div>
-    <div class="col-md-8" id="llm-p-urlrow-${i}">
+    <div class="col-md-6" id="llm-p-urlrow-${i}">
       <label class="form-label small fw-semibold mb-1">Ollama base URL</label>
       <input type="url" class="form-control form-control-sm font-monospace"
              value="${escapeHtml(p.ollama_url || 'http://localhost:11434')}"
              oninput="llmProviders[${i}].ollama_url=this.value">
+    </div>
+    <div class="col-md-2" id="llm-p-krow-${i}">
+      <label class="form-label small fw-semibold mb-1">Keep-alive
+        <span class="fw-normal text-muted" data-bs-toggle="tooltip"
+              title="How long Ollama keeps the model loaded after a call. Use 0 to unload immediately, -1 to never unload, or a duration like 5m or 1h.">
+          <i class="bi bi-question-circle"></i>
+        </span>
+      </label>
+      <input type="text" class="form-control form-control-sm font-monospace"
+             value="${escapeHtml(p.keep_alive || '5m')}" placeholder="5m"
+             oninput="llmProviders[${i}].keep_alive=this.value">
     </div>
     <div class="col-12 d-flex align-items-center gap-2 pt-1">
       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="llmTestProvider(${i})">
@@ -966,8 +977,10 @@ function llmUpdateProviderFields(i) {
   const urlRow = document.getElementById(`llm-p-urlrow-${i}`);
   const mlink  = document.getElementById(`llm-p-mlink-${i}`);
   const minput = document.getElementById(`llm-p-model-${i}`);
+  const kaRow  = document.getElementById(`llm-p-krow-${i}`);
   if (keyRow) keyRow.style.display = isOllama ? 'none' : '';
   if (urlRow) urlRow.style.display = isOllama ? '' : 'none';
+  if (kaRow)  kaRow.style.display  = isOllama ? '' : 'none';
   if (mlink)  mlink.innerHTML = LLM_MODEL_LINKS[ptype] || '';
   if (minput) minput.placeholder = (LLM_MODEL_HINTS[ptype] || '').split(',')[0].replace('e.g. ', '');
   llmUpdateModelInfo(i);
@@ -989,7 +1002,7 @@ function llmUpdateActionDropdowns() {
 }
 
 function llmAddProvider() {
-  llmProviders.push({ name: 'New Provider', provider: 'ollama', model: '', has_key: false, ollama_url: 'http://localhost:11434', timeout: 120 });
+  llmProviders.push({ name: 'New Provider', provider: 'ollama', model: '', has_key: false, ollama_url: 'http://localhost:11434', keep_alive: '5m', timeout: 120 });
   llmRenderProviders();
   // Scroll last card into view
   const cards = document.querySelectorAll('#llmProvidersContainer .card');
@@ -1034,7 +1047,7 @@ function serializeLlmProviders() {
     return inp ? inp.value.trim() : '';
   });
   document.getElementById('providersJson').value = JSON.stringify(
-    llmProviders.map(p => ({ name: p.name, provider: p.provider, model: p.model, ollama_url: p.ollama_url, timeout: p.timeout }))
+    llmProviders.map(p => ({ name: p.name, provider: p.provider, model: p.model, ollama_url: p.ollama_url, keep_alive: p.keep_alive || '5m', timeout: p.timeout }))
   );
   document.getElementById('pKeysJson').value = JSON.stringify(keys);
 }

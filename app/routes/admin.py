@@ -161,6 +161,7 @@ def _build_providers_display(config: dict) -> list[dict]:
             "provider": config.get("llm_provider", ""),
             "model": config.get("llm_model", ""),
             "ollama_url": config.get("llm_ollama_url", "http://localhost:11434"),
+            "keep_alive": config.get("llm_ollama_keep_alive", "5m"),
             "timeout": config.get("llm_timeout", 120),
             "has_key": bool(config.get("llm_api_key")),
         }]
@@ -702,6 +703,7 @@ async def save_llm_config(request: Request):
             "model": (pd.get("model") or "").strip(),
             "api_key": new_key,
             "ollama_url": (pd.get("ollama_url") or "http://localhost:11434").strip(),
+            "keep_alive": (pd.get("keep_alive") or "5m").strip(),
             "timeout": timeout,
         })
 

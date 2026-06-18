@@ -19,6 +19,8 @@ from urllib.parse import urlparse, urlunparse
 
 import yaml
 
+from flagutil import extract_country
+
 BASE_DIR = Path(__file__).parent
 
 
@@ -48,6 +50,22 @@ def _clean_journal(journal: str) -> str:
 
 
 _EMAIL_DANGER = "rgba(220,53,69,0.75)"   # BS --bs-danger at 75% opacity; hex required for email clients
+
+_MONTH_ABBR = {
+    "jan": "01", "feb": "02", "mar": "03", "apr": "04",
+    "may": "05", "jun": "06", "jul": "07", "aug": "08",
+    "sep": "09", "oct": "10", "nov": "11", "dec": "12",
+}
+
+
+def _norm_pub_date(s: str) -> str:
+    if not s:
+        return s
+    parts = s.split("-")
+    return "-".join(
+        _MONTH_ABBR.get(p[:3].lower(), p) if not p.isdigit() else p
+        for p in parts
+    )
 
 
 def _publisher_display(publisher: str, config: dict) -> str:
@@ -178,9 +196,10 @@ def _topic_colour(topic: str, mesh_topic_colours: dict) -> tuple[str, str]:
     return _TOPIC_COLOUR_FALLBACK[idx]
 
 
-def _badge(text: str, bg: str, border: str = "") -> str:
+def _badge(text: str, bg: str, border: str = "", pill: bool = False) -> str:
     border_css = f"border:1px solid {border};" if border else ""
-    return (f'<span style="display:inline-block;padding:2px 7px;border-radius:4px;'
+    radius = "50em" if pill else "4px"
+    return (f'<span style="display:inline-block;padding:2px 7px;border-radius:{radius};'
             f'background:{bg};{border_css}color:#333;font-size:.8em;font-weight:600">{text}</span>')
 
 
@@ -200,16 +219,6 @@ def _dim_initials(author: str) -> str:
         return f'{m.group(1)}<span style="color:{_EMAIL_TERTIARY}"> {m.group(2).strip()}</span>'
     return author
 
-
-def _author_summary(authors_json: str) -> str:
-    authors = json.loads(authors_json or "[]")
-    if not authors:
-        return ""
-    if len(authors) == 1:
-        return _dim_initials(authors[0])
-    if len(authors) == 2:
-        return f"{_dim_initials(authors[0])}; {_dim_initials(authors[1])}"
-    return f"{_dim_initials(authors[0])} et al. (last: {_dim_initials(authors[-1])})"
 
 
 def _proxy_url(doi: str, config: dict) -> str | None:
@@ -236,14 +245,55 @@ _BTN_STYLE = ("display:inline-block;padding:5px 13px;border-radius:6px;"
               "margin-right:8px;margin-bottom:4px")
 
 
+def _flag_img_email(iso: str | None, name: str | None, base_url: str) -> str:
+    if not iso:
+        return ''
+    return (f'<img src="{base_url}/static/flags/{iso}.svg" width="14" height="10" '
+            f'alt="{iso.upper()}" title="{name or iso.upper()}" '
+            f'style="vertical-align:middle;opacity:.75;margin-right:.15em">')
+
+
+def _author_summary_with_flags(authors_json: str, affiliations_json: str, base_url: str) -> str:
+    authors = json.loads(authors_json or "[]")
+    if not authors:
+        return ""
+    affil_raw = json.loads(affiliations_json or "null") or {}
+    aff_list = affil_raw.get("aff_list", [])
+    author_aff_map = affil_raw.get("author_aff", [])
+
+    def _iso_for(idx: int) -> tuple[str | None, str | None]:
+        aff_indices = author_aff_map[idx] if idx < len(author_aff_map) else []
+        if aff_indices and aff_list and aff_indices[0] < len(aff_list):
+            result = extract_country(aff_list[aff_indices[0]])
+            return (result[0], result[1]) if result else (None, None)
+        return None, None
+
+    def _fmt(idx: int) -> str:
+        iso, name = _iso_for(idx)
+        return f'{_flag_img_email(iso, name, base_url)}{_dim_initials(authors[idx])}'
+
+    n = len(authors)
+    if n == 1:
+        return _fmt(0)
+    if n == 2:
+        return f"{_fmt(0)}; {_fmt(1)}"
+    if n <= 5:
+        return "; ".join(_fmt(i) for i in range(n))
+    # > 5 authors: first 2; (n-4 others); last 2
+    middle = n - 4
+    return (f"{_fmt(0)}; {_fmt(1)}; "
+            f'<span style="color:{_EMAIL_TERTIARY}">({middle} others)</span>; '
+            f"{_fmt(n - 2)}; {_fmt(n - 1)}")
+
+
 def _render_paper_card(p: dict, mesh_topic_map: dict, mesh_topic_colours: dict,
                        base_url: str, config: dict, app_name: str) -> str:
     pmid = p["pmid"]
     title = p["title"]
-    authors_str = _author_summary(p["authors"])
+    authors_str = _author_summary_with_flags(p["authors"], p.get("affiliations") or "", base_url)
     journal = _clean_journal(p["journal"])
     publisher = _publisher_display(p.get("publisher") or "", config)
-    pub_date = p["pub_date"] or ""
+    pub_date = _norm_pub_date(p.get("epub_date") or p.get("pub_date") or "")
     quartile = p["scopus_quartile"] or ""
     doi = p["doi"] or ""
     oa_url = p["oa_url"] or ""
@@ -259,8 +309,8 @@ def _render_paper_card(p: dict, mesh_topic_map: dict, mesh_topic_colours: dict,
     q_label = f"{quartile}{metric_str}" if quartile else ""
 
     q_colors = QUARTILE_COLORS.get(quartile)
-    q_badge = _badge(q_label, *q_colors) if q_colors else (
-        _badge(q_label, "#f8f9fa", "#dee2e6") if q_label else "")
+    q_badge = _badge(q_label, *q_colors, pill=True) if q_colors else (
+        _badge(q_label, "#f8f9fa", "#dee2e6", pill=True) if q_label else "")
 
     if oa_url:
         access_badge = _badge("Open Access", "#d9eee1", "#b4dec3")
